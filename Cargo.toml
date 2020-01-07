@@ -6,15 +6,22 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+openblas = ["ndarray-linalg/openblas"]
+netlib = ["ndarray-linalg/netlib"]
+intel-mkl = ["ndarray-linalg/intel-mkl"]
+
 [dependencies]
-ndarray = { version = "0.13", features = ["blas", "serde", "rayon"]}
-# blas-src must depend on the same version as ndarray.
-# blas-src = { version = "0.2", default-features = false, features = ["openblas"] }
-# openblas-src = { version = "0.6.0", default-features = false, features = ["cblas", "system"] }
-# maybe revert to the previous lines; the next version of ndarray should have these version numbers:
+# TODO: is rayon really needed? it should probably be a library feature
+# ndarray = { version = "0.13", features = ["blas", "rayon"]}
+ndarray = { version = "0.13", features = ["blas"] }
+ndarray-linalg = { version = "0.12.0" }
+num-traits = "0.2.10"
+
+[dev-dependencies]
+# pick a backend to run tests
 blas-src = { version = "0.4", default-features = false, features = ["openblas"] }
-# openblas-src = { version = "0.7.0", default-features = false, features = ["cblas", "system"] }
-# remove "system" to manually build openblas as suggested here:
-# https://github.com/rust-ndarray/ndarray/issues/586
-# the initial compilation takes a very long time so this isn't ideal, but is a workaround to linker errors.
-openblas-src = { version = "0.7.0", default-features = false, features = ["cblas"] }
+ndarray-linalg = { version = "0.12.0", default-features = false, features = ["openblas"]}
+# including openblas-src causes linking errors with LAPACKE?
+# https://github.com/blas-lapack-rs/openblas-src/issues/30
+# openblas-src = { version = "0.7.0", default-features = false, features = ["cblas", "lapacke", "system"] }
