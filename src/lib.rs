@@ -1,12 +1,20 @@
+//! library for solving GLM regression
+//! TODO: documentation
+
+// extern crate ndarray_linalg;
+// this line is necessary to avoid linking errors
+// but maybe it should only go into final library
+// extern crate openblas_src;
+
 #[macro_use(array)]
 extern crate ndarray;
 
 pub mod linear;
+pub mod utility;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::Array1;
 
     #[test]
     fn it_works() {

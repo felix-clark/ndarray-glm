@@ -3,9 +3,9 @@
 Rust library for solving linear, logistic, and generalized linear models through iteratively reweighted least squares
 
 ## Prerequisites
-BLAS must be installed:
+fortran and BLAS must be installed:
 ```
-sudo apt update && sudo apt install libblas-dev
+sudo apt update && sudo apt install gfortran libblas-dev
 ```
 
 ### Features
