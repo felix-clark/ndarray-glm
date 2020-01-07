@@ -14,5 +14,7 @@ ndarray = { version = "0.13", features = ["blas", "serde", "rayon"]}
 # maybe revert to the previous lines; the next version of ndarray should have these version numbers:
 blas-src = { version = "0.4", default-features = false, features = ["openblas"] }
 # openblas-src = { version = "0.7.0", default-features = false, features = ["cblas", "system"] }
-# remove "system" to manually build openblas. this isn't ideal but is a workaround to linker errors.
+# remove "system" to manually build openblas as suggested here:
+# https://github.com/rust-ndarray/ndarray/issues/586
+# the initial compilation takes a very long time so this isn't ideal, but is a workaround to linker errors.
 openblas-src = { version = "0.7.0", default-features = false, features = ["cblas"] }
