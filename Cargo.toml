@@ -1,5 +1,5 @@
 [package]
-name = "glm"
+name = "irls"
 version = "0.1.0"
 authors = ["Felix Clark <mfclark3690@gmail.com>"]
 edition = "2018"
