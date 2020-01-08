@@ -10,10 +10,11 @@ sudo apt update && sudo apt install gfortran libblas-dev
 
 ### Features
 
-- [ ] Linear regression (exact)
+- [X] Linear regression (exact)
 - [ ] Logistic regression IRLS
 - [ ] Generalized linear model IRLS
 
 ### TODO
 
+- [ ] Weighted regressions
 - [ ] Generalize floating point type

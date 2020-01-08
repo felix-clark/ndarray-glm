@@ -14,9 +14,11 @@ intel-mkl = ["ndarray-linalg/intel-mkl"]
 [dependencies]
 # TODO: is rayon really needed? it should probably be a library feature
 # ndarray = { version = "0.13", features = ["blas", "rayon"]}
-ndarray = { version = "0.13", features = ["blas"] }
+ndarray = { version = "0.13", features = ["blas", "approx"] }
 ndarray-linalg = { version = "0.12.0" }
 num-traits = "0.2.10"
+# TODO: should this be kept as a dev-dependency? (along with "approx" feature of ndarray)
+approx = "0.3.2"
 
 [dev-dependencies]
 # pick a backend to run tests

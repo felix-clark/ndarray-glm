@@ -14,11 +14,13 @@ pub fn regression(data_y: &Array1<f32>, data_x: &Array2<f32>) -> Array1<f32> {
         data_x.nrows(),
         "y and x data must have same number of points"
     );
+    // TODO: check that the result is overdetermined and return an error if not
     // prepend the x data with a constant 1 column
     let data_x = one_pad(data_x);
     // the vector X^T * y
     let xty: Array1<f32> = data_y.dot(&data_x);
     // the positive-definite matrix X^T * X
     let xtx: Array2<f32> = data_x.t().dot(&data_x);
-    xtx.solveh_into(xty).expect("underdetermined problem")
+    xtx.solveh_into(xty)
+        .expect("underdetermined linear regression")
 }
