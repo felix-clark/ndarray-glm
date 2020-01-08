@@ -6,6 +6,7 @@
 // extern crate openblas_src;
 
 pub mod linear;
+pub mod logistic;
 pub mod utility;
 
 #[cfg(test)]
