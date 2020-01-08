@@ -29,6 +29,7 @@ pub fn regression(data_y: &Array1<bool>, data_x: &Array2<f32>) -> Array1<f32> {
     // prepend the x data with a constant 1 column
     let data_x = one_pad(data_x);
 
+    // TODO: determine first element based on fraction of cases in sample
     let start = Array1::<f32>::zeros(data_x.ncols());
     let first_guess = next_guess(&data_y, &data_x, &start);
 
