@@ -16,6 +16,16 @@ mod tests {
     use ndarray::array;
 
     #[test]
+    fn log_reg() {
+        let beta = array![0., 1.0];
+        let ln2 = f32::ln(2.);
+        let data_x = array![[0.], [0.], [ln2], [ln2], [ln2]];
+        let data_y = array![true, false, true, true, false];
+        let result = logistic::regression(&data_y, &data_x);
+        assert_abs_diff_eq!(beta, result, epsilon = 4.0 * std::f32::EPSILON);
+    }
+
+    #[test]
     fn lin_reg() {
         let beta = array![0.3, 1.2, -0.5];
         let data_x = array![[-0.1, 0.2], [0.7, 0.5], [3.2, 0.1]];
