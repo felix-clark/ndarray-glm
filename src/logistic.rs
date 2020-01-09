@@ -5,11 +5,16 @@ use crate::utility::one_pad;
 use approx::AbsDiffEq;
 use ndarray::{Array1, Array2, Zip};
 use ndarray_linalg::SolveH;
+use num_traits::float::Float;
 
 /// the result of a successful GLM fit (logistic for now)
-pub struct Fit {
+#[derive(Debug)]
+pub struct Fit<F>
+where
+    F: Float,
+{
     // the parameter values that maximize the likelihood
-    pub result: Array1<f32>,
+    pub result: Array1<F>,
     // number of data points minus number of free parameters
     pub ndf: usize,
     // the number of iterations taken
@@ -18,7 +23,11 @@ pub struct Fit {
 
 // right now implement LL for logistic, but this should be moved to a trait.
 // uses self.result in the likelihood. could modify to keep references to the data too.
-fn log_likelihood(data_y: &Array1<bool>, data_x: &Array2<f32>, regressors: &Array1<f32>) -> f32 {
+fn log_likelihood<F: 'static + Float>(
+    data_y: &Array1<bool>,
+    data_x: &Array2<F>,
+    regressors: &Array1<F>,
+) -> F {
     // this assertion should be a result, or these references should be stored in Fit so they can be checked ahead of time.
     assert_eq!(
         data_y.len(),
@@ -31,29 +40,43 @@ fn log_likelihood(data_y: &Array1<bool>, data_x: &Array2<f32>, regressors: &Arra
         "must have same number of explanatory variables as regressors"
     );
     // convert y data to floats, although this may not be needed in the future if we generalize to floats
-    let data_y: Array1<f32> = data_y.map(|&y| if y { 1.0 } else { 0.0 });
-    let linear_predictor: Array1<f32> = data_x.dot(regressors);
+    let data_y: Array1<F> = data_y.map(|&y| if y { F::one() } else { F::zero() });
+    let linear_predictor: Array1<F> = data_x.dot(regressors);
     // initialize the log likelihood terms
-    let mut log_like_terms: Array1<f32> = Array1::zeros(data_y.len());
+    let mut log_like_terms: Array1<F> = Array1::zeros(data_y.len());
     Zip::from(&mut log_like_terms)
         .and(&data_y)
         .and(&linear_predictor)
         .apply(|l, &y, &wx| {
             // Both of these expressions are mathematically identical.
             // The distinction is made to avoid under/overflow.
-            *l = if wx < 0. {
+            *l = if wx < F::zero() {
                 y * wx - wx.exp().ln_1p()
             } else {
-                -(1. - y) * wx - (-wx).exp().ln_1p()
+                (F::one() - y) * (-wx) - (-wx).exp().ln_1p()
             };
         });
     log_like_terms.sum()
 }
 
-impl Fit {
+/// return the Z-scores for each regression parameter
+pub fn significance<F: 'static + Float>(
+    data_y: &Array1<bool>,
+    data_x: &Array2<F>,
+    result: &Array1<F>,
+) -> Array1<F> {
+    let data_x = one_pad(data_x);
+    let model_like = log_likelihood(data_y, &data_x, result);
+    let mut null_likes: Array1<F> = Array1::zeros(result.len());
+
+    todo!("likelihood ratio test for each element")
+}
+
+impl<F: Float> Fit<F> {
     // likelihood ratio test for each element of the result
     // TODO: the Z-score can probably be calculated easily using the exact 2nd derivative.
-    pub fn significance(&self) {
+    pub fn significance(&self) -> Array1<F> {
+        // let baseline = log_likelihood(data_y: &Array1<bool>, data_x: &Array2<F>, regressors: &Array1<F>, )
         todo!("likelihood ratio test for each element")
     }
 }
@@ -95,7 +118,10 @@ fn next_guess(
 }
 
 /// returns object holding fit result
-pub fn regression(data_y: &Array1<bool>, data_x: &Array2<f32>) -> Result<Fit, RegressionError> {
+pub fn regression(
+    data_y: &Array1<bool>,
+    data_x: &Array2<f32>,
+) -> Result<Fit<f32>, RegressionError> {
     let n_data = data_y.len();
     if n_data != data_x.nrows() {
         return Err(RegressionError::BadInput(
