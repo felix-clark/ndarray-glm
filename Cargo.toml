@@ -1,5 +1,5 @@
 [package]
-name = "irls"
+name = "glm-regress"
 version = "0.1.0"
 authors = ["Felix Clark <mfclark3690@gmail.com>"]
 edition = "2018"
