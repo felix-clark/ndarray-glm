@@ -15,6 +15,7 @@ mod utility;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::glm::Glm;
     use approx::assert_abs_diff_eq;
     use ndarray::array;
 
@@ -24,10 +25,10 @@ mod tests {
         let ln2 = f64::ln(2.);
         let data_x = array![[0.], [0.], [ln2], [ln2], [ln2]];
         let data_y = array![true, false, true, true, false];
-        let result = logistic::regression(&data_y, &data_x).expect("regression failed");
+        let result = logistic::Logistic::regression(&data_y, &data_x).expect("regression failed");
         assert_abs_diff_eq!(beta, result.result, epsilon = 4.0 * std::f64::EPSILON);
         // test the significance function
-        let significance = result.significance(&data_y, &data_x);
+        let significance = result.z_scores(&data_y, &data_x);
         dbg!(significance);
     }
 
