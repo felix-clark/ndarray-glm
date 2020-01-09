@@ -1,13 +1,15 @@
 //! functions for solving logistic regression
 
 use crate::error::RegressionError;
+use crate::glm::Glm;
 use crate::utility::one_pad;
 use approx::AbsDiffEq;
 use ndarray::{Array1, Array2, Zip};
-use ndarray_linalg::SolveH;
+use ndarray_linalg::{lapack::Lapack, SolveH};
 use num_traits::float::Float;
 
 /// the result of a successful GLM fit (logistic for now)
+/// TODO: generalize
 #[derive(Debug)]
 pub struct Fit<F>
 where
@@ -22,7 +24,6 @@ where
 }
 
 // right now implement LL for logistic, but this should be moved to a trait.
-// uses self.result in the likelihood. could modify to keep references to the data too.
 fn log_likelihood<F: 'static + Float>(
     data_y: &Array1<bool>,
     data_x: &Array2<F>,
@@ -50,34 +51,40 @@ fn log_likelihood<F: 'static + Float>(
         .apply(|l, &y, &wx| {
             // Both of these expressions are mathematically identical.
             // The distinction is made to avoid under/overflow.
-            *l = if wx < F::zero() {
-                y * wx - wx.exp().ln_1p()
+            let (yt, xt) = if wx < F::zero() {
+                (y, wx)
             } else {
-                (F::one() - y) * (-wx) - (-wx).exp().ln_1p()
+                (F::one() - y, -wx)
             };
+            *l = yt * xt - xt.exp().ln_1p()
         });
     log_like_terms.sum()
 }
 
-/// return the Z-scores for each regression parameter
-pub fn significance<F: 'static + Float>(
-    data_y: &Array1<bool>,
-    data_x: &Array2<F>,
-    result: &Array1<F>,
-) -> Array1<F> {
-    let data_x = one_pad(data_x);
-    let model_like = log_likelihood(data_y, &data_x, result);
-    let mut null_likes: Array1<F> = Array1::zeros(result.len());
-
-    todo!("likelihood ratio test for each element")
-}
-
-impl<F: Float> Fit<F> {
-    // likelihood ratio test for each element of the result
-    // TODO: the Z-score can probably be calculated easily using the exact 2nd derivative.
-    pub fn significance(&self) -> Array1<F> {
-        // let baseline = log_likelihood(data_y: &Array1<bool>, data_x: &Array2<F>, regressors: &Array1<F>, )
-        todo!("likelihood ratio test for each element")
+impl<F> Fit<F>
+where
+    F: 'static + Float,
+{
+    /// return the Z-scores for each regression parameter
+    pub fn significance(&self, data_y: &Array1<bool>, data_x: &Array2<F>) -> Array1<F> {
+        let data_x = one_pad(data_x);
+        let model_like = log_likelihood(data_y, &data_x, &self.result);
+        // -2 likelihood deviation is asymptotically chi^2 with ndf degrees of freedom.
+        let mut chi_sqs: Array1<F> = Array1::zeros(self.result.len());
+        // TODO (style): move away from explicit indexing
+        for i_like in 0..self.result.len() {
+            let mut adjusted = self.result.clone();
+            adjusted[i_like] = F::zero();
+            let null_like = log_likelihood(data_y, &data_x, &adjusted);
+            let chi_sq = F::from(2.).unwrap() * (model_like - null_like);
+            assert!(
+                chi_sq >= F::zero(),
+                "negative chi-sq. may not be an error if small."
+            );
+            chi_sqs[i_like] = chi_sq;
+        }
+        let zscores = self.result.mapv(F::signum) * chi_sqs.mapv_into(F::sqrt);
+        zscores
     }
 }
 
@@ -85,11 +92,16 @@ impl<F: Float> Fit<F> {
 /// The data vector is assumed to already be padded with ones if necessary.
 /// TODO: add offset terms to account for fixed effects / controlled covariates. these affect the calculation of mu, the current expectation.
 /// TODO: generalize to other models using trait system
-fn next_guess(
+fn next_guess<M, F>(
     data_y: &Array1<bool>,
-    data_x: &Array2<f32>,
-    previous: &Array1<f32>,
-) -> Result<Array1<f32>, RegressionError> {
+    data_x: &Array2<F>,
+    previous: &Array1<F>,
+) -> Result<Array1<F>, RegressionError>
+where
+    M: Glm,
+    F: 'static + Float + Lapack,
+    Array2<F>: SolveH<F>,
+{
     assert_eq!(
         data_y.len(),
         data_x.nrows(),
@@ -101,27 +113,29 @@ fn next_guess(
         "must have same number of parameters in X and solution"
     );
     // the linear predictor given the model
-    let linear_predictor: Array1<f32> = data_x.dot(previous);
+    let linear_predictor: Array1<F> = data_x.dot(previous);
     // The probability of each observation being true given the current guess.
     // TODO: The offset should be added to the linear predictor in here, when implemented.
-    let offset = 0.;
-    let predictor: Array1<f32> =
-        (&linear_predictor + offset).mapv_into(|wx| 1. / (1. + f32::exp(-wx)));
+    let offset = Array1::<F>::zeros(linear_predictor.len());
+    let predictor: Array1<F> = (&linear_predictor + &offset).mapv_into(M::mean);
     // the diagonal covariance matrix given the model
-    let variance: Array2<f32> = Array2::from_diag(&predictor.mapv(|mu| mu * (1. - mu)));
+    let variance: Array2<F> = Array2::from_diag(&predictor.mapv(M::variance));
     // positive definite
-    let solve_matrix: Array2<f32> = data_x.t().dot(&variance).dot(data_x);
-    let target: Array1<f32> =
-        variance.dot(&linear_predictor) + &data_y.map(|&b| if b { 1.0 } else { 0.0 }) - &predictor;
-    let target: Array1<f32> = data_x.t().dot(&target);
+    let solve_matrix: Array2<F> = data_x.t().dot(&variance).dot(data_x);
+    let target: Array1<F> = variance.dot(&linear_predictor)
+        + &data_y.map(|&b| if b { F::one() } else { F::zero() })
+        - &predictor;
+    let target: Array1<F> = data_x.t().dot(&target);
+    // Ok(solve_matrix.solveh_into(target)?)
     Ok(solve_matrix.solveh_into(target)?)
 }
 
 /// returns object holding fit result
-pub fn regression(
-    data_y: &Array1<bool>,
-    data_x: &Array2<f32>,
-) -> Result<Fit<f32>, RegressionError> {
+pub fn regression<F>(data_y: &Array1<bool>, data_x: &Array2<F>) -> Result<Fit<F>, RegressionError>
+where
+    F: 'static + Float + Lapack,
+    Array1<F>: AbsDiffEq,
+{
     let n_data = data_y.len();
     if n_data != data_x.nrows() {
         return Err(RegressionError::BadInput(
@@ -135,21 +149,23 @@ pub fn regression(
     // prepend the x data with a constant 1 column
     let data_x = one_pad(data_x);
 
-    let mut last = Array1::<f32>::zeros(data_x.ncols());
+    let mut last = Array1::<F>::zeros(data_x.ncols());
     // TODO: determine first element based on fraction of cases in sample
     // This is only an improvement when the x points are centered around zero.
-    // Perhaps this can be fixed up.
+    // Perhaps that aspect can be worked around.
     // last[0] = f32::ln(data_y.iter().filter(|&&b| b).count() as f32 / data_y.iter().filter(|&&b| !b).count() as f32);
-    let mut next = next_guess(&data_y, &data_x, &last)?;
+    let mut next: Array1<F> = next_guess::<Logistic, F>(&data_y, &data_x, &last)?;
+    // let mut delta: Array1<F> = &next - &last;
     let mut n_iter = 0;
     // TODO: more sophisticated termination conditions.
     // This one could easily loop forever.
     // MAYBE: if delta is similar to negative last delta?
-    while !next.abs_diff_eq(&last, 2.0 * std::f32::EPSILON) {
+    // let tolerance: F = F::from(2.).unwrap() * F::epsilon();
+    while next.abs_diff_ne(&last, Array1::<F>::default_epsilon()) {
         // dbg!(&last);
         // dbg!(&next);
         last = next.clone();
-        next = next_guess(&data_y, &data_x, &next)?;
+        next = next_guess::<Logistic, F>(&data_y, &data_x, &next)?;
         n_iter += 1;
     }
     // ndf is guaranteed to be > 0 because of the underconstrained check
@@ -159,4 +175,26 @@ pub fn regression(
         ndf,
         n_iter,
     })
+}
+
+/// trait-based implementation to work towards generalization
+struct Logistic;
+
+impl Glm for Logistic {
+    type Domain = bool;
+
+    // the logit function
+    fn link<F: Float>(y: F) -> F {
+        F::ln(y / (F::one() - y))
+    }
+
+    // inverse link function, the expit function
+    fn mean<F: Float>(lin_pred: F) -> F {
+        F::one() / (F::one() + (-lin_pred).exp())
+    }
+
+    // var = mu*(1-mu)
+    fn variance<F: Float>(mean: F) -> F {
+        mean * (F::one() - mean)
+    }
 }

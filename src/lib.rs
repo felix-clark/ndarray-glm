@@ -6,6 +6,7 @@
 // extern crate openblas_src;
 
 pub mod error;
+pub mod glm;
 pub mod linear;
 pub mod logistic;
 mod utility;
@@ -19,15 +20,13 @@ mod tests {
     #[test]
     fn log_reg() {
         let beta = array![0., 1.0];
-        let ln2 = f32::ln(2.);
+        let ln2 = f64::ln(2.);
         let data_x = array![[0.], [0.], [ln2], [ln2], [ln2]];
         let data_y = array![true, false, true, true, false];
-        let result = logistic::regression(&data_y, &data_x)
-            .expect("regression failed")
-            .result;
-        assert_abs_diff_eq!(beta, result, epsilon = 4.0 * std::f32::EPSILON);
+        let result = logistic::regression(&data_y, &data_x).expect("regression failed");
+        assert_abs_diff_eq!(beta, result.result, epsilon = 4.0 * std::f64::EPSILON);
         // test the significance function
-        let significance = logistic::significance(&data_y, &data_x, &result);
+        let significance = result.significance(&data_y, &data_x);
         dbg!(significance);
     }
 

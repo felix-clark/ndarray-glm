@@ -1,7 +1,7 @@
 //! define the error enum for the result of regressions
 
-use thiserror::Error;
 use ndarray_linalg::error::LinalgError;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum RegressionError {
