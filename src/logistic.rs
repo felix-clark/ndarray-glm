@@ -1,27 +1,13 @@
 //! functions for solving logistic regression
 
 use crate::error::RegressionError;
+use crate::fit::Fit;
 use crate::glm::Glm;
 use crate::utility::one_pad;
 use approx::AbsDiffEq;
 use ndarray::{Array1, Array2, Zip};
 use ndarray_linalg::{lapack::Lapack, SolveH};
 use num_traits::float::Float;
-
-/// the result of a successful GLM fit (logistic for now)
-/// TODO: generalize
-#[derive(Debug)]
-pub struct Fit<F>
-where
-    F: Float,
-{
-    // the parameter values that maximize the likelihood
-    pub result: Array1<F>,
-    // number of data points minus number of free parameters
-    pub ndf: usize,
-    // the number of iterations taken
-    pub n_iter: usize,
-}
 
 // right now implement LL for logistic, but this should be moved to a trait.
 fn log_likelihood<F: 'static + Float>(
@@ -65,8 +51,9 @@ impl<F> Fit<F>
 where
     F: 'static + Float,
 {
-    /// return the Z-scores for each regression parameter
-    pub fn significance(&self, data_y: &Array1<bool>, data_x: &Array2<F>) -> Array1<F> {
+    /// return the signed Z-score for each regression parameter, which should
+    /// follow the Chi distribution under the null hypothesis.
+    pub fn z_scores(&self, data_y: &Array1<bool>, data_x: &Array2<F>) -> Array1<F> {
         let data_x = one_pad(data_x);
         let model_like = log_likelihood(data_y, &data_x, &self.result);
         // -2 likelihood deviation is asymptotically chi^2 with ndf degrees of freedom.
@@ -83,8 +70,10 @@ where
             );
             chi_sqs[i_like] = chi_sq;
         }
-        let zscores = self.result.mapv(F::signum) * chi_sqs.mapv_into(F::sqrt);
-        zscores
+        let signs = self.result.mapv(F::signum);
+        let chis = chi_sqs.mapv_into(F::sqrt);
+        // return the Z-scores
+        signs * chis
     }
 }
 

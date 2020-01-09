@@ -6,6 +6,7 @@
 // extern crate openblas_src;
 
 pub mod error;
+pub mod fit;
 pub mod glm;
 pub mod linear;
 pub mod logistic;
