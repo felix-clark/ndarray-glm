@@ -2,6 +2,14 @@
 
 Rust library for solving linear, logistic, and generalized linear models through iteratively reweighted least squares
 
+|build_status|_  <!-- |crates|_ -->
+
+.. |build_status| image:: https://api.travis-ci.org/felix-clark/glm-regress.svg?branch=master
+.. _build_status: https://travis-ci.org/felix-clark/glm-regress
+
+<!-- .. |crates| image:: http://meritbadge.herokuapp.com/glm-regress -->
+<!-- .. _crates: https://crates.io/crates/glm-regress -->
+
 ## Status
 
 This package is in early alpha and the interface is likely to undergo many changes.
