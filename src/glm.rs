@@ -38,7 +38,6 @@ pub trait Glm {
         F: 'static + Float + Lapack,
         Array1<F>: AbsDiffEq,
         Self: Sized,
-        // <Array1<F> as AbsDiffEq>::Epsilon: From<F>,
     {
         let n_data = data.y.len();
 
@@ -52,10 +51,9 @@ pub trait Glm {
         // let mut max_delta = F::infinity();
         let mut delta: Array1<F> = &next - &last;
         let mut n_iter: usize = 0;
-        // TODO: more sophisticated termination conditions.
-        // This one could easily loop forever.
-        // MAYBE: if delta is similar to negative last delta?
-        // let tolerance: F = F::from(2.).unwrap() * F::epsilon();
+
+        // Step halving is applied when the size of the change is equal or larger.
+        // TODO: even more sophisticated termination conditions?
 
         while next.abs_diff_ne(&last, Array1::<F>::default_epsilon()) {
             last = next.clone();
@@ -64,11 +62,9 @@ pub trait Glm {
             let mut new_delta = &next - &last;
             // this delta comparison is not very sophisticated
             if new_delta.map(|d| d.abs()).sum() >= delta.map(|d| d.abs()).sum() {
-                // next = F::from(0.5).unwrap() * (&last + &next);
                 next = Array1::<F>::from_elem(next.len(), F::from(0.5).unwrap()) * (&last + &next);
                 new_delta = &next - &last;
                 // dbg!(n_iter);
-                // panic!("hi");
             }
 
             delta = new_delta;
