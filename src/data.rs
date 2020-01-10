@@ -39,6 +39,7 @@ where
     linear_offset: Option<Array1<F>>,
     max_iter: Option<usize>,
     // fields unique to the builder
+    add_constant_term: bool,
     // tolerance for determinant check
     det_tol: F,
 }
@@ -56,6 +57,7 @@ where
             data_x,
             linear_offset: None,
             max_iter: None,
+            add_constant_term: true,
             det_tol: Self::default_epsilon(n_pred),
         }
     }
@@ -80,6 +82,12 @@ where
     /// Use a maximum number of iterations
     pub fn max_iter(mut self, max_iter: usize) -> Self {
         self.max_iter = Some(max_iter);
+        self
+    }
+
+    /// Do not add a constant term to the design matrix
+    pub fn no_constant(mut self) -> Self {
+        self.add_constant_term = false;
         self
     }
 
@@ -114,6 +122,7 @@ where
             }
         }
 
+        // Check for co-linearity by ensuring that the determinant of X^T * X is non-zero.
         let xtx: Array2<F> = self.data_x.t().dot(&self.data_x);
         let det: <<Array2<F> as DeterminantH>::Elem as Scalar>::Real = xtx.deth()?;
         let det: F = det.into();
@@ -121,9 +130,15 @@ where
             return Err(RegressionError::ColinearData);
         }
 
+        let data_x = if self.add_constant_term {
+            one_pad(&self.data_x)
+        } else {
+            self.data_x
+        };
+
         Ok(DataConfig {
             y: self.data_y,
-            x: one_pad(&self.data_x),
+            x: data_x,
             linear_offset: self.linear_offset,
             max_iter: self.max_iter,
         })

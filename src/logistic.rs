@@ -1,6 +1,9 @@
 //! functions for solving logistic regression
 
-use crate::{data::DataConfig, glm::Glm};
+use crate::{
+    data::DataConfig,
+    glm::{Glm, Likelihood},
+};
 use ndarray::{Array1, Zip};
 use num_traits::float::Float;
 
@@ -26,7 +29,9 @@ impl Glm for Logistic {
     fn variance<F: Float>(mean: F) -> F {
         mean * (F::one() - mean)
     }
+}
 
+impl Likelihood for Logistic {
     // specialize LL for logistic regression
     fn log_likelihood<F: 'static + Float>(data: &DataConfig<F>, regressors: &Array1<F>) -> F {
         // TODO: this assertion should be a result, or these references should

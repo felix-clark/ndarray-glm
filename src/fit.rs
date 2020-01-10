@@ -1,6 +1,9 @@
 //! struct holding the fit result of a regression
 
-use crate::{data::DataConfig, glm::Glm};
+use crate::{
+    data::DataConfig,
+    glm::{Glm, Likelihood},
+};
 
 use ndarray::Array1;
 use num_traits::Float;
@@ -26,7 +29,7 @@ where
 
 impl<M, F> Fit<M, F>
 where
-    M: Glm,
+    M: Likelihood,
     F: 'static + Float,
 {
     /// return the signed Z-score for each regression parameter.

@@ -27,9 +27,6 @@ pub trait Glm {
     /// the variance as a function of the mean
     fn variance<F: Float>(mean: F) -> F;
 
-    /// logarithm of the likelihood given the data and fit parameters
-    fn log_likelihood<F: 'static + Float>(data: &DataConfig<F>, regressors: &Array1<F>) -> F;
-
     /// returns object holding fit result
     // TODO: make more robust, for instance using step-halving if issues are detected.
     // Non-standard link functions could still cause issues. See for instance
@@ -91,6 +88,15 @@ pub trait Glm {
             n_iter,
         })
     }
+}
+
+/// A subtrait for GLMs that have an unambiguous likelihood function.
+// Not all regression types have a well-defined likelihood. E.g. logistic
+// (binomial) and Poisson do; linear (normal) and negative binomial do not due
+// to the extra parameter.
+pub trait Likelihood: Glm {
+    /// logarithm of the likelihood given the data and fit parameters
+    fn log_likelihood<F: 'static + Float>(data: &DataConfig<F>, regressors: &Array1<F>) -> F;
 }
 
 /// Private function to retrieve next step in IRLS (specialized for logistic
