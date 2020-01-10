@@ -14,4 +14,10 @@ pub enum RegressionError {
     },
     #[error("Underconstrained data")]
     Underconstrained,
+    #[error("Colinear data (X^T * X is not invertible)")]
+    ColinearData,
+    #[error("Maximum iterations ({0}) reached")]
+    MaxIter(usize),
 }
+
+pub type RegressionResult<T> = Result<T, RegressionError>;

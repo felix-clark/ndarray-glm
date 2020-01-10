@@ -1,11 +1,8 @@
 //! struct holding the fit result of a regression
 
-use crate::utility::one_pad;
+use crate::{data::DataConfig, glm::Glm};
 
-// temporary until we generalize
-use crate::glm::Glm;
-
-use ndarray::{Array1, Array2};
+use ndarray::Array1;
 use num_traits::Float;
 use std::marker::PhantomData;
 
@@ -33,20 +30,19 @@ where
     F: 'static + Float,
 {
     /// return the signed Z-score for each regression parameter.
-    pub fn z_scores(&self, data_y: &Array1<M::Domain>, data_x: &Array2<F>) -> Array1<F> {
-        let data_x = one_pad(data_x);
-        let model_like = M::log_likelihood(data_y, &data_x, &self.result);
+    pub fn z_scores(&self, data: &DataConfig<F>) -> Array1<F> {
+        let model_like = M::log_likelihood(&data, &self.result);
         // -2 likelihood deviation is asymptotically chi^2 with ndf degrees of freedom.
         let mut chi_sqs: Array1<F> = Array1::zeros(self.result.len());
-        // TODO (style): move away from explicit indexing
+        // TODO (style): move to (enumerated?) iterator
         for i_like in 0..self.result.len() {
             let mut adjusted = self.result.clone();
             adjusted[i_like] = F::zero();
-            let null_like = M::log_likelihood(data_y, &data_x, &adjusted);
+            let null_like = M::log_likelihood(&data, &adjusted);
             let chi_sq = F::from(2.).unwrap() * (model_like - null_like);
             assert!(
                 chi_sq >= F::zero(),
-                "negative chi-sq. may not be an error if small."
+                "negative chi-sq. TODO: may not be an error if small."
             );
             chi_sqs[i_like] = chi_sq;
         }

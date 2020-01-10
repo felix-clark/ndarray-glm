@@ -1,9 +1,14 @@
 //! Functions for solving linear regression
 
-use crate::error::RegressionError;
-use crate::utility::one_pad;
-use ndarray::{Array1, Array2};
+use crate::utility::one_pad; // TODO: this should be able to be removed long term
+use crate::{data::DataConfig, error::RegressionError, glm::Glm};
+use ndarray::{
+    Array1,
+    Array2,
+    // Zip
+};
 use ndarray_linalg::SolveH;
+use num_traits::Float;
 
 /// data_y is an array of the y values, data_x is an array with rows indicating the data point and columns indicating the regressor
 /// Returns ordinary least squares solution of length 1 greater than the width of X
@@ -25,4 +30,38 @@ pub fn regression(
     // the positive-definite matrix X^T * X
     let xtx: Array2<f32> = data_x.t().dot(&data_x);
     Ok(xtx.solveh_into(xty)?)
+}
+
+pub struct Linear;
+
+impl Glm for Linear {
+    // the link function, identity
+    fn link<F: Float>(y: F) -> F {
+        y
+    }
+
+    // inverse link function, identity
+    fn mean<F: Float>(lin_pred: F) -> F {
+        lin_pred
+    }
+
+    // variance is not a function of the mean
+    fn variance<F: Float>(_mean: F) -> F {
+        F::one()
+    }
+
+    // specialize LL for linear
+    // FIXME: it might depend on the variance, which is undetermined?
+    fn log_likelihood<F: 'static + Float>(data: &DataConfig<F>, regressors: &Array1<F>) -> F {
+        // TODO: this assertion should be a result, or these references should
+        // be stored in Fit so they can be checked ahead of time.
+        assert_eq!(
+            data.x.ncols(),
+            regressors.len(),
+            "must have same number of explanatory variables as regressors"
+        );
+        unimplemented!(
+            "Linear regression likelihood not determined - may depend on additional parameter?"
+        );
+    }
 }
