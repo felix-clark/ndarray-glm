@@ -43,6 +43,7 @@ mod tests {
     fn lin_reg() -> RegressionResult<()> {
         let beta = array![0.3, 1.2, -0.5];
         let data_x = array![[-0.1, 0.2], [0.7, 0.5], [3.2, 0.1]];
+        // let data_x = array![[-0.1, 0.1], [0.7, -0.7], [3.2, -3.2]];
         let data_y = array![
             beta[0] + beta[1] * data_x[[0, 0]] + beta[2] * data_x[[0, 1]],
             beta[0] + beta[1] * data_x[[1, 0]] + beta[2] * data_x[[1, 1]],
@@ -51,7 +52,7 @@ mod tests {
         let data = DataConfigBuilder::new(data_y, data_x)
             .max_iter(10)
             .build()?;
-        // let result = linear::regression(&data_y, &data_x).expect("regression failed");
+        // let result = linear::regression(&data).expect("regression failed");
         let fit = linear::Linear::regression(&data).expect("regression failed");
         dbg!(fit.n_iter);
         // This is failing within the default tolerance
