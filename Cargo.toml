@@ -20,6 +20,7 @@ num-traits = "0.2.10"
 # TODO: should this be kept as a dev-dependency? (along with "approx" feature of ndarray)
 approx = "0.3.2"
 thiserror = "1.0.9"
+itertools = "0.8.2"
 
 [dev-dependencies]
 # pick a backend to run tests

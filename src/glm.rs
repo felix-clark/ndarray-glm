@@ -3,6 +3,7 @@
 
 use crate::{data::DataConfig, error::RegressionError, fit::Fit};
 use approx::AbsDiffEq;
+use itertools::{all, Itertools};
 use ndarray::{Array1, Array2};
 use ndarray_linalg::{lapack::Lapack, SolveH};
 use num_traits::Float;
@@ -54,11 +55,13 @@ pub trait Glm {
 
         // Step halving is applied when the size of the change is equal or larger.
         // TODO: even more sophisticated termination conditions?
+        // TODO: This epsilon should be configurable.
+        let epsilon: F = F::from(8.0).unwrap() * Float::epsilon();
 
-        while next.abs_diff_ne(&last, Array1::<F>::default_epsilon()) {
-            last = next.clone();
-            next = next_irls::<Self, F>(&data, &next)?;
-            // check the deltas to see if we should step halving
+        loop {
+            last = next;
+            next = next_irls::<Self, F>(&data, &last)?;
+            // check the deltas to see if we should use step halving
             let mut new_delta = &next - &last;
             // this delta comparison is not very sophisticated
             if new_delta.map(|d| d.abs()).sum() >= delta.map(|d| d.abs()).sum() {
@@ -68,11 +71,22 @@ pub trait Glm {
             }
 
             delta = new_delta;
+
             n_iter += 1;
             if let Some(max_iter) = &data.max_iter {
                 if n_iter > *max_iter {
                     return Err(RegressionError::MaxIter(*max_iter));
                 }
+            }
+
+            // If all the deltas are smaller than
+            if all(next.iter().zip_eq(delta.iter()), |(&b, &d)| {
+                // transform to absolute values
+                let (b, d) = (Float::abs(b), Float::abs(d));
+                let scale = if b >= F::one() { b } else { F::one() };
+                d <= epsilon * scale
+            }) {
+                break;
             }
         }
         // ndf is guaranteed to be > 0 because of the underconstrained check
