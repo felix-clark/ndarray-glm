@@ -79,7 +79,7 @@ pub trait Glm {
                 }
             }
 
-            // If all the deltas are smaller than
+            // If all the deltas are smaller than a tolerance end the algorithm
             if all(next.iter().zip_eq(delta.iter()), |(&b, &d)| {
                 // transform to absolute values
                 let (b, d) = (Float::abs(b), Float::abs(d));
