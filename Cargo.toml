@@ -8,6 +8,7 @@ edition = "2018"
 
 [features]
 openblas = ["ndarray-linalg/openblas"]
+openblas-src = ["ndarray-linalg/openblas-src"]
 netlib = ["ndarray-linalg/netlib"]
 intel-mkl = ["ndarray-linalg/intel-mkl"]
 
@@ -15,6 +16,7 @@ intel-mkl = ["ndarray-linalg/intel-mkl"]
 # TODO: is rayon really needed? it should probably be a library feature
 # ndarray = { version = "0.13", features = ["blas", "rayon"]}
 ndarray = { version = "0.13", features = ["blas", "approx"] }
+# perhaps the "openblas-src" feature should be reserved for a final crate?
 ndarray-linalg = { version = "0.12.0" }
 num-traits = "0.2.10"
 # TODO: should this be kept as a dev-dependency? (along with "approx" feature of ndarray)
@@ -25,7 +27,8 @@ itertools = "0.8.2"
 [dev-dependencies]
 # pick a backend to run tests
 blas-src = { version = "0.4", default-features = false, features = ["openblas"] }
-ndarray-linalg = { version = "0.12.0", default-features = false, features = ["openblas"]}
+ndarray-linalg = { version = "0.12.0", default-features = false, features = ["openblas", "openblas-src"]}
 # including openblas-src causes linking errors with LAPACKE?
+# Include it as a feature to ndarray-linalg instead.
 # https://github.com/blas-lapack-rs/openblas-src/issues/30
 # openblas-src = { version = "0.7.0", default-features = false, features = ["cblas", "lapacke", "system"] }
