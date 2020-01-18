@@ -16,6 +16,8 @@ fortran and BLAS must be installed:
 sudo apt update && sudo apt install gfortran libblas-dev
 ```
 
+To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate with the "openblas-src" feature.
+
 ### Features
 
 - [X] Linear regression (exact)
