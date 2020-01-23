@@ -14,6 +14,8 @@ pub trait Glm {
     // i.e. integer for Poisson, float for Linear, bool for logistic
     // TODO: perhaps create a custom Domain type or trait to deal with constraints
     // we typically work with floats as EVs, though.
+    // A (private?) function that maps a general domain to the floating point
+    // type could work as well.
     // type Domain;
 
     /// a function to check if a Y-value is value
