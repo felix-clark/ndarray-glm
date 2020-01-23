@@ -75,8 +75,7 @@ where
     /// This can be used to control for fixed effects or in multi-level models.
     pub fn linear_offset(mut self, linear_offset: Array1<F>) -> Self {
         self.linear_offset = Some(linear_offset);
-        panic!("Linear offsets are not implemented everywhere (log_likelihood())");
-        // self
+        self
     }
 
     /// Use a maximum number of iterations
@@ -127,6 +126,9 @@ where
         let det: <<Array2<F> as DeterminantH>::Elem as Scalar>::Real = xtx.deth()?;
         let det: F = det.into();
         if det.abs() < self.det_tol {
+            // Perhaps this error should be left to a linear algebra failure,
+            // but in that case an error message should be informative. Maybe
+            // only do the check in that case.
             return Err(RegressionError::ColinearData);
         }
 
