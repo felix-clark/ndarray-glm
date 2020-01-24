@@ -3,7 +3,6 @@
 
 use crate::{data::DataConfig, error::RegressionError, fit::Fit};
 use approx::AbsDiffEq;
-// use itertools::{all, Itertools};
 use ndarray::{Array1, Array2};
 use ndarray_linalg::{lapack::Lapack, SolveH};
 use num_traits::Float;
@@ -131,12 +130,27 @@ where
             guess: initial,
             model: PhantomData,
             // TODO: builder pattern to set optional parameters like this
-            max_iter: 40,
+            max_iter: 25,
             n_iter: 0,
             // As a ratio with the variance, this epsilon could be too small.
             tolerance,
             last_like: -F::infinity(),
         }
+    }
+
+    fn step_with(
+        &mut self,
+        next_guess: Array1<F>,
+        next_like: F,
+        extra_iter: usize,
+    ) -> <Self as Iterator>::Item {
+        self.guess.assign(&next_guess);
+        self.last_like = next_like;
+        self.n_iter += 1 + extra_iter;
+        if self.n_iter > self.max_iter {
+            return Err(RegressionError::MaxIter(self.max_iter));
+        }
+        Ok(next_guess)
     }
 }
 
@@ -194,37 +208,41 @@ where
         // as stable. Some parameters might be at different scales.
         // TODO: add regularization term to likelihood
         let mut like = M::quasi_log_likelihood(&self.data, &next_guess);
+        // This should be positive for an improvement
         let mut rel = (like - self.last_like) / (F::epsilon() + like.abs());
-        // Terminate
-        if rel.abs() < self.tolerance {
+        // Terminate if the difference is close to zero
+        if rel.abs() <= self.tolerance {
             return None;
         }
+
         // apply step halving if rel < 0, which means the likelihood has decreased.
         // Don't terminate if rel gets back to within tolerance as a result of this.
-        while rel < -self.tolerance {
-            let half: F = F::from(0.5).unwrap();
-            let next_guess_sh =
-                Array1::<F>::from_elem(next_guess.len(), half) * (&next_guess + &self.guess);
+        const MAX_STEP_HALVES: usize = 5;
+        let mut step_halves = 0;
+        let half: F = F::from(0.5).unwrap();
+        let mut step_multiplier = half;
+        while rel < -self.tolerance && step_halves < MAX_STEP_HALVES {
+            let next_guess_sh = next_guess.map(|&x| x * (step_multiplier))
+                + &self.guess.map(|&x| x * (F::one() - step_multiplier));
             like = M::quasi_log_likelihood(&self.data, &next_guess);
             let next_rel = (like - self.last_like) / (F::epsilon() + like.abs());
-            // If this halving step isn't an improvement, stop halving and let
-            // the next IRLS iteration have a go.
-            // TODO: consider making this comparison within a tolerance. It's
-            // not clear that the same tolerance should be used as for rel
-            // itself.
-            if next_rel <= rel {
-                break;
+            if next_rel >= rel {
+                next_guess = next_guess_sh;
+                rel = next_rel;
+                step_multiplier = half;
+            } else {
+                step_multiplier *= half;
             }
-            next_guess = next_guess_sh;
-            rel = next_rel;
+            step_halves += 1;
         }
 
-        self.guess.assign(&next_guess);
-        self.last_like = like;
-        self.n_iter += 1;
-        if self.n_iter > self.max_iter {
-            return Some(Err(RegressionError::MaxIter(self.max_iter)));
+        if rel > F::zero() {
+            Some(self.step_with(next_guess, like, step_halves))
+        } else {
+            // if step halving hasn't produced a better guess, return the current guess.
+            // Failure to do so will lead to infinite recursion, since the same guess will be plugged in.
+            // eprintln!("Step halving does not produce a better result");
+            None
         }
-        Some(Ok(next_guess))
     }
 }
