@@ -1,8 +1,8 @@
 //! struct holding the fit result of a regression
 
 use crate::{
-    data::DataConfig,
     glm::{Glm, Likelihood},
+    model::Model,
 };
 
 use ndarray::Array1;
@@ -14,7 +14,7 @@ use std::marker::PhantomData;
 #[derive(Debug)]
 pub struct Fit<M, F>
 where
-    M: Glm,
+    M: Glm<F>,
     F: Float,
 {
     // we aren't now storing any type that uses the model type
@@ -29,13 +29,13 @@ where
 
 impl<M, F> Fit<M, F>
 where
-    M: Likelihood,
+    M: Likelihood<M, F>,
     F: 'static + Float,
     // for debugging only
     F: std::fmt::Debug,
 {
     /// return the signed Z-score for each regression parameter.
-    pub fn z_scores(&self, data: &DataConfig<F>) -> Array1<F> {
+    pub fn z_scores(&self, data: &Model<M, F>) -> Array1<F> {
         let model_like = M::log_likelihood(&data, &self.result);
         // -2 likelihood deviation is asymptotically chi^2 with ndf degrees of freedom.
         let mut chi_sqs: Array1<F> = Array1::zeros(self.result.len());

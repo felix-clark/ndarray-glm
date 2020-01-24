@@ -1,8 +1,8 @@
 //! functions for solving logistic regression
 
 use crate::{
-    data::DataConfig,
     glm::{Glm, Likelihood},
+    model::Model,
 };
 use ndarray::{Array1, Zip};
 use num_traits::float::Float;
@@ -10,35 +10,46 @@ use num_traits::float::Float;
 /// trait-based implementation to work towards generalization
 pub struct Logistic;
 
-impl Glm for Logistic {
+impl<F> Glm<F> for Logistic
+where
+    F: Float,
+{
     // TODO: this could be relaxed to a float with only mild changes, although
     // it would require checking that 0 <= y <= 1.
     // There should be a domain and a function that maps domain to a float.
-    // type Domain = bool;
+    type Domain = bool;
+
+    fn y_float(y: Self::Domain) -> F {
+        if y {
+            F::one()
+        } else {
+            F::zero()
+        }
+    }
 
     // the link function, logit
-    fn link<F: Float>(y: F) -> F {
+    fn link(y: F) -> F {
         F::ln(y / (F::one() - y))
     }
 
     // inverse link function, expit
-    fn mean<F: Float>(lin_pred: F) -> F {
+    fn mean(lin_pred: F) -> F {
         (F::one() + (-lin_pred).exp()).recip()
     }
 
     // var = mu*(1-mu)
-    fn variance<F: Float>(mean: F) -> F {
+    fn variance(mean: F) -> F {
         mean * (F::one() - mean)
     }
 
-    fn quasi_log_likelihood<F: Float>(data: &DataConfig<F>, regressors: &Array1<F>) -> F {
+    fn quasi_log_likelihood(data: &Model<Self, F>, regressors: &Array1<F>) -> F {
         Self::log_likelihood(data, regressors)
     }
 }
 
-impl Likelihood for Logistic {
+impl<F: Float> Likelihood<Self, F> for Logistic {
     // specialize LL for logistic regression
-    fn log_likelihood<F: 'static + Float>(data: &DataConfig<F>, regressors: &Array1<F>) -> F {
+    fn log_likelihood(data: &Model<Self, F>, regressors: &Array1<F>) -> F {
         // TODO: this assertion should be a result, or these references should
         // be stored in Fit so they can be checked ahead of time.
         assert_eq!(

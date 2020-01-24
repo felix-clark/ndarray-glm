@@ -1,49 +1,48 @@
 //! trait defining a generalized linear model and providing common functionality
 //! Models are fit such that E[Y] = g^-1(X*B) where g is the link function.
 
-use crate::{data::DataConfig, error::RegressionError, fit::Fit};
+use crate::{error::RegressionError, fit::Fit, model::Model};
 use approx::AbsDiffEq;
 use ndarray::{Array1, Array2};
 use ndarray_linalg::{lapack::Lapack, SolveH};
 use num_traits::Float;
 use std::marker::PhantomData;
 
-pub trait Glm {
+// Does F need 'static + Float?
+pub trait Glm<F: Float> {
     // the domain of the model
     // i.e. integer for Poisson, float for Linear, bool for logistic
     // TODO: perhaps create a custom Domain type or trait to deal with constraints
     // we typically work with floats as EVs, though.
     // A (private?) function that maps a general domain to the floating point
     // type could work as well.
-    // type Domain;
-    // fn y_float(y: Self::Domain) -> F: Float {
-    // }
+    type Domain;
+
+    /// Converts the domain to a floating-point value for IRLS
+    fn y_float(y: Self::Domain) -> F;
 
     // TODO: a function to check if a Y-value is valid
 
     /// the link function
     // fn link<F: 'static + Float>(y: Self::Domain) -> F;
-    fn link<F: Float>(y: F) -> F;
+    fn link(y: F) -> F;
 
-    // TODO: return both mean and variance at once and avoid FPE
+    // TODO: return both mean and variance as function of eta at once and avoid FPE
 
     /// inverse link function which maps the linear predictors to the expected value of the prediction.
-    fn mean<F: Float>(x: F) -> F;
+    fn mean(x: F) -> F;
 
     /// the variance as a function of the mean
-    fn variance<F: Float>(mean: F) -> F;
-
-    /// returns object holding fit result
-    // TODO: make more robust, for instance using step-halving if issues are detected.
-    // Non-standard link functions could still cause issues. See for instance
-    // https://journal.r-project.org/archive/2011-2/RJournal_2011-2_Marschner.pdf
+    fn variance(mean: F) -> F;
 
     /// Returns the log-likelihood if it is well-defined. If not (like in
     /// unweighted OLS) returns an objective function to be maximized.
-    fn quasi_log_likelihood<F: 'static + Float>(data: &DataConfig<F>, regressors: &Array1<F>) -> F;
+    fn quasi_log_likelihood(data: &Model<Self, F>, regressors: &Array1<F>) -> F
+    where
+        Self: Sized;
 
-    /// Do the regression and return a result
-    fn regression<F>(data: &DataConfig<F>) -> Result<Fit<Self, F>, RegressionError>
+    /// Do the regression and return a result. Returns object holding fit result.
+    fn regression(data: &Model<Self, F>) -> Result<Fit<Self, F>, RegressionError>
     where
         F: 'static + Float + Lapack,
         Array1<F>: AbsDiffEq,
@@ -51,22 +50,12 @@ pub trait Glm {
     {
         let n_data = data.y.len();
 
-        let initial = Array1::<F>::zeros(data.x.ncols());
-        // let mut last = Array1::<F>::zeros(data.x.ncols());
         // TODO: determine first element based on fraction of cases in sample
         // This is only a possible improvement when the x points are centered
         // around zero, and may introduce more complications than it's worth.
         // For logistic regression, beta = 0 is typically reasonable.
-        // let mut next: Array1<F> = next_irls::<Self, F>(&data, &last)?;
-        // store the maximum change of each component.
-        // let mut max_delta = F::infinity();
-        // let mut delta: Array1<F> = &next - &last;
+        let initial = Array1::<F>::zeros(data.x.ncols());
         let mut n_iter: usize = 0;
-
-        // Step halving is applied when the size of the change is equal or larger.
-
-        // TODO: This epsilon should be configurable.
-        // let epsilon: F = F::from(8.0).unwrap() * Float::epsilon();
 
         let mut result: Array1<F> = Array1::<F>::zeros(initial.len());
 
@@ -96,21 +85,25 @@ pub trait Glm {
 // Not all regression types have a well-defined likelihood. E.g. logistic
 // (binomial) and Poisson do; linear (normal) and negative binomial do not due
 // to the extra parameter.
-pub trait Likelihood: Glm {
+pub trait Likelihood<M, F>: Glm<F>
+where
+    M: Glm<F>,
+    F: Float,
+{
     /// logarithm of the likelihood given the data and fit parameters
-    fn log_likelihood<F: 'static + Float>(data: &DataConfig<F>, regressors: &Array1<F>) -> F;
+    fn log_likelihood(data: &Model<M, F>, regressors: &Array1<F>) -> F;
 }
 
 /// Struct to iterate over updates via iteratively re-weighted least-squares until reaching a specified tolerance
 struct Irls<'a, M, F>
 where
-    M: Glm,
+    M: Glm<F>,
     F: 'static + Float + Lapack,
     Array2<F>: SolveH<F>,
 {
-    data: &'a DataConfig<F>,
+    data: &'a Model<M, F>,
     guess: Array1<F>,
-    model: PhantomData<M>,
+    // model: PhantomData<M>,
     max_iter: usize,
     pub n_iter: usize,
     tolerance: F,
@@ -119,16 +112,16 @@ where
 
 impl<'a, M, F> Irls<'a, M, F>
 where
-    M: Glm,
+    M: Glm<F>,
     F: 'static + Float + Lapack,
     Array2<F>: SolveH<F>,
 {
-    fn new(data: &'a DataConfig<F>, initial: Array1<F>) -> Self {
+    fn new(data: &'a Model<M, F>, initial: Array1<F>) -> Self {
         let tolerance: F = F::epsilon(); // * F::from(data.y.len()).unwrap();
         Self {
             data,
             guess: initial,
-            model: PhantomData,
+            // model: PhantomData,
             // TODO: builder pattern to set optional parameters like this
             max_iter: 25,
             n_iter: 0,
@@ -156,7 +149,7 @@ where
 
 impl<'a, M, F> Iterator for Irls<'a, M, F>
 where
-    M: Glm,
+    M: Glm<F>,
     F: 'static + Float + Lapack,
     Array2<F>: SolveH<F>,
 {
