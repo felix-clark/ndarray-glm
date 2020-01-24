@@ -30,6 +30,10 @@ impl Glm for Logistic {
     fn variance<F: Float>(mean: F) -> F {
         mean * (F::one() - mean)
     }
+
+    fn quasi_log_likelihood<F: Float>(data: &DataConfig<F>, regressors: &Array1<F>) -> F {
+        Self::log_likelihood(data, regressors)
+    }
 }
 
 impl Likelihood for Logistic {

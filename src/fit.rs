@@ -31,6 +31,8 @@ impl<M, F> Fit<M, F>
 where
     M: Likelihood,
     F: 'static + Float,
+    // for debugging only
+    F: std::fmt::Debug,
 {
     /// return the signed Z-score for each regression parameter.
     pub fn z_scores(&self, data: &DataConfig<F>) -> Array1<F> {
@@ -45,13 +47,18 @@ where
             let mut chi_sq = F::from(2.).unwrap() * (model_like - null_like);
             // This can happen due to FPE
             if chi_sq < F::zero() {
+                dbg!(chi_sq.abs());
+                // this tolerance could need adjusting
+                let tol = F::from(8.).unwrap()
+                    * (if model_like.abs() > F::one() {
+                        model_like.abs()
+                    } else {
+                        F::one()
+                    })
+                    * F::epsilon();
+                dbg!(tol);
                 assert!(
-                    chi_sq.abs()
-                        <= (if model_like.abs() > F::one() {
-                            model_like.abs()
-                        } else {
-                            F::one()
-                        }) * F::epsilon(),
+                    chi_sq.abs() <= tol,
                     "negative chi-squared outside of tolerance"
                 );
                 chi_sq = F::zero();

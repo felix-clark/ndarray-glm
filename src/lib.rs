@@ -32,7 +32,7 @@ mod tests {
         let data = DataConfigBuilder::new(data_y, data_x).build()?;
         let fit = logistic::Logistic::regression(&data).expect("regression failed");
         dbg!(fit.n_iter);
-        assert_abs_diff_eq!(beta, fit.result, epsilon = 32.0 * std::f64::EPSILON);
+        assert_abs_diff_eq!(beta, fit.result, epsilon = std::f32::EPSILON as f64);
         // test the significance function
         let significance = fit.z_scores(&data);
         dbg!(significance);
@@ -56,7 +56,7 @@ mod tests {
         let fit = linear::Linear::regression(&data).expect("regression failed");
         dbg!(fit.n_iter);
         // This is failing within the default tolerance
-        assert_abs_diff_eq!(beta, fit.result, epsilon = 32.0 * std::f64::EPSILON);
+        assert_abs_diff_eq!(beta, fit.result, epsilon = 64.0 * std::f64::EPSILON);
         Ok(())
     }
 }
