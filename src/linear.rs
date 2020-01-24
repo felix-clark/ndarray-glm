@@ -47,8 +47,9 @@ impl Glm for Linear {
 
     // This version doesn't have the variances - either setting them to 1 or
     // 1/2pi to simplify the expression. It returns a simple sum of squares.
+    // It also misses a factor of 0.5 in the squares.
     fn quasi_log_likelihood<F: Float>(data: &DataConfig<F>, regressors: &Array1<F>) -> F {
         let squares: Array1<F> = (&data.y - &data.x.dot(regressors)).map(|&d| d * d);
-        squares.sum()
+        -squares.sum()
     }
 }
