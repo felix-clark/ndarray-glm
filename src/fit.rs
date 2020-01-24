@@ -47,8 +47,7 @@ where
             let mut chi_sq = F::from(2.).unwrap() * (model_like - null_like);
             // This can happen due to FPE
             if chi_sq < F::zero() {
-                dbg!(chi_sq.abs());
-                // this tolerance could need adjusting
+                // this tolerance could need adjusting.
                 let tol = F::from(8.).unwrap()
                     * (if model_like.abs() > F::one() {
                         model_like.abs()
@@ -56,11 +55,9 @@ where
                         F::one()
                     })
                     * F::epsilon();
-                dbg!(tol);
-                assert!(
-                    chi_sq.abs() <= tol,
-                    "negative chi-squared outside of tolerance"
-                );
+                if chi_sq.abs() > tol {
+                    eprintln!("negative chi-squared outside of tolerance");
+                }
                 chi_sq = F::zero();
             }
             chi_sqs[i_like] = chi_sq;
