@@ -209,6 +209,9 @@ where
             let next_rel = (like - self.last_like) / (F::epsilon() + like.abs());
             // If this halving step isn't an improvement, stop halving and let
             // the next IRLS iteration have a go.
+            // TODO: consider making this comparison within a tolerance. It's
+            // not clear that the same tolerance should be used as for rel
+            // itself.
             if next_rel <= rel {
                 break;
             }
