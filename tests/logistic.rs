@@ -3,7 +3,7 @@
 use anyhow::Result;
 use ndarray::{array, Array1, Array2};
 
-use glm_regress::{glm::Glm, logistic::Logistic, model::ModelBuilder};
+use glm_regress::{logistic::Logistic, model::ModelBuilder};
 
 #[test]
 // this data caused an infinite loop with step halving
@@ -260,8 +260,10 @@ fn test_log_termination_0() -> Result<()> {
         -3.4012935, -4.5889945, -3.653743, -3.8879204, -3.566021, -3.8353205, -2.0306807,
         -2.944789, -3.4705598, -3.5821562, -2.8796465, -3.1926105, -2.709444
     ];
-    let data = ModelBuilder::new(&y, &x).linear_offset(off).build()?;
-    let fit = Logistic::regression(&data)?;
+    let model = ModelBuilder::<Logistic, _>::new(&y, &x)
+        .linear_offset(off)
+        .build()?;
+    let fit = model.fit()?;
     dbg!(fit.result);
     dbg!(fit.n_iter);
     Ok(())
@@ -522,8 +524,10 @@ fn test_log_termination_1() -> Result<()> {
         -3.6537428, -3.88792, -3.5660207, -3.83532, -2.0306816, -2.9447892, -3.4705598, -3.5821557,
         -2.879647, -3.1926105, -2.7094445
     ];
-    let data = ModelBuilder::new(&y, &x).linear_offset(off).build()?;
-    let fit = Logistic::regression(&data)?;
+    let model = ModelBuilder::<Logistic, _>::new(&y, &x)
+        .linear_offset(off)
+        .build()?;
+    let fit = model.fit()?;
     dbg!(fit.result);
     dbg!(fit.n_iter);
     Ok(())

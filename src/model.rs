@@ -2,10 +2,13 @@
 
 use crate::{
     error::{RegressionError, RegressionResult},
+    fit::Fit,
     glm::Glm,
     utility::one_pad,
 };
+use approx::AbsDiffEq;
 use ndarray::{Array1, Array2};
+use ndarray_linalg::lapack::Lapack;
 use ndarray_linalg::{types::Scalar, DeterminantH};
 use num_traits::Float;
 use std::marker::PhantomData;
@@ -29,6 +32,16 @@ where
     l2_reg: F,
 }
 
+impl<M, F> Model<M, F>
+where
+    M: Glm<F>,
+    F: Float + Lapack,
+    Array1<F>: AbsDiffEq,
+{
+    pub fn fit(&self) -> Result<Fit<M, F>, RegressionError> {
+        M::regression(&self)
+    }
+}
 // TODO: add function to get linear predictor with offsets?
 
 pub struct ModelBuilder<'a, M, F>
