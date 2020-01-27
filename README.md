@@ -23,23 +23,21 @@ To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate w
 - [X] Linear regression (exact)
 - [X] Logistic regression IRLS
 - [X] Generalized linear model IRLS
+- [X] L2 Regularization
+- [X] Generic over floating point type
 - [ ] Implement other models
   - [ ] Poisson
   - [ ] ...
 
 ### TODO
 
-- [X] Use trait to define class of generalized linear models
 - [X] Linear offsets
-- [ ] Allow non-float domain types (use mapping function from domain for floating-point type)
+- [X] Allow non-float domain types (use mapping function from domain for floating-point type)
 - [ ] Weighted regressions
   - [ ] Weight solve matrix
   - [ ] likelihood functions
   - [ ] tolerance for termination
-- [X] Generalize floating point type
-- [ ] Regularization
-  - [ ] add lambda * I to solve matrix in IRLS
-  - [ ] add (-0.5 * lambda * ||beta||^2) to log-likelihood
+- [ ] Other regularization options
 
 <!-- #### References: -->
 <!-- * Maalouf, M., & Siddiqi, M. (2014). Weighted logistic regression for large-scale imbalanced and rare events data. Knowledge-Based Systems, 59, 142–148. doi:10.1016/j.knosys.2014.01.012 -->
