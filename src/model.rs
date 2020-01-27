@@ -27,9 +27,9 @@ where
     // offset in the linear predictor for each data point
     pub linear_offset: Option<Array1<F>>,
     // the maximum number of iterations to try
-    max_iter: Option<usize>,
+    pub max_iter: Option<usize>,
     // L2 regularization
-    l2_reg: F,
+    pub l2_reg: F,
 }
 
 impl<M, F> Model<M, F>
@@ -105,6 +105,12 @@ where
     /// Use a maximum number of iterations
     pub fn max_iter(mut self, max_iter: usize) -> Self {
         self.max_iter = Some(max_iter);
+        self
+    }
+
+    /// Use to set a L2 regularization parameter
+    pub fn l2_reg(mut self, l2: F) -> Self {
+        self.l2_reg = l2;
         self
     }
 

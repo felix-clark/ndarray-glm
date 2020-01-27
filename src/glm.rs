@@ -121,9 +121,7 @@ where
         Self {
             data,
             guess: initial,
-            // model: PhantomData,
-            // TODO: builder pattern to set optional parameters like this
-            max_iter: 25,
+            max_iter: data.max_iter.unwrap_or(50),
             n_iter: 0,
             // As a ratio with the variance, this epsilon could be too small.
             tolerance,
@@ -173,24 +171,23 @@ where
         // the diagonal covariance matrix given the model
         // let variance: Array2<F> = Array2::from_diag(&predictor.mapv(M::variance));
         // positive definite
-        // let solve_matrix: Array2<F> = data.x.t().dot(&variance).dot(&data.x);
+        // let hessian: Array2<F> = &self.data.x.t().dot(&variance).dot(&self.data.x);
 
         // X weighted by the model variant
-        let solve_matrix: Array2<F> = (&self.data.x.t() * &var_diag).dot(&self.data.x);
-        // TODO: quadratic regularization can be implemented by adding lambda*I to solve_matrix.
-        // This will need to be implemented in the log-likelihoods as well (or at
-        // least the Z-scores must be modified).
-        // TODO: How would such regularization affect the termination condition?
-        // Check via the change in the likelihood that includes - 0.5*lambda*||beta||^2
+        let mut hessian: Array2<F> = (&self.data.x.t() * &var_diag).dot(&self.data.x);
 
-        // TODO: use the Self::Domain -> F function to get floating point values for y (do in initialization)
+        // If L2 regularization is set, add lambda * I to the Hessian.
+        if self.data.l2_reg != F::zero() {
+            hessian += &Array2::from_diag(&Array1::from_elem(hessian.nrows(), self.data.l2_reg));
+        }
+
         // NOTE: this isn't actually the residuals, which would be divided by
-        // the standard deviation (rather than the standard deviation).
+        // the standard deviation.
         let residuals = &self.data.y - &predictor;
         let target: Array1<F> = (var_diag * &linear_predictor) + &residuals;
         let target: Array1<F> = self.data.x.t().dot(&target);
 
-        let mut next_guess: Array1<F> = match solve_matrix.solveh_into(target) {
+        let mut next_guess: Array1<F> = match hessian.solveh_into(target) {
             Ok(solution) => solution,
             Err(err) => return Some(Err(err.into())),
         };
@@ -199,7 +196,6 @@ where
         // = next_guess - &self.guess stops decreasing.
         // Ideally we could only check the step difference but that might not be
         // as stable. Some parameters might be at different scales.
-        // TODO: add regularization term to likelihood
         let mut like = M::quasi_log_likelihood(&self.data, &next_guess);
         // This should be positive for an improvement
         let mut rel = (like - self.last_like) / (F::epsilon() + like.abs());
@@ -232,9 +228,6 @@ where
         if rel > F::zero() {
             Some(self.step_with(next_guess, like, step_halves))
         } else {
-            // if step halving hasn't produced a better guess, return the current guess.
-            // Failure to do so will lead to infinite recursion, since the same guess will be plugged in.
-            // eprintln!("Step halving does not produce a better result");
             None
         }
     }

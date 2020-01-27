@@ -81,6 +81,11 @@ impl<F: Float> Likelihood<Self, F> for Logistic {
                 };
                 *l = yt * xt - xt.exp().ln_1p()
             });
-        log_like_terms.sum()
+        let l2_term = if data.l2_reg == F::zero() {
+            F::zero()
+        } else {
+            -F::from(0.5).unwrap() * data.l2_reg * regressors.map(|&b| b * b).sum()
+        };
+        log_like_terms.sum() + l2_term
     }
 }
