@@ -6,7 +6,6 @@ use crate::{
     glm::Glm,
     utility::one_pad,
 };
-use approx::AbsDiffEq;
 use ndarray::{Array1, Array2};
 use ndarray_linalg::lapack::Lapack;
 use ndarray_linalg::{types::Scalar, DeterminantH};
@@ -36,13 +35,29 @@ impl<M, F> Model<M, F>
 where
     M: Glm<F>,
     F: Float + Lapack,
-    Array1<F>: AbsDiffEq,
 {
     pub fn fit(&self) -> Result<Fit<M, F>, RegressionError> {
         M::regression(&self)
     }
+
+    pub fn linear_predictor(&self, regressors: &Array1<F>) -> Array1<F> {
+        let linear_predictor: Array1<F> = self.x.dot(regressors);
+        // Add linear offsets to the predictors if they are set
+        if let Some(lin_offset) = &self.linear_offset {
+            linear_predictor + lin_offset
+        } else {
+            linear_predictor
+        }
+    }
+
+    pub fn l2_term(&self, regressors: &Array1<F>) -> F {
+        if self.l2_reg == F::zero() {
+            F::zero()
+        } else {
+            -F::from(0.5).unwrap() * self.l2_reg * regressors.map(|&b| b * b).sum()
+        }
+    }
 }
-// TODO: add function to get linear predictor with offsets?
 
 pub struct ModelBuilder<'a, M, F>
 where

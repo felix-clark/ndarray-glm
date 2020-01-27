@@ -5,6 +5,7 @@ use crate::{
     model::Model,
 };
 use ndarray::{Array1, Zip};
+use ndarray_linalg::Lapack;
 use num_traits::float::Float;
 
 /// trait-based implementation to work towards generalization
@@ -12,7 +13,7 @@ pub struct Logistic;
 
 impl<F> Glm<F> for Logistic
 where
-    F: Float,
+    F: Float + Lapack,
 {
     // TODO: this could be relaxed to a float with only mild changes, although
     // it would require checking that 0 <= y <= 1.
@@ -29,7 +30,7 @@ where
 
     // the link function, logit
     fn link(y: F) -> F {
-        F::ln(y / (F::one() - y))
+        Float::ln(y / (F::one() - y))
     }
 
     // inverse link function, expit
@@ -47,7 +48,10 @@ where
     }
 }
 
-impl<F: Float> Likelihood<Self, F> for Logistic {
+impl<F> Likelihood<Self, F> for Logistic
+where
+    F: Float + Lapack,
+{
     // specialize LL for logistic regression
     fn log_likelihood(data: &Model<Self, F>, regressors: &Array1<F>) -> F {
         // TODO: this assertion should be a result, or these references should
@@ -58,13 +62,7 @@ impl<F: Float> Likelihood<Self, F> for Logistic {
             "must have same number of explanatory variables as regressors"
         );
 
-        let linear_predictor: Array1<F> = data.x.dot(regressors);
-        // Add linear offsets to the predictors if they are set
-        let linear_predictor = if let Some(lin_offset) = &data.linear_offset {
-            linear_predictor + lin_offset
-        } else {
-            linear_predictor
-        };
+        let linear_predictor = data.linear_predictor(regressors);
 
         // initialize the log likelihood terms
         let mut log_like_terms: Array1<F> = Array1::zeros(data.y.len());
@@ -81,11 +79,7 @@ impl<F: Float> Likelihood<Self, F> for Logistic {
                 };
                 *l = yt * xt - xt.exp().ln_1p()
             });
-        let l2_term = if data.l2_reg == F::zero() {
-            F::zero()
-        } else {
-            -F::from(0.5).unwrap() * data.l2_reg * regressors.map(|&b| b * b).sum()
-        };
+        let l2_term = data.l2_term(regressors);
         log_like_terms.sum() + l2_term
     }
 }

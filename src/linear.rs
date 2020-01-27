@@ -2,13 +2,14 @@
 
 use crate::{glm::Glm, model::Model};
 use ndarray::Array1;
+use ndarray_linalg::Lapack;
 use num_traits::Float;
 
 pub struct Linear;
 
 impl<F> Glm<F> for Linear
 where
-    F: Float,
+    F: Float + Lapack,
 {
     type Domain = F;
 
@@ -36,11 +37,7 @@ where
     // It also misses a factor of 0.5 in the squares.
     fn quasi_log_likelihood(data: &Model<Self, F>, regressors: &Array1<F>) -> F {
         let squares: Array1<F> = (&data.y - &data.x.dot(regressors)).map(|&d| d * d);
-        let l2_term = if data.l2_reg == F::zero() {
-            F::zero()
-        } else {
-            -F::from(0.5).unwrap() * data.l2_reg * regressors.map(|&b| b * b).sum()
-        };
+        let l2_term = data.l2_term(regressors);
         -squares.sum() + l2_term
     }
 }

@@ -2,7 +2,6 @@
 //! Models are fit such that E[Y] = g^-1(X*B) where g is the link function.
 
 use crate::{error::RegressionError, fit::Fit, model::Model};
-use approx::AbsDiffEq;
 use ndarray::{Array1, Array2};
 use ndarray_linalg::{lapack::Lapack, SolveH};
 use num_traits::Float;
@@ -45,7 +44,6 @@ pub trait Glm<F: Float> {
     fn regression(data: &Model<Self, F>) -> Result<Fit<Self, F>, RegressionError>
     where
         F: 'static + Float + Lapack,
-        Array1<F>: AbsDiffEq,
         Self: Sized,
     {
         let n_data = data.y.len();
@@ -154,14 +152,11 @@ where
     type Item = Result<Array1<F>, RegressionError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // the linear predictor given the model
-        let linear_predictor: Array1<F> = self.data.x.dot(&self.guess);
+        // the linear predictor given the model, including offsets if present
+        let linear_predictor: Array1<F> = self.data.linear_predictor(&self.guess);
         // The prediction of y given the current model.
-        let predictor: Array1<F> = if let Some(offset) = &self.data.linear_offset {
-            (&linear_predictor + offset).mapv_into(M::mean)
-        } else {
-            linear_predictor.mapv(M::mean)
-        };
+        let predictor: Array1<F> = linear_predictor.mapv(M::mean);
+
         // The variances predicted by the model. This should have weights with
         // it (inversely?) and must be non-zero.
         // TODO: implement a mean_and_var function to return both the mean and
@@ -184,7 +179,7 @@ where
         // NOTE: this isn't actually the residuals, which would be divided by
         // the standard deviation.
         let residuals = &self.data.y - &predictor;
-        let target: Array1<F> = (var_diag * &linear_predictor) + &residuals;
+        let target: Array1<F> = (var_diag * linear_predictor) + &residuals;
         let target: Array1<F> = self.data.x.t().dot(&target);
 
         let mut next_guess: Array1<F> = match hessian.solveh_into(target) {

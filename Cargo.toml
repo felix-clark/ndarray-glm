@@ -20,8 +20,6 @@ ndarray = { version = "0.13", features = ["blas", "approx"] }
 # perhaps the "openblas-src" feature should be reserved for a final crate?
 ndarray-linalg = { version = "0.12.0" }
 num-traits = "0.2.10"
-# TODO: should this be kept as a dev-dependency? (along with "approx" feature of ndarray)
-approx = "0.3.2"
 thiserror = "1.0.9"
 itertools = "0.8.2"
 
@@ -30,6 +28,7 @@ itertools = "0.8.2"
 blas-src = { version = "0.4", default-features = false, features = ["openblas"] }
 ndarray-linalg = { version = "0.12.0", default-features = false, features = ["openblas-src"]}
 anyhow = "*"
+approx = "0.3.2"
 # including openblas-src causes linking errors with LAPACKE?
 # Include it as a feature to ndarray-linalg instead.
 # https://github.com/blas-lapack-rs/openblas-src/issues/30

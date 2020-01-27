@@ -12,12 +12,16 @@ mod glm;
 pub mod linear;
 pub mod logistic;
 pub mod model;
+pub mod poisson;
 mod utility;
 
 #[cfg(test)]
 mod tests {
     // use super::*;
-    use crate::{error::RegressionResult, linear::Linear, logistic::Logistic, model::ModelBuilder};
+    use crate::{
+        error::RegressionResult, linear::Linear, logistic::Logistic, model::ModelBuilder,
+        poisson::Poisson,
+    };
     use approx::assert_abs_diff_eq;
     use ndarray::array;
 
@@ -54,6 +58,21 @@ mod tests {
         dbg!(fit.n_iter);
         // This is failing within the default tolerance
         assert_abs_diff_eq!(beta, fit.result, epsilon = 64.0 * std::f64::EPSILON);
+        Ok(())
+    }
+
+    #[test]
+    fn poisson_reg() -> RegressionResult<()> {
+        let ln2 = f64::ln(2.);
+        let beta = array![0., ln2, -ln2];
+        let data_x = array![[1., 0.], [1., 1.], [0., 1.], [0., 1.]];
+        let data_y = array![2, 1, 0, 1];
+        let model = ModelBuilder::<Poisson<u32>, _>::new(&data_y, &data_x)
+            .max_iter(10)
+            .build()?;
+        let fit = model.fit()?;
+        dbg!(fit.n_iter);
+        assert_abs_diff_eq!(beta, fit.result, epsilon = std::f32::EPSILON as f64);
         Ok(())
     }
 }

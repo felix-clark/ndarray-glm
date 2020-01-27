@@ -20,13 +20,16 @@ To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate w
 
 ### Features
 
-- [X] Linear regression (exact)
-- [X] Logistic regression IRLS
+- [X] Linear regression
+- [X] Logistic regression
 - [X] Generalized linear model IRLS
 - [X] L2 Regularization
 - [X] Generic over floating point type
 - [ ] Implement other models
-  - [ ] Poisson
+  - [X] Poisson
+  - [ ] Exponential
+  - [ ] Gamma
+  - [ ] Inverse Gaussian
   - [ ] ...
 
 ### TODO
@@ -38,6 +41,7 @@ To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate w
   - [ ] likelihood functions
   - [ ] tolerance for termination
 - [ ] Other regularization options
+  - [ ] Separate scaling for constant term
 
 <!-- #### References: -->
 <!-- * Maalouf, M., & Siddiqi, M. (2014). Weighted logistic regression for large-scale imbalanced and rare events data. Knowledge-Based Systems, 59, 142–148. doi:10.1016/j.knosys.2014.01.012 -->

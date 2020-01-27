@@ -534,7 +534,7 @@ fn test_log_termination_1() -> Result<()> {
 }
 
 #[test]
-fn test_log_termination_2() -> Result<()> {
+fn test_log_regularization() -> Result<()> {
     let y: Array1<bool> = array![
         true, true, true, true, true, true, true, true, false, false, false, false, false, false,
         false, false, false, false, false, false, false, false, false, false, false, false, false,
