@@ -4,8 +4,8 @@ rust:
   - beta
   - nightly
 before_install:
-  - sudo apt-get update
-  - sudo apt-get -y install gfortran
+  - sudo apt-get -q update
+  - sudo apt-get -y install gfortran libopenblas-dev
 matrix:
   allow_failures:
     - rust: nightly
