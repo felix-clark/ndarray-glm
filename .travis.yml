@@ -3,6 +3,9 @@ rust:
   - stable
   - beta
   - nightly
+before_install:
+  - sudo apt-get update
+  - sudo apt-get -y install gfortran
 matrix:
   allow_failures:
     - rust: nightly
