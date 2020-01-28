@@ -1,99 +1,78 @@
 //! trait defining a generalized linear model and providing common functionality
 //! Models are fit such that E[Y] = g^-1(X*B) where g is the link function.
 
-use crate::{data::DataConfig, error::RegressionError, fit::Fit};
-use approx::AbsDiffEq;
-use itertools::{all, Itertools};
+use crate::{error::RegressionError, fit::Fit, model::Model};
 use ndarray::{Array1, Array2};
 use ndarray_linalg::{lapack::Lapack, SolveH};
 use num_traits::Float;
 use std::marker::PhantomData;
 
-pub trait Glm {
+// Does F need 'static + Float?
+pub trait Glm<F: Float> {
     // the domain of the model
     // i.e. integer for Poisson, float for Linear, bool for logistic
     // TODO: perhaps create a custom Domain type or trait to deal with constraints
     // we typically work with floats as EVs, though.
-    // type Domain;
+    // A (private?) function that maps a general domain to the floating point
+    // type could work as well.
+    type Domain;
 
-    /// a function to check if a Y-value is value
+    /// Converts the domain to a floating-point value for IRLS
+    fn y_float(y: Self::Domain) -> F;
+
+    // TODO: a function to check if a Y-value is valid
 
     /// the link function
     // fn link<F: 'static + Float>(y: Self::Domain) -> F;
-    fn link<F: Float>(y: F) -> F;
+    fn link(y: F) -> F;
+
+    // TODO: return both mean and variance as function of eta at once and avoid FPE
 
     /// inverse link function which maps the linear predictors to the expected value of the prediction.
-    fn mean<F: Float>(x: F) -> F;
+    fn mean(x: F) -> F;
 
     /// the variance as a function of the mean
-    fn variance<F: Float>(mean: F) -> F;
+    fn variance(mean: F) -> F;
 
-    /// returns object holding fit result
-    // TODO: make more robust, for instance using step-halving if issues are detected.
-    // Non-standard link functions could still cause issues. See for instance
-    // https://journal.r-project.org/archive/2011-2/RJournal_2011-2_Marschner.pdf
+    /// Returns the log-likelihood if it is well-defined. If not (like in
+    /// unweighted OLS) returns an objective function to be maximized.
+    fn quasi_log_likelihood(data: &Model<Self, F>, regressors: &Array1<F>) -> F
+    where
+        Self: Sized;
 
-    /// Do the regression and return a result
-    fn regression<F>(data: &DataConfig<F>) -> Result<Fit<Self, F>, RegressionError>
+    /// Do the regression and return a result. Returns object holding fit result.
+    fn regression(data: &Model<Self, F>) -> Result<Fit<Self, F>, RegressionError>
     where
         F: 'static + Float + Lapack,
-        Array1<F>: AbsDiffEq,
         Self: Sized,
     {
         let n_data = data.y.len();
 
-        let mut last = Array1::<F>::zeros(data.x.ncols());
         // TODO: determine first element based on fraction of cases in sample
         // This is only a possible improvement when the x points are centered
         // around zero, and may introduce more complications than it's worth.
         // For logistic regression, beta = 0 is typically reasonable.
-        let mut next: Array1<F> = next_irls::<Self, F>(&data, &last)?;
-        // store the maximum change of each component.
-        // let mut max_delta = F::infinity();
-        let mut delta: Array1<F> = &next - &last;
+        let initial = Array1::<F>::zeros(data.x.ncols());
         let mut n_iter: usize = 0;
 
-        // Step halving is applied when the size of the change is equal or larger.
-        // TODO: even more sophisticated termination conditions?
-        // TODO: This epsilon should be configurable.
-        let epsilon: F = F::from(8.0).unwrap() * Float::epsilon();
+        let mut result: Array1<F> = Array1::<F>::zeros(initial.len());
 
-        loop {
-            last = next;
-            next = next_irls::<Self, F>(&data, &last)?;
-            // check the deltas to see if we should use step halving
-            let mut new_delta = &next - &last;
-            // this delta comparison is not very sophisticated
-            if new_delta.map(|d| d.abs()).sum() >= delta.map(|d| d.abs()).sum() {
-                next = Array1::<F>::from_elem(next.len(), F::from(0.5).unwrap()) * (&last + &next);
-                new_delta = &next - &last;
-                // dbg!(n_iter);
-            }
+        let irls: Irls<Self, F> = Irls::new(&data, initial);
 
-            delta = new_delta;
-
+        for iteration in irls {
+            result.assign(&iteration?);
             n_iter += 1;
-            if let Some(max_iter) = &data.max_iter {
-                if n_iter > *max_iter {
-                    return Err(RegressionError::MaxIter(*max_iter));
-                }
-            }
-
-            // If all the deltas are smaller than
-            if all(next.iter().zip_eq(delta.iter()), |(&b, &d)| {
-                // transform to absolute values
-                let (b, d) = (Float::abs(b), Float::abs(d));
-                let scale = if b >= F::one() { b } else { F::one() };
-                d <= epsilon * scale
-            }) {
-                break;
-            }
         }
+
+        // TODO: Possibly check if the likelihood is improved by setting each
+        // parameter to zero, and if so set it to zero. This could be dependent
+        // on the order of operations, however.
+
         // ndf is guaranteed to be > 0 because of the underconstrained check
-        let ndf = n_data - next.len();
+        let ndf = n_data - result.len();
         Ok(Fit {
             model: PhantomData::<Self>,
-            result: next,
+            result,
             ndf,
             n_iter,
         })
@@ -104,45 +83,147 @@ pub trait Glm {
 // Not all regression types have a well-defined likelihood. E.g. logistic
 // (binomial) and Poisson do; linear (normal) and negative binomial do not due
 // to the extra parameter.
-pub trait Likelihood: Glm {
+pub trait Likelihood<M, F>: Glm<F>
+where
+    M: Glm<F>,
+    F: Float,
+{
     /// logarithm of the likelihood given the data and fit parameters
-    fn log_likelihood<F: 'static + Float>(data: &DataConfig<F>, regressors: &Array1<F>) -> F;
+    fn log_likelihood(data: &Model<M, F>, regressors: &Array1<F>) -> F;
 }
 
-/// Private function to retrieve next step in IRLS (specialized for logistic
-/// regression).
-/// The data vector is assumed to already be padded with ones if necessary.
-/// TODO: add offset terms to account for fixed effects / controlled covariates.
-/// these affect the calculation of mu, the current expectation.
-fn next_irls<M, F>(data: &DataConfig<F>, previous: &Array1<F>) -> Result<Array1<F>, RegressionError>
+/// Struct to iterate over updates via iteratively re-weighted least-squares until reaching a specified tolerance
+struct Irls<'a, M, F>
 where
-    M: Glm,
+    M: Glm<F>,
     F: 'static + Float + Lapack,
     Array2<F>: SolveH<F>,
 {
-    assert_eq!(
-        data.x.ncols(),
-        previous.len(),
-        "must have same number of parameters in X and solution"
-    );
+    data: &'a Model<M, F>,
+    guess: Array1<F>,
+    // model: PhantomData<M>,
+    max_iter: usize,
+    pub n_iter: usize,
+    tolerance: F,
+    last_like: F,
+}
 
-    // the linear predictor given the model
-    let linear_predictor: Array1<F> = data.x.dot(previous);
-    // The probability of each observation being true given the current guess.
-    let predictor: Array1<F> = if let Some(offset) = &data.linear_offset {
-        (&linear_predictor + offset).mapv_into(M::mean)
-    } else {
-        linear_predictor.mapv(M::mean)
-    };
+impl<'a, M, F> Irls<'a, M, F>
+where
+    M: Glm<F>,
+    F: 'static + Float + Lapack,
+    Array2<F>: SolveH<F>,
+{
+    fn new(data: &'a Model<M, F>, initial: Array1<F>) -> Self {
+        let tolerance: F = F::epsilon(); // * F::from(data.y.len()).unwrap();
+        Self {
+            data,
+            guess: initial,
+            max_iter: data.max_iter.unwrap_or(50),
+            n_iter: 0,
+            // As a ratio with the variance, this epsilon could be too small.
+            tolerance,
+            last_like: -F::infinity(),
+        }
+    }
 
-    // the diagonal covariance matrix given the model
-    let variance: Array2<F> = Array2::from_diag(&predictor.mapv(M::variance));
-    // positive definite
-    let solve_matrix: Array2<F> = data.x.t().dot(&variance).dot(&data.x);
-    let target: Array1<F> = variance.dot(&linear_predictor)
-        + &data.y
-        // + &data.y.map(|&b| if b { F::one() } else { F::zero() })
-        - &predictor;
-    let target: Array1<F> = data.x.t().dot(&target);
-    Ok(solve_matrix.solveh_into(target)?)
+    fn step_with(
+        &mut self,
+        next_guess: Array1<F>,
+        next_like: F,
+        extra_iter: usize,
+    ) -> <Self as Iterator>::Item {
+        self.guess.assign(&next_guess);
+        self.last_like = next_like;
+        self.n_iter += 1 + extra_iter;
+        if self.n_iter > self.max_iter {
+            return Err(RegressionError::MaxIter(self.max_iter));
+        }
+        Ok(next_guess)
+    }
+}
+
+impl<'a, M, F> Iterator for Irls<'a, M, F>
+where
+    M: Glm<F>,
+    F: 'static + Float + Lapack,
+    Array2<F>: SolveH<F>,
+{
+    type Item = Result<Array1<F>, RegressionError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // the linear predictor given the model, including offsets if present
+        let linear_predictor: Array1<F> = self.data.linear_predictor(&self.guess);
+        // The prediction of y given the current model.
+        let predictor: Array1<F> = linear_predictor.mapv(M::mean);
+
+        // The variances predicted by the model. This should have weights with
+        // it (inversely?) and must be non-zero.
+        // TODO: implement a mean_and_var function to return both the mean and
+        // variance while avoiding over/underflow.
+        let var_diag: Array1<F> = predictor.mapv(|mu| M::variance(mu) + F::epsilon());
+        // This can be a full covariance with weights
+        // the diagonal covariance matrix given the model
+        // let variance: Array2<F> = Array2::from_diag(&predictor.mapv(M::variance));
+        // positive definite
+        // let hessian: Array2<F> = &self.data.x.t().dot(&variance).dot(&self.data.x);
+
+        // X weighted by the model variant
+        let mut hessian: Array2<F> = (&self.data.x.t() * &var_diag).dot(&self.data.x);
+
+        // If L2 regularization is set, add lambda * I to the Hessian.
+        if self.data.l2_reg != F::zero() {
+            hessian += &Array2::from_diag(&Array1::from_elem(hessian.nrows(), self.data.l2_reg));
+        }
+
+        // NOTE: this isn't actually the residuals, which would be divided by
+        // the standard deviation.
+        let residuals = &self.data.y - &predictor;
+        let target: Array1<F> = (var_diag * linear_predictor) + &residuals;
+        let target: Array1<F> = self.data.x.t().dot(&target);
+
+        let mut next_guess: Array1<F> = match hessian.solveh_into(target) {
+            Ok(solution) => solution,
+            Err(err) => return Some(Err(err.into())),
+        };
+
+        // NOTE: might be optimizable by not checking the likelihood until step
+        // = next_guess - &self.guess stops decreasing.
+        // Ideally we could only check the step difference but that might not be
+        // as stable. Some parameters might be at different scales.
+        let mut like = M::quasi_log_likelihood(&self.data, &next_guess);
+        // This should be positive for an improvement
+        let mut rel = (like - self.last_like) / (F::epsilon() + like.abs());
+        // Terminate if the difference is close to zero
+        if rel.abs() <= self.tolerance {
+            return None;
+        }
+
+        // apply step halving if rel < 0, which means the likelihood has decreased.
+        // Don't terminate if rel gets back to within tolerance as a result of this.
+        const MAX_STEP_HALVES: usize = 5;
+        let mut step_halves = 0;
+        let half: F = F::from(0.5).unwrap();
+        let mut step_multiplier = half;
+        while rel < -self.tolerance && step_halves < MAX_STEP_HALVES {
+            let next_guess_sh = next_guess.map(|&x| x * (step_multiplier))
+                + &self.guess.map(|&x| x * (F::one() - step_multiplier));
+            like = M::quasi_log_likelihood(&self.data, &next_guess);
+            let next_rel = (like - self.last_like) / (F::epsilon() + like.abs());
+            if next_rel >= rel {
+                next_guess = next_guess_sh;
+                rel = next_rel;
+                step_multiplier = half;
+            } else {
+                step_multiplier *= half;
+            }
+            step_halves += 1;
+        }
+
+        if rel > F::zero() {
+            Some(self.step_with(next_guess, like, step_halves))
+        } else {
+            None
+        }
+    }
 }

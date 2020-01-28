@@ -16,19 +16,34 @@ fortran and BLAS must be installed:
 sudo apt update && sudo apt install gfortran libblas-dev
 ```
 
+To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate with the "openblas-src" feature.
+
 ### Features
 
-- [X] Linear regression (exact)
-- [X] Logistic regression IRLS
+- [X] Linear regression
+- [X] Logistic regression
 - [X] Generalized linear model IRLS
+- [X] L2 Regularization
+- [X] Generic over floating point type
 - [ ] Implement other models
-  - [ ] Poisson
+  - [X] Poisson
+  - [ ] Exponential
+  - [ ] Gamma
+  - [ ] Inverse Gaussian
   - [ ] ...
 
 ### TODO
 
-- [X] Use trait to define class of generalized linear models
-- [ ] Linear offsets
-- [ ] Allow non-float domain types
+- [X] Linear offsets
+- [X] Allow non-float domain types (use mapping function from domain for floating-point type)
 - [ ] Weighted regressions
-- [ ] Generalize floating point type
+  - [ ] Weight solve matrix
+  - [ ] likelihood functions
+  - [ ] tolerance for termination
+- [ ] Other regularization options
+  - [ ] Separate scaling for constant term
+
+<!-- #### References: -->
+<!-- * Maalouf, M., & Siddiqi, M. (2014). Weighted logistic regression for large-scale imbalanced and rare events data. Knowledge-Based Systems, 59, 142–148. doi:10.1016/j.knosys.2014.01.012 -->
+<!-- * https://bwlewis.github.io/GLM/ -->
+<!-- * https://journal.r-project.org/archive/2011-2/RJournal_2011-2_Marschner.pdf -->

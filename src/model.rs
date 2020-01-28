@@ -1,21 +1,24 @@
-//! wrapper holding data and other configuration settings.
-//! The X-data is 1-padded as this is used for all GLMs.
-
-// TODO: check for near-exact co-linearity in X data and warn/fail.
+//! Collect data for and configure a model
 
 use crate::{
     error::{RegressionError, RegressionResult},
+    fit::Fit,
+    glm::Glm,
     utility::one_pad,
 };
 use ndarray::{Array1, Array2};
+use ndarray_linalg::lapack::Lapack;
 use ndarray_linalg::{types::Scalar, DeterminantH};
 use num_traits::Float;
+use std::marker::PhantomData;
 
 /// Holds the data and configuration settings for a regression
-pub struct DataConfig<F>
+pub struct Model<M, F>
 where
+    M: Glm<F>,
     F: 'static + Float,
 {
+    model: PhantomData<M>,
     // the observation data by event
     pub y: Array1<F>,
     // the regressor data with events in rows and instances in columns
@@ -24,17 +27,47 @@ where
     pub linear_offset: Option<Array1<F>>,
     // the maximum number of iterations to try
     pub max_iter: Option<usize>,
+    // L2 regularization
+    pub l2_reg: F,
 }
 
-// TODO: add function to get linear predictor with offsets?
-
-pub struct DataConfigBuilder<F>
+impl<M, F> Model<M, F>
 where
+    M: Glm<F>,
+    F: Float + Lapack,
+{
+    pub fn fit(&self) -> Result<Fit<M, F>, RegressionError> {
+        M::regression(&self)
+    }
+
+    pub fn linear_predictor(&self, regressors: &Array1<F>) -> Array1<F> {
+        let linear_predictor: Array1<F> = self.x.dot(regressors);
+        // Add linear offsets to the predictors if they are set
+        if let Some(lin_offset) = &self.linear_offset {
+            linear_predictor + lin_offset
+        } else {
+            linear_predictor
+        }
+    }
+
+    pub fn l2_term(&self, regressors: &Array1<F>) -> F {
+        if self.l2_reg == F::zero() {
+            F::zero()
+        } else {
+            -F::from(0.5).unwrap() * self.l2_reg * regressors.map(|&b| b * b).sum()
+        }
+    }
+}
+
+pub struct ModelBuilder<'a, M, F>
+where
+    M: Glm<F>,
     F: 'static + Float,
 {
-    // fields passed to DataConfig
-    data_y: Array1<F>,
-    data_x: Array2<F>,
+    model: PhantomData<M>,
+    // fields passed to Model
+    data_y: &'a Array1<M::Domain>,
+    data_x: &'a Array2<F>,
     // offset in the linear predictor for each data point
     linear_offset: Option<Array1<F>>,
     max_iter: Option<usize>,
@@ -42,23 +75,29 @@ where
     add_constant_term: bool,
     // tolerance for determinant check
     det_tol: F,
+    // L2 regularization
+    l2_reg: F,
 }
 
-/// A builder to generate a DataConfig object
-impl<F> DataConfigBuilder<F>
+/// A builder to generate a Model object
+impl<'a, M, F> ModelBuilder<'a, M, F>
 where
+    M: Glm<F>,
     F: 'static + Float,
+    <M as Glm<F>>::Domain: Copy,
 {
-    pub fn new(data_y: Array1<F>, data_x: Array2<F>) -> Self {
+    pub fn new(data_y: &'a Array1<M::Domain>, data_x: &'a Array2<F>) -> Self {
         // the number of predictors
         let n_pred = data_x.ncols() + 1;
         Self {
+            model: PhantomData,
             data_y,
             data_x,
             linear_offset: None,
             max_iter: None,
             add_constant_term: true,
             det_tol: Self::default_epsilon(n_pred),
+            l2_reg: F::zero(),
         }
     }
 
@@ -75,13 +114,18 @@ where
     /// This can be used to control for fixed effects or in multi-level models.
     pub fn linear_offset(mut self, linear_offset: Array1<F>) -> Self {
         self.linear_offset = Some(linear_offset);
-        panic!("Linear offsets are not implemented everywhere (log_likelihood())");
-        // self
+        self
     }
 
     /// Use a maximum number of iterations
     pub fn max_iter(mut self, max_iter: usize) -> Self {
         self.max_iter = Some(max_iter);
+        self
+    }
+
+    /// Use to set a L2 regularization parameter
+    pub fn l2_reg(mut self, l2: F) -> Self {
+        self.l2_reg = l2;
         self
     }
 
@@ -92,14 +136,16 @@ where
     }
 
     /// Set the tolerance for the co-linearity check.
+    // TODO: perhaps this should be optional
     pub fn colinearity_tolerance(mut self, tol: F) -> Self {
         self.det_tol = tol;
         self
     }
 
-    pub fn build(self) -> RegressionResult<DataConfig<F>>
+    pub fn build(self) -> RegressionResult<Model<M, F>>
     where
-        F: 'static + Float,
+        M: Glm<F>,
+        F: Float,
         Array2<F>: DeterminantH,
         <<Array2<F> as DeterminantH>::Elem as Scalar>::Real: std::convert::Into<F>,
     {
@@ -123,26 +169,33 @@ where
         }
 
         // Check for co-linearity by ensuring that the determinant of X^T * X is non-zero.
-        // TODO: This check could be more precise if we subtract off the mean X
-        // first.
-        let xtx: Array2<F> = self.data_x.t().dot(&self.data_x);
+        let xtx: Array2<F> = self.data_x.t().dot(self.data_x);
         let det: <<Array2<F> as DeterminantH>::Elem as Scalar>::Real = xtx.deth()?;
         let det: F = det.into();
         if det.abs() < self.det_tol {
+            // Perhaps this error should be left to a linear algebra failure,
+            // but in that case an error message should be informative. Maybe
+            // only do the check in that case.
             return Err(RegressionError::ColinearData);
         }
 
+        // add constant term to X data
         let data_x = if self.add_constant_term {
             one_pad(&self.data_x)
         } else {
-            self.data_x
+            self.data_x.clone()
         };
 
-        Ok(DataConfig {
-            y: self.data_y,
+        // convert to floating-point
+        let data_y: Array1<F> = self.data_y.map(|&y| M::y_float(y));
+
+        Ok(Model {
+            model: PhantomData,
+            y: data_y,
             x: data_x,
             linear_offset: self.linear_offset,
             max_iter: self.max_iter,
+            l2_reg: self.l2_reg,
         })
     }
 }
