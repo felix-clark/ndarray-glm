@@ -56,7 +56,7 @@ where
                     })
                     * F::epsilon();
                 if chi_sq.abs() > tol {
-                    eprintln!("negative chi-squared ({:?}) outside of tolerance ({:?}) for element ({})", chi_sq, tol, i_like);
+                    eprintln!("negative chi-squared ({:?}) outside of tolerance ({:?}) for element {}", chi_sq, tol, i_like);
                 }
                 chi_sq = F::zero();
             }
