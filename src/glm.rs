@@ -116,6 +116,7 @@ where
 {
     fn new(data: &'a Model<M, F>, initial: Array1<F>) -> Self {
         let tolerance: F = F::epsilon(); // * F::from(data.y.len()).unwrap();
+        let init_like = M::quasi_log_likelihood(&data, &initial);
         Self {
             data,
             guess: initial,
@@ -123,7 +124,8 @@ where
             n_iter: 0,
             // As a ratio with the variance, this epsilon could be too small.
             tolerance,
-            last_like: -F::infinity(),
+            // last_like: -F::infinity(),
+            last_like: init_like,
         }
     }
 
@@ -152,8 +154,18 @@ where
     type Item = Result<Array1<F>, RegressionError>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // The linear predictor without control terms
+        let linear_predictor_no_control: Array1<F> = self.data.x.dot(&self.guess);
         // the linear predictor given the model, including offsets if present
-        let linear_predictor: Array1<F> = self.data.linear_predictor(&self.guess);
+        let linear_predictor = match &self.data.linear_offset {
+            Some(off) => &linear_predictor_no_control + &off,
+            None => linear_predictor_no_control.clone(),
+        };
+        // This could be used instead to automatically include the linear offset, but is
+        // slightly less efficient to use in this loop because we will use both
+        // versions.
+        // let linear_predictor: Array1<F> = self.data.linear_predictor(&self.guess);
+
         // The prediction of y given the current model.
         let predictor: Array1<F> = linear_predictor.mapv(M::mean);
 
@@ -168,7 +180,7 @@ where
         // positive definite
         // let hessian: Array2<F> = &self.data.x.t().dot(&variance).dot(&self.data.x);
 
-        // X weighted by the model variant
+        // X weighted by the model variance for each observation
         let mut hessian: Array2<F> = (&self.data.x.t() * &var_diag).dot(&self.data.x);
 
         // If L2 regularization is set, add lambda * I to the Hessian.
@@ -179,7 +191,8 @@ where
         // NOTE: this isn't actually the residuals, which would be divided by
         // the standard deviation.
         let residuals = &self.data.y - &predictor;
-        let target: Array1<F> = (var_diag * linear_predictor) + &residuals;
+        // NOTE: This w*X should not include the linear offset.
+        let target: Array1<F> = (var_diag * linear_predictor_no_control) + &residuals;
         let target: Array1<F> = self.data.x.t().dot(&target);
 
         let mut next_guess: Array1<F> = match hessian.solveh_into(target) {
@@ -201,7 +214,7 @@ where
 
         // apply step halving if rel < 0, which means the likelihood has decreased.
         // Don't terminate if rel gets back to within tolerance as a result of this.
-        const MAX_STEP_HALVES: usize = 5;
+        const MAX_STEP_HALVES: usize = 25;
         let mut step_halves = 0;
         let half: F = F::from(0.5).unwrap();
         let mut step_multiplier = half;

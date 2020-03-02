@@ -9,7 +9,7 @@ use ndarray::Array1;
 use num_traits::Float;
 use std::marker::PhantomData;
 
-/// the result of a successful GLM fit (logistic for now)
+/// the result of a successful GLM fit
 /// TODO: finish generalizing, take ownership of Y and X data?
 #[derive(Debug)]
 pub struct Fit<M, F>
@@ -31,7 +31,6 @@ impl<M, F> Fit<M, F>
 where
     M: Likelihood<M, F>,
     F: 'static + Float,
-    // for debugging only
     F: std::fmt::Debug,
 {
     /// return the signed Z-score for each regression parameter.
@@ -56,7 +55,10 @@ where
                     })
                     * F::epsilon();
                 if chi_sq.abs() > tol {
-                    eprintln!("negative chi-squared ({:?}) outside of tolerance ({:?}) for element {}", chi_sq, tol, i_like);
+                    eprintln!(
+                        "negative chi-squared ({:?}) outside of tolerance ({:?}) for element {}",
+                        chi_sq, tol, i_like
+                    );
                 }
                 chi_sq = F::zero();
             }

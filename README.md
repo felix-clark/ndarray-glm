@@ -43,6 +43,7 @@ To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate w
 - [ ] Other regularization options
   - [ ] Separate scaling for constant term
 - [ ] Non-canonical link functions
+- [ ] Unit tests for correct convergence with linear offsets
 
 <!-- #### References: -->
 <!-- * Maalouf, M., & Siddiqi, M. (2014). Weighted logistic regression for large-scale imbalanced and rare events data. Knowledge-Based Systems, 59, 142–148. doi:10.1016/j.knosys.2014.01.012 -->
