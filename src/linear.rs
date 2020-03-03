@@ -36,7 +36,8 @@ where
     // 1/2pi to simplify the expression. It returns a simple sum of squares.
     // It also misses a factor of 0.5 in the squares.
     fn quasi_log_likelihood(data: &Model<Self, F>, regressors: &Array1<F>) -> F {
-        let squares: Array1<F> = (&data.y - &data.x.dot(regressors)).map(|&d| d * d);
+        let lin_pred = &data.linear_predictor(&regressors);
+        let squares: Array1<F> = (&data.y - lin_pred).map(|&d| d * d);
         let l2_term = data.l2_term(regressors);
         -squares.sum() + l2_term
     }

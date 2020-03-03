@@ -75,4 +75,36 @@ mod tests {
         assert_abs_diff_eq!(beta, fit.result, epsilon = std::f32::EPSILON as f64);
         Ok(())
     }
+
+    #[test]
+    // Ensure that the linear offset term adjusts all values sanely.
+    // TODO: similar test for all types of regression, to ensure they are using
+    // linear_predictor() properly.
+    fn linear_offset() -> RegressionResult<()> {
+        let data_x = array![
+            [-0.23, 2.1, 0.7],
+            [1.2, 4.5, 1.3],
+            [0.42, 1.8, 0.97],
+            [0.4, 3.2, -0.3]
+        ];
+        let data_y = array![1.23, 0.91, 2.34, 0.62];
+        let model = ModelBuilder::<Linear, _>::new(&data_y, &data_x).build()?;
+        let fit = model.fit()?;
+        let result = fit.result;
+        // a constant linear offset to add for easy checking
+        let lin_off = 1.832;
+        let lin_offsets = array![lin_off, lin_off, lin_off, lin_off];
+        let model_off = ModelBuilder::<Linear, _>::new(&data_y, &data_x)
+            .linear_offset(lin_offsets)
+            .build()?;
+        let off_result = model_off.fit()?.result;
+        let mut compensated_offset_result = off_result.clone();
+        compensated_offset_result[0] += lin_off;
+        assert_abs_diff_eq!(
+            result,
+            compensated_offset_result,
+            epsilon = 4. * std::f64::EPSILON
+        );
+        Ok(())
+    }
 }
