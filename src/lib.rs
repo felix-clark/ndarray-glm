@@ -97,7 +97,9 @@ mod tests {
         let model_off = ModelBuilder::<Linear, _>::new(&data_y, &data_x)
             .linear_offset(lin_offsets)
             .build()?;
-        let off_result = model_off.fit()?.result;
+        let off_fit = model_off.fit()?;
+        dbg!(off_fit.n_iter);
+        let off_result = off_fit.result;
         let mut compensated_offset_result = off_result.clone();
         compensated_offset_result[0] += lin_off;
         assert_abs_diff_eq!(

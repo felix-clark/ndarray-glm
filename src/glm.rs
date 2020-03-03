@@ -161,10 +161,9 @@ where
             Some(off) => &linear_predictor_no_control + &off,
             None => linear_predictor_no_control.clone(),
         };
-        // This could be used instead to automatically include the linear offset, but is
-        // slightly less efficient to use in this loop because we will use both
-        // versions.
-        // let linear_predictor: Array1<F> = self.data.linear_predictor(&self.guess);
+        // The data.linear_predictor() function is not used above because we will use
+        // both versions, with and without the linear offset, and we don't want
+        // to repeat the matrix multiplication.
 
         // The prediction of y given the current model.
         let predictor: Array1<F> = linear_predictor.mapv(M::mean);
@@ -193,6 +192,7 @@ where
         let residuals = &self.data.y - &predictor;
         // NOTE: This w*X should not include the linear offset.
         let target: Array1<F> = (var_diag * linear_predictor_no_control) + &residuals;
+        // let target: Array1<F> = (var_diag * linear_predictor) + &residuals; // WRONG
         let target: Array1<F> = self.data.x.t().dot(&target);
 
         let mut next_guess: Array1<F> = match hessian.solveh_into(target) {
@@ -214,7 +214,7 @@ where
 
         // apply step halving if rel < 0, which means the likelihood has decreased.
         // Don't terminate if rel gets back to within tolerance as a result of this.
-        const MAX_STEP_HALVES: usize = 25;
+        const MAX_STEP_HALVES: usize = 6;
         let mut step_halves = 0;
         let half: F = F::from(0.5).unwrap();
         let mut step_multiplier = half;
@@ -236,6 +236,9 @@ where
         if rel > F::zero() {
             Some(self.step_with(next_guess, like, step_halves))
         } else {
+            // We can end up here if the step direction is a poor one.
+            // This signals the end of iteration, but more checks should be done
+            // to see how valid the result is.
             None
         }
     }
