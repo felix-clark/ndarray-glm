@@ -3,7 +3,7 @@
 use anyhow::Result;
 use ndarray::{array, Array1, Array2};
 
-use glm_regress::{logistic::Logistic, model::ModelBuilder};
+use ndarray_glm::{logistic::Logistic, model::ModelBuilder};
 
 #[test]
 // this data caused an infinite loop with step halving

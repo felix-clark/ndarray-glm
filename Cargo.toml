@@ -1,5 +1,5 @@
 [package]
-name = "glm-regress"
+name = "ndarray-glm"
 version = "0.0.1"
 authors = ["Felix Clark <mfclark3690@gmail.com>"]
 edition = "2018"
@@ -18,17 +18,17 @@ intel-mkl = ["ndarray-linalg/intel-mkl"]
 # ndarray = { version = "0.13", features = ["blas", "rayon"]}
 ndarray = { version = "0.13", features = ["blas", "approx"] }
 # perhaps the "openblas-src" feature should be reserved for a final crate?
-ndarray-linalg = { version = "0.12.0" }
-num-traits = "0.2.10"
-thiserror = "1.0.9"
-itertools = "0.8.2"
+ndarray-linalg = { version = "0.12" }
+num-traits = "0.2"
+thiserror = "1.0"
+itertools = "0.8"
 
 [dev-dependencies]
 # pick a backend to run tests
 blas-src = { version = "0.4", default-features = false, features = ["openblas"] }
-ndarray-linalg = { version = "0.12.0", default-features = false, features = ["openblas-src"]}
+ndarray-linalg = { version = "0.12", default-features = false, features = ["openblas-src"]}
 anyhow = "*"
-approx = "0.3.2"
+approx = "0.3"
 # including openblas-src causes linking errors with LAPACKE?
 # Include it as a feature to ndarray-linalg instead.
 # https://github.com/blas-lapack-rs/openblas-src/issues/30
