@@ -2,7 +2,11 @@
 name = "ndarray-glm"
 version = "0.0.1"
 authors = ["Felix Clark <mfclark3690@gmail.com>"]
+description = "Performs regression for general linear models on data stored in arrays using IRLS."
 edition = "2018"
+repository = "https://github.com/felix-clark/ndarray-glm"
+readme = "README.md"
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
