@@ -31,7 +31,7 @@ itertools = "0.8"
 # pick a backend to run tests
 blas-src = { version = "0.4", default-features = false, features = ["openblas"] }
 ndarray-linalg = { version = "0.12", default-features = false, features = ["openblas-src"]}
-anyhow = "*"
+anyhow = "1.0"
 approx = "0.3"
 # including openblas-src causes linking errors with LAPACKE?
 # Include it as a feature to ndarray-linalg instead.
