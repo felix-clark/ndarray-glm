@@ -1,10 +1,11 @@
-# glm-regress
+# ndarray-glm
 
-Rust library for solving linear, logistic, and generalized linear models through iteratively reweighted least squares
+Rust library for solving linear, logistic, and generalized linear models through
+iteratively reweighted least squares, using the `ndarray-linalg` module.
 
-<!-- [![Crate](https://img.shields.io/crates/v/glm-regress.svg)](https://crates.io/crates/glm-regress) -->
-<!-- [![Documentation](https://docs.rs/glm-regress/badge.svg)](https://docs.rs/glm-regress) -->
-[![Build Status](https://travis-ci.org/felix-clark/glm-regress.png?branch=master)](https://travis-ci.org/felix-clark/glm-regress)
+<!-- [![Crate](https://img.shields.io/crates/v/ndarray-glm.svg)](https://crates.io/crates/ndarray-glm) -->
+<!-- [![Documentation](https://docs.rs/ndarray-glm/badge.svg)](https://docs.rs/ndarray-glm) -->
+[![Build Status](https://travis-ci.org/felix-clark/ndarray-glm.png?branch=master)](https://travis-ci.org/felix-clark/ndarray-glm)
 
 ## Status
 
