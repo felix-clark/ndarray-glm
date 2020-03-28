@@ -31,7 +31,8 @@ pub trait Glm<F: Float> {
     /// inverse link function which maps the linear predictors to the expected value of the prediction.
     fn mean(x: F) -> F;
 
-    /// the variance as a function of the mean
+    /// The variance as a function of the mean. This should be related to the
+    /// Laplacian of the log-partition function.
     fn variance(mean: F) -> F;
 
     /// Returns the log-likelihood if it is well-defined. If not (like in
@@ -92,7 +93,8 @@ where
     fn log_likelihood(data: &Model<M, F>, regressors: &Array1<F>) -> F;
 }
 
-/// Struct to iterate over updates via iteratively re-weighted least-squares until reaching a specified tolerance
+/// Iterate over updates via iteratively re-weighted least-squares until
+/// reaching a specified tolerance.
 struct Irls<'a, M, F>
 where
     M: Glm<F>,
@@ -129,6 +131,8 @@ where
         }
     }
 
+    /// A helper function to step to a new guess, while incrementing the number
+    /// of iterations and checking that it is not over the maximum.
     fn step_with(
         &mut self,
         next_guess: Array1<F>,

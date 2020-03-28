@@ -24,6 +24,8 @@ To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate w
 - [X] Linear regression
 - [X] Logistic regression
 - [X] Generalized linear model IRLS
+- [X] Linear offsets
+- [X] Allow non-float domain types
 - [X] L2 Regularization
 - [X] Generic over floating point type
 - [ ] Implement other models
@@ -32,11 +34,6 @@ To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate w
   - [ ] Gamma
   - [ ] Inverse Gaussian
   - [ ] ...
-
-### TODO
-
-- [X] Linear offsets
-- [X] Allow non-float domain types (use mapping function from domain for floating-point type)
 - [ ] Weighted regressions
   - [ ] Weight solve matrix
   - [ ] likelihood functions
@@ -47,6 +44,7 @@ To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate w
 - [ ] Unit tests for correct convergence with linear offsets
 
 <!-- #### References: -->
+<!-- * https://www.stat.cmu.edu/~ryantibs/advmethods/notes/glm.pdf -->
 <!-- * Maalouf, M., & Siddiqi, M. (2014). Weighted logistic regression for large-scale imbalanced and rare events data. Knowledge-Based Systems, 59, 142–148. doi:10.1016/j.knosys.2014.01.012 -->
 <!-- * https://bwlewis.github.io/GLM/ -->
 <!-- * https://journal.r-project.org/archive/2011-2/RJournal_2011-2_Marschner.pdf -->
