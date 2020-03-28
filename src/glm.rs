@@ -32,7 +32,8 @@ pub trait Glm<F: Float> {
     fn mean(x: F) -> F;
 
     /// The variance as a function of the mean. This should be related to the
-    /// Laplacian of the log-partition function.
+    /// Laplacian of the log-partition function, or in other words, the
+    /// derivative of the inverse link function mu = g^{-1}(eta).
     fn variance(mean: F) -> F;
 
     /// Returns the log-likelihood if it is well-defined. If not (like in

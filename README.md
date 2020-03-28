@@ -27,21 +27,28 @@ To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate w
 - [X] Linear offsets
 - [X] Allow non-float domain types
 - [X] L2 Regularization
+- [ ] L1 Regularization (separate scaling for constant term?)
 - [X] Generic over floating point type
-- [ ] Implement other models
-  - [X] Poisson
-  - [ ] Exponential
-  - [ ] Gamma
-  - [ ] Inverse Gaussian
-  - [ ] ...
+- [X] Poisson
+- [ ] Exponential
+- [ ] Gamma
+- [ ] Inverse Gaussian
+- [ ] Other exponential family distributions
 - [ ] Weighted regressions
-  - [ ] Weight solve matrix
-  - [ ] likelihood functions
-  - [ ] tolerance for termination
-- [ ] Other regularization options
-  - [ ] Separate scaling for constant term
+  - [ ] Weight the covariance matrix with point-by-point error bars
+  - [ ] Allow for off-diagonal correlations between points
+  - [ ] Fix likelihood functions
+  - [ ] Check the tolerance conditions for termination
 - [ ] Non-canonical link functions
+
+### TODO
+
+- [ ] Generalize GLM interface to allow multi-parameter fits like a gamma
+      distribution.
+- [ ] Exact Z-scores by re-minimizing after fixing each parameter to zero
 - [ ] Unit tests for correct convergence with linear offsets
+
+
 
 <!-- #### References: -->
 <!-- * https://www.stat.cmu.edu/~ryantibs/advmethods/notes/glm.pdf -->
