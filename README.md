@@ -53,7 +53,7 @@ To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate w
 ### References
 
 * https://www.stat.cmu.edu/~ryantibs/advmethods/notes/glm.pdf
-* [Maalouf, M., & Siddiqi, M. (2014). Weighted logistic regression for large-scale imbalanced and rare events data. Knowledge-Based Systems, 59, 142–148.](doi:10.1016/j.knosys.2014.01.012)
+* [Maalouf, M., & Siddiqi, M. (2014). Weighted logistic regression for large-scale imbalanced and rare events data. Knowledge-Based Systems, 59, 142–148.](https://doi.org/10.1016/j.knosys.2014.01.012)
 * https://bwlewis.github.io/GLM/
 * https://journal.r-project.org/archive/2011-2/RJournal_2011-2_Marschner.pdf
 * https://statmath.wu.ac.at/courses/heather_turner/glmCourse_001.pdf
