@@ -7,9 +7,6 @@ iteratively reweighted least squares, using the `ndarray-linalg` module.
 [![Documentation](https://docs.rs/ndarray-glm/badge.svg)](https://docs.rs/ndarray-glm)
 [![Build Status](https://travis-ci.org/felix-clark/ndarray-glm.png?branch=master)](https://travis-ci.org/felix-clark/ndarray-glm)
 
-<!-- Ennable MathJax on this readme. -->
- <script src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript"></script>
-
 ## Status
 
 This package is in early alpha and the interface is likely to undergo many changes.
@@ -21,11 +18,6 @@ sudo apt update && sudo apt install gfortran libblas-dev
 ```
 
 To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate with the "openblas-src" feature.
-
-## Mathematics
-
-\[ t = \sin(\theta) \]
-$$ s = \cos(\theta) $$
 
 ## Features
 

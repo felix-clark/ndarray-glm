@@ -1,0 +1,61 @@
+#+TITLE: Mathematics of Generalized Linear Models
+#+AUTHOR: Felix Clark
+#+LATEX_HEADER: \usepackage{bm}
+
+* Introduction
+
+A generalized linear model (GLM) describes the expected value of a response
+variable $y$ with a link function $g$ and a linear combination of $K$ feature
+variables $x_k$.
+\[ g(E[y]) \sim \beta_0 + \beta_1 x_1 + \ldots + \beta_K x_K \]
+The definition $x_0 \equiv 1$ is used so that with $\mathbf{x}^T \equiv [1, x_1,
+\ldots, x_K]$ and $\boldsymbol{\beta}^T \equiv [\beta_0, \beta_1, \ldots
+\beta_K]$ the above equation is written as the following.
+\[ g(E[y]) \sim \mathbf{x} \cdot \boldsymbol{\beta}\]
+
+For $N$ observations the response variables can be expressed as a vector
+$\mathbf{y}^T \equiv [y^{(1)}, \ldots, y^{(N)}]$ and the data matrix is
+\[ \mathbf{X} \equiv \begin{pmatrix}
+1 & x_1^{(1)} & \ldots & x_K^{(1)} \\
+1 & x_1^{(2)} & \ldots & x_K^{(2)} \\
+\vdots & \vdots & \ddots & \vdots \\
+1 & x_1^{(N)} & \ldots & x_K^{(N)}
+\end{pmatrix}
+\]
+so that the matrix components are $X_{ik} = x_{k}^{(i)}$.
+
+* Exponential family of distributions
+
+The exponential family is a useful class that includes many common elementary
+distributions. With a parameterization $\boldsymbol{\theta}$ and sufficient
+statistics $\mathbf{T}(y)$, the density function of each can be written in a
+canonical form with a function $\boldsymbol{\eta}(\boldsymbol{\theta})$ where
+$\boldsymbol{\eta}$ are the \emph{natural parameters} of the distribution.
+\[ f(y; \boldsymbol{\theta}) = \exp\left[ \boldsymbol{\eta}(\mathbf{\theta})
+\cdot \mathbf{T}(y) - A(\boldsymbol{\theta}) + B(y) \right] \]
+For the most simple (and common) uses including linear and logistic regression,
+$\mathbf{T}(y)$ is a scalar and is just equal to $y$.
+
+The function $A$ is the log partition function and is particularly useful when
+expressed in terms of the natural parameters.
+\[ A(\boldsymbol{\eta}) = \log \left[ \int dy \, e^{\eta \cdot \mathbf{T}(y) + B(y)} \right] \]
+The expectation value of the sufficient statistics is given by the gradient of
+$A$ with respect to the natural parameters.
+\[ \textrm{E}[\mathbf{T}(y)] = \nabla A(\boldsymbol{\eta}) \]
+The covariance matrix is given by the Hessian of the log partition function.
+\[ \textrm{Cov}[\mathbf{T}(y)]_{ab} = \nabla_{a} \nabla_{b} A(\boldsymbol{\eta}) \]
+
+NOTE: Observations can be considered with different weights by given each a
+different dispersion parameter, which otherwise does not affect the calculations above.
+
+* Iteratively re-weighted least squares
+
+Iteratively re-weighted least squares (IRLS) is a useful tool for fitting GLMs
+because it is typically relatively straightforward to compute the Jacobian and
+Hessian of the likelihood function. The step $\Delta \boldsymbol{\beta}$ in the
+space of parameters $\boldsymbol{\beta}$ is given by the solution to
+\[ \mathbf{H}(\boldsymbol{\beta}) \cdot \Delta\boldsymbol{\beta} = - \mathbf{J}(\boldsymbol{\beta}) \]
+where $\mathbf{J}$ and $\mathbf{H}$ are the Jacobian (gradient) and Hessian of
+the log-likelihood function, respectively. The Hessian does not have to be
+inverted completely; efficient linear algebra procedures exist to solve
+symmetric matrix equations of this form.
