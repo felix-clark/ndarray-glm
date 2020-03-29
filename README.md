@@ -7,11 +7,14 @@ iteratively reweighted least squares, using the `ndarray-linalg` module.
 [![Documentation](https://docs.rs/ndarray-glm/badge.svg)](https://docs.rs/ndarray-glm)
 [![Build Status](https://travis-ci.org/felix-clark/ndarray-glm.png?branch=master)](https://travis-ci.org/felix-clark/ndarray-glm)
 
+<!-- Ennable MathJax on this readme. -->
+ <script src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript"></script>
+
 ## Status
 
 This package is in early alpha and the interface is likely to undergo many changes.
 
-### Prerequisites
+## Prerequisites
 fortran and BLAS must be installed:
 ```
 sudo apt update && sudo apt install gfortran libblas-dev
@@ -19,7 +22,12 @@ sudo apt update && sudo apt install gfortran libblas-dev
 
 To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate with the "openblas-src" feature.
 
-### Features
+## Mathematics
+
+\[ t = \sin(\theta) \]
+$$ s = \cos(\theta) $$
+
+## Features
 
 - [X] Linear regression
 - [X] Logistic regression
@@ -50,7 +58,7 @@ To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate w
 
 
 
-### References
+## References
 
 * https://www.stat.cmu.edu/~ryantibs/advmethods/notes/glm.pdf
 * [Maalouf, M., & Siddiqi, M. (2014). Weighted logistic regression for large-scale imbalanced and rare events data. Knowledge-Based Systems, 59, 142–148.](https://doi.org/10.1016/j.knosys.2014.01.012)
