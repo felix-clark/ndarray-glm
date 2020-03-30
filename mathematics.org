@@ -45,6 +45,15 @@ $A$ with respect to the natural parameters.
 The covariance matrix is given by the Hessian of the log partition function.
 \[ \textrm{Cov}[\mathbf{T}(y)]_{ab} = \nabla_{a} \nabla_{b} A(\boldsymbol{\eta}) \]
 
+When the sufficient statistic $T$ and the function $\eta$ are both the identity,
+the distribution is said to be in the \emph{natural exponential family}.
+\[ f(y; \theta) = \exp[\theta y - A(\theta) + B(y)] \]
+If the canonical link function is used so that $\theta =
+\mathbf{x}\cdot\boldsymbol{\beta}$ then the link function is determined by the
+derivative of the log-partition function.
+\[ g^{-1}(\mathbf{x}\cdot\boldsymbol{\beta}) = \textrm{E}[y|\mathbf{x}, \boldsymbol{\beta}] = \frac{\partial
+A}{\partial \theta} \]
+
 NOTE: Observations can be considered with different weights by given each a
 different dispersion parameter, which otherwise does not affect the calculations above.
 
@@ -74,14 +83,14 @@ x_k^{(i)} \left[ - \boldsymbol{\eta}' \cdot
 where it should be noted that the term in the brackets is a scalar for each
 individual sample $i$.
 
-For most applications the sufficient statistic is simply a scalar value
-of the response variable $\mathbf{T}(y) = y$ and the canonical link function is
-used so that $\eta = \mathbf{x} \cdot \boldsymbol{\beta}$ and $g(\textrm{E}[y])
-= \eta$. The above equations simplify and can be expressed easily in matrix form.
-
+For many applications the natural exponential form can be used so the sufficient
+statistic is simply a scalar value of the response variable $\mathbf{T}(y) = y$
+and the canonical link function is used so that $\eta = \mathbf{x} \cdot
+\boldsymbol{\beta}$ and $g(\textrm{E}[y]) = \eta$. The above equations simplify
+and can be expressed easily in matrix form to include the sum over observations.
 \begin{align}
-\nabla l &= \mathbf{X}^T \cdot \left[ \mathbf{y} - g^{-1}(\mathbf{X}\cdot\boldsymbol{\beta})\right] \\
-\mathbf{H} (l) &= - \mathbf{X}^T \cdot \mathbf{S} \cdot \mathbf{X} \\
+\nabla l &= \mathbf{X}^T \left[ \mathbf{y} - g^{-1}(\mathbf{X}\cdot\boldsymbol{\beta})\right] \\
+\mathbf{H} (l) &= - \mathbf{X}^T \mathbf{S} \mathbf{X} \\
 \end{align}
 In the above expressions, the inverse link function $g^{-1}$ is applied
 element-wise and the variance matrix is diagonal with $S_{ii} =
@@ -100,6 +109,12 @@ where $\mathbf{J}$ and $\mathbf{H}$ are the Jacobian (gradient) and Hessian of
 the log-likelihood function, respectively. The Hessian does not have to be
 inverted completely; efficient linear algebra procedures exist to solve
 symmetric matrix equations of this form.
+
+This procedure is similar to Newton's method for the gradient, and (up to
+potential numerical issues) it will move towards the point with zero gradient so
+long as the likelihood is a concave function. Fortunately in GLM applications
+this condition typically holds, especially if the canonical link function is
+used.
 
 In the case of a canonical link function with scalar sufficient statistic $y$,
 this update rule becomes the following.
