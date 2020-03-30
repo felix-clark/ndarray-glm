@@ -31,7 +31,7 @@ distributions. With a parameterization $\boldsymbol{\theta}$ and sufficient
 statistics $\mathbf{T}(y)$, the density function of each can be written in a
 canonical form with a function $\boldsymbol{\eta}(\boldsymbol{\theta})$ where
 $\boldsymbol{\eta}$ are the \emph{natural parameters} of the distribution.
-\[ f(y; \boldsymbol{\theta}) = \exp\left[ \boldsymbol{\eta}(\mathbf{\theta})
+\[ f(y; \boldsymbol{\theta}) = \exp\left[ \boldsymbol{\eta}(\boldsymbol{\theta})
 \cdot \mathbf{T}(y) - A(\boldsymbol{\theta}) + B(y) \right] \]
 For the most simple (and common) uses including linear and logistic regression,
 $\mathbf{T}(y)$ is a scalar and is just equal to $y$.
@@ -48,6 +48,47 @@ The covariance matrix is given by the Hessian of the log partition function.
 NOTE: Observations can be considered with different weights by given each a
 different dispersion parameter, which otherwise does not affect the calculations above.
 
+* Likelihood function
+
+For a dataset of $N$ observations \(\{(y^{(i)}, \mathbf{x}^{(i)}) | i \in \{1,
+\ldots, N\}\}\) the total log-likelihood function using a canonical-form
+exponential distribution for $y$ is
+\[l(\boldsymbol{\beta} | \mathbf{y}, \mathbf{X}) = \sum_{i=1}^N
+\boldsymbol{\eta}^{(i)}(\mathbf{x}^{(i)}\cdot\boldsymbol{\beta}) \cdot
+\mathbf{T}(y^{(i)}) - A\left(\boldsymbol{\eta}^{(i)}(\mathbf{x}^{(i)} \cdot \boldsymbol{\beta}) \right)\]
+where the $B(y)$ terms have been excluded as they do not affect the dependency
+of the likelihood on $\boldsymbol{\beta}$.
+
+The gradient with respect to $\boldsymbol{\beta}$ is
+\[ \frac{\partial l}{\partial \beta_k} = \sum_{i=1}^N x_k^{(i)} \left( \mathbf{T}(y^{(i)}) - \textrm{E}[\mathbf{T}(y^{(i)})|\boldsymbol{\eta}] \right) \cdot \boldsymbol{\eta}'\]
+where the fact that $\nabla_\eta A(\boldsymbol{\eta}) = E[y]$. With a canonical
+link function, $\eta = \mathbf{x}\cdot\boldsymbol{\beta}$ and $\eta' = 1$ (is
+this always true?).
+
+The Hessian is given by
+\[ \frac{\partial^2 l}{\partial \beta_j \beta_k} = \sum_{i=1}^N x_j^{(i)}
+x_k^{(i)} \left[ - \boldsymbol{\eta}' \cdot
+\textrm{Cov}[\mathbf{T}(y^{(i)})|\boldsymbol{\eta}] \cdot \boldsymbol{\eta}' +
+\left( \mathbf{T}(y^{(i)}) - \nabla_\eta A(\boldsymbol{\eta}) \right) \cdot
+\boldsymbol{\eta}''\right] \]
+where it should be noted that the term in the brackets is a scalar for each
+individual sample $i$.
+
+For most applications the sufficient statistic is simply a scalar value
+of the response variable $\mathbf{T}(y) = y$ and the canonical link function is
+used so that $\eta = \mathbf{x} \cdot \boldsymbol{\beta}$ and $g(\textrm{E}[y])
+= \eta$. The above equations simplify and can be expressed easily in matrix form.
+
+\begin{align}
+\nabla l &= \mathbf{X}^T \cdot \left[ \mathbf{y} - g^{-1}(\mathbf{X}\cdot\boldsymbol{\beta})\right] \\
+\mathbf{H} (l) &= - \mathbf{X}^T \cdot \mathbf{S} \cdot \mathbf{X} \\
+\end{align}
+In the above expressions, the inverse link function $g^{-1}$ is applied
+element-wise and the variance matrix is diagonal with $S_{ii} =
+\textrm{Var}[y^{(i)}|\mathbf{x}^{(i)} \cdot \boldsymbol{\beta}]$. Correlations
+between different observations could be induced by allowing off-diagonal terms
+in $\mathbf{S}$ (TODO: work out how to do this consistently).
+
 * Iteratively re-weighted least squares
 
 Iteratively re-weighted least squares (IRLS) is a useful tool for fitting GLMs
@@ -59,3 +100,44 @@ where $\mathbf{J}$ and $\mathbf{H}$ are the Jacobian (gradient) and Hessian of
 the log-likelihood function, respectively. The Hessian does not have to be
 inverted completely; efficient linear algebra procedures exist to solve
 symmetric matrix equations of this form.
+
+In the case of a canonical link function with scalar sufficient statistic $y$,
+this update rule becomes the following.
+\[ \left( \mathbf{X}^T \mathbf{S} \mathbf{X} \right) \cdot \Delta
+\boldsymbol{\beta} = \mathbf{X}^T \cdot \left[ \mathbf{y} - g^{-1}(\mathbf{X}\boldsymbol{\beta})\right] \]
+
+* TODO Case studies
+
+** Ordinary least squares
+
+** Logistic
+
+** Poisson
+
+** Exponential
+\[ f(y; \lambda) = \begin{cases}
+\lambda e^{-\lambda y} & \textrm{for } y \geq 0 \\
+0 & \textrm{for } y < 0
+\end{cases}\]
+** Binomial with known $n$
+
+** Gamma
+The gamma distribution has two parameters, but it turns out that the shape
+parameter $\alpha$ is often treated as the same for every observation, allowing
+for the $\beta$ parameter to be predicted by
+$\mathbf{x}\cdot\boldsymbol{\beta}$. [[https://civil.colorado.edu/~balajir/CVEN6833/lectures/GammaGLM-01.pdf][See these notes]].
+This seems analogous to the situations in OLS where if the variance $\sigma^2$
+is the same for each data point the minimization is unaffected by its value.
+
+** Negative binomial
+
+*** Known $r$
+
+*** Unknown $r$
+
+* TODO Regularization
+
+* TODO Goodness of fit
+Compare log-likelihoods of fit model to saturated model
+
+* TODO Numerical considerations
