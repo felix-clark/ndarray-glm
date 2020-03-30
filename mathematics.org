@@ -126,8 +126,8 @@ The gamma distribution has two parameters, but it turns out that the shape
 parameter $\alpha$ is often treated as the same for every observation, allowing
 for the $\beta$ parameter to be predicted by
 $\mathbf{x}\cdot\boldsymbol{\beta}$. [[https://civil.colorado.edu/~balajir/CVEN6833/lectures/GammaGLM-01.pdf][See these notes]].
-This seems analogous to the situations in OLS where if the variance $\sigma^2$
-is the same for each data point the minimization is unaffected by its value.
+This seems analogous to the situations in OLS where the variance $\sigma^2$
+is the same for each data point so the minimization is unaffected by its value.
 
 ** Negative binomial
 
