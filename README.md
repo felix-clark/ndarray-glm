@@ -49,11 +49,12 @@ To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate w
 - [ ] Unit tests for correct convergence with linear offsets
 
 
-
 ## References
 
+* [Author's notes](https://felix-clark.github.io/glm-math)
 * https://www.stat.cmu.edu/~ryantibs/advmethods/notes/glm.pdf
-* [Maalouf, M., & Siddiqi, M. (2014). Weighted logistic regression for large-scale imbalanced and rare events data. Knowledge-Based Systems, 59, 142–148.](https://doi.org/10.1016/j.knosys.2014.01.012)
 * https://bwlewis.github.io/GLM/
-* https://journal.r-project.org/archive/2011-2/RJournal_2011-2_Marschner.pdf
 * https://statmath.wu.ac.at/courses/heather_turner/glmCourse_001.pdf
+* [Maalouf, M., & Siddiqi, M. (2014). Weighted logistic regression for large-scale imbalanced and rare events data. Knowledge-Based Systems, 59, 142–148.](https://doi.org/10.1016/j.knosys.2014.01.012)
+* [Disperson parameter lecture](http://people.stat.sfu.ca/~raltman/stat402/402L25.pdf)
+* [Convergence problems in GLMs](https://journal.r-project.org/archive/2011-2/RJournal_2011-2_Marschner.pdf)
