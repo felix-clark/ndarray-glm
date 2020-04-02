@@ -40,6 +40,10 @@ To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate w
   - [ ] Fix likelihood functions
   - [ ] Check the tolerance conditions for termination
 - [ ] Non-canonical link functions
+- [ ] Goodness-of-fit tests
+  - [ ] Log-likelihood difference from saturated model
+  - [ ] Aikaike and Bayesian information criteria
+  - [ ] generalized R^2?
 
 ### TODO
 
