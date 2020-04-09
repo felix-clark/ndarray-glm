@@ -28,6 +28,7 @@ To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate w
 - [X] Allow non-float domain types
 - [X] L2 Regularization
   - [ ] Fix by not biasing intercept term
+  - [ ] The Jacobian may also need an additional term
 - [ ] L1 Regularization (separate scaling for constant term?)
 - [X] Generic over floating point type
 - [X] Poisson
