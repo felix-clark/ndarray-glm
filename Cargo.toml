@@ -7,7 +7,7 @@ edition = "2018"
 repository = "https://github.com/felix-clark/ndarray-glm"
 readme = "README.md"
 license = "MIT"
-keywords = ["statistics", "generalized linear model", "glm", "irls"]
+keywords = ["statistics", "generalized_linear_model", "glm", "irls"]
 categories = ["mathematics", "science"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
