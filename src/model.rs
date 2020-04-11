@@ -23,12 +23,13 @@ where
     pub y: Array1<F>,
     // the regressor data with events in rows and instances in columns
     pub x: Array2<F>,
-    // offset in the linear predictor for each data point
+    // The offset in the linear predictor for each data point. This can be used
+    // to fix the effect of control variables.
     pub linear_offset: Option<Array1<F>>,
     // the maximum number of iterations to try
     pub max_iter: Option<usize>,
-    // L2 regularization
-    pub l2_reg: F,
+    // L2 regularization applied to all but the intercept term.
+    pub l2_reg: Array1<F>,
 }
 
 impl<M, F> Model<M, F>
@@ -50,12 +51,9 @@ where
         }
     }
 
-    pub fn l2_term(&self, regressors: &Array1<F>) -> F {
-        if self.l2_reg == F::zero() {
-            F::zero()
-        } else {
-            -F::from(0.5).unwrap() * self.l2_reg * regressors.map(|&b| b * b).sum()
-        }
+    /// The contribution to the likelihood from the L2 term.
+    pub fn l2_like_term(&self, regressors: &Array1<F>) -> F {
+        -F::from(0.5).unwrap() * (&self.l2_reg * &regressors.map(|&b| b * b)).sum()
     }
 }
 
@@ -155,10 +153,6 @@ where
                 "y and x data must have same number of points".to_string(),
             ));
         }
-        if n_data < self.data_x.ncols() + 1 {
-            // The regression can find a solution if n_data == ncols + 1, but there will be no estimate for the uncertainty.
-            return Err(RegressionError::Underconstrained);
-        }
         // If they are provided, check that the offsets have the correct number of entries
         if let Some(lin_off) = &self.linear_offset {
             if n_data != lin_off.len() {
@@ -185,9 +179,26 @@ where
         } else {
             self.data_x.clone()
         };
+        // Check if the data is under-constrained
+        if n_data < data_x.ncols() {
+            // The regression can find a solution if n_data == ncols, but
+            // there will be no estimate for the uncertainty.
+            return Err(RegressionError::Underconstrained);
+        }
 
         // convert to floating-point
         let data_y: Array1<F> = self.data_y.map(|&y| M::y_float(y));
+
+        // make the vector of L2 coefficients
+        let l2_diag: Array1<F> = {
+            let mut l2_diag: Array1<F> = Array1::<F>::from_elem(data_x.ncols(), self.l2_reg);
+            // if an intercept term is included it should not be subject to
+            // regularization.
+            if self.add_constant_term {
+                l2_diag[0] = F::zero();
+            }
+            l2_diag
+        };
 
         Ok(Model {
             model: PhantomData,
@@ -195,7 +206,7 @@ where
             x: data_x,
             linear_offset: self.linear_offset,
             max_iter: self.max_iter,
-            l2_reg: self.l2_reg,
+            l2_reg: l2_diag,
         })
     }
 }

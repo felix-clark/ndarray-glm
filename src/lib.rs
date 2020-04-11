@@ -13,6 +13,7 @@ pub mod linear;
 pub mod logistic;
 pub mod model;
 pub mod poisson;
+pub mod standardize;
 mod utility;
 
 #[cfg(test)]

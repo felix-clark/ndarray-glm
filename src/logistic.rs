@@ -79,7 +79,7 @@ where
                 };
                 *l = yt * xt - xt.exp().ln_1p()
             });
-        let l2_term = data.l2_term(regressors);
+        let l2_term = data.l2_like_term(regressors);
         log_like_terms.sum() + l2_term
     }
 }
