@@ -2,7 +2,7 @@
 //! Models are fit such that E[Y] = g^-1(X*B) where g is the link function.
 
 use crate::{error::RegressionError, fit::Fit, model::Model};
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, ArrayViewMut1};
 use ndarray_linalg::{lapack::Lapack, SolveH};
 use num_traits::Float;
 use std::marker::PhantomData;
@@ -52,9 +52,10 @@ pub trait Glm<F: Float> {
 
         // TODO: determine first element based on fraction of cases in sample
         // This is only a possible improvement when the x points are centered
-        // around zero, and may introduce more complications than it's worth.
+        // around zero, and may introduce more complications than it's worth. It
+        // is further complicated by the possibility of linear offsets.
         // For logistic regression, beta = 0 is typically reasonable.
-        let initial = Array1::<F>::zeros(data.x.ncols());
+        let initial: Array1<F> = Array1::<F>::zeros(data.x.ncols());
         let mut n_iter: usize = 0;
 
         let mut result: Array1<F> = Array1::<F>::zeros(initial.len());
@@ -84,7 +85,9 @@ pub trait Glm<F: Float> {
 /// A subtrait for GLMs that have an unambiguous likelihood function.
 // Not all regression types have a well-defined likelihood. E.g. logistic
 // (binomial) and Poisson do; linear (normal) and negative binomial do not due
-// to the extra parameter.
+// to the extra parameter. If the dispersion term can be calculated, this can be
+// fixed, although it will be best to separate the true likelihood from an
+// effective one for minimization.
 pub trait Likelihood<M, F>: Glm<F>
 where
     M: Glm<F>,
@@ -104,7 +107,6 @@ where
 {
     data: &'a Model<M, F>,
     guess: Array1<F>,
-    // model: PhantomData<M>,
     max_iter: usize,
     pub n_iter: usize,
     tolerance: F,
@@ -163,7 +165,7 @@ where
         let linear_predictor_no_control: Array1<F> = self.data.x.dot(&self.guess);
         // the linear predictor given the model, including offsets if present
         let linear_predictor = match &self.data.linear_offset {
-            Some(off) => &linear_predictor_no_control + &off,
+            Some(off) => &linear_predictor_no_control + off,
             None => linear_predictor_no_control.clone(),
         };
         // The data.linear_predictor() function is not used above because we will use
@@ -174,33 +176,37 @@ where
         let predictor: Array1<F> = linear_predictor.mapv(M::mean);
 
         // The variances predicted by the model. This should have weights with
-        // it (inversely?) and must be non-zero.
+        // it and must be non-zero.
+        // This could become a full covariance with weights.
         // TODO: implement a mean_and_var function to return both the mean and
         // variance while avoiding over/underflow.
         let var_diag: Array1<F> = predictor.mapv(|mu| M::variance(mu) + F::epsilon());
-        // This can be a full covariance with weights
-        // the diagonal covariance matrix given the model
-        // let variance: Array2<F> = Array2::from_diag(&predictor.mapv(M::variance));
-        // positive definite
-        // let hessian: Array2<F> = &self.data.x.t().dot(&variance).dot(&self.data.x);
 
         // X weighted by the model variance for each observation
-        let mut hessian: Array2<F> = (&self.data.x.t() * &var_diag).dot(&self.data.x);
+        // This is really the negative Hessian of the likelihood.
+        // When adding correlations between observations this statement will
+        // need to be modified.
+        let neg_hessian: Array2<F> = {
+            let mut hess: Array2<F> = (&self.data.x.t() * &var_diag).dot(&self.data.x);
+            // If L2 regularization is set, add lambda * I to the Hessian.
+            let mut hess_diag: ArrayViewMut1<F> = hess.diag_mut();
+            hess_diag += &self.data.l2_reg;
+            hess
+        };
 
-        // If L2 regularization is set, add lambda * I to the Hessian.
-        if self.data.l2_reg != F::zero() {
-            hessian += &Array2::from_diag(&Array1::from_elem(hessian.nrows(), self.data.l2_reg));
-        }
+        // This isn't quite the jacobian because the H*beta_old term is subtracted out.
+        let rhs: Array1<F> = {
+            // NOTE: this isn't actually the residuals, which would be divided by
+            // the standard deviation.
+            let residuals = &self.data.y - &predictor;
+            // NOTE: This w*X should not include the linear offset.
+            let target: Array1<F> = (var_diag * linear_predictor_no_control) + &residuals;
+            // let target: Array1<F> = (var_diag * linear_predictor) + &residuals; // WRONG
+            let target: Array1<F> = self.data.x.t().dot(&target);
+            target
+        };
 
-        // NOTE: this isn't actually the residuals, which would be divided by
-        // the standard deviation.
-        let residuals = &self.data.y - &predictor;
-        // NOTE: This w*X should not include the linear offset.
-        let target: Array1<F> = (var_diag * linear_predictor_no_control) + &residuals;
-        // let target: Array1<F> = (var_diag * linear_predictor) + &residuals; // WRONG
-        let target: Array1<F> = self.data.x.t().dot(&target);
-
-        let mut next_guess: Array1<F> = match hessian.solveh_into(target) {
+        let mut next_guess: Array1<F> = match neg_hessian.solveh_into(rhs) {
             Ok(solution) => solution,
             Err(err) => return Some(Err(err.into())),
         };

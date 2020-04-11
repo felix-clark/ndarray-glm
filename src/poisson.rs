@@ -73,7 +73,7 @@ where
 
         let log_like_terms: Array1<F> =
             &data.y * &linear_predictor - linear_predictor.map(|tx| tx.exp());
-        let l2_term = data.l2_term(regressors);
+        let l2_term = data.l2_like_term(regressors);
         log_like_terms.sum() + l2_term
     }
 }

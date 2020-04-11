@@ -38,7 +38,7 @@ where
     fn quasi_log_likelihood(data: &Model<Self, F>, regressors: &Array1<F>) -> F {
         let lin_pred = &data.linear_predictor(&regressors);
         let squares: Array1<F> = (&data.y - lin_pred).map(|&d| d * d);
-        let l2_term = data.l2_term(regressors);
+        let l2_term = data.l2_like_term(regressors);
         -squares.sum() + l2_term
     }
 }

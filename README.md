@@ -26,16 +26,16 @@ To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate w
 - [X] Generalized linear model IRLS
 - [X] Linear offsets
 - [X] Allow non-float domain types
-- [X] L2 Regularization
-  - [ ] Fix by not biasing intercept term
-  - [ ] The Jacobian may also need an additional term
-- [ ] L1 Regularization (separate scaling for constant term?)
+- [X] L2 (ridge) Regularization
+- [ ] L1 (lasso) Regularization
 - [X] Generic over floating point type
 - [X] Poisson
 - [ ] Exponential
-- [ ] Gamma
+- [ ] Gamma (which effectively reduces to exponential with an arbitrary
+      dispersion parameter)
 - [ ] Inverse Gaussian
 - [ ] Other exponential family distributions
+- [ ] Option for data standardization/normalization
 - [ ] Weighted regressions
   - [ ] Weight the covariance matrix with point-by-point error bars
   - [ ] Allow for off-diagonal correlations between points
@@ -51,8 +51,9 @@ To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate w
 
 - [ ] Generalize GLM interface to allow multi-parameter fits like a gamma
       distribution.
-- [ ] Exact Z-scores by re-minimizing after fixing each parameter to zero
+- [ ] Exact Z-scores by re-minimizing after fixing each parameter to zero (?)
 - [ ] Unit tests for correct convergence with linear offsets
+- [ ] Calculate/estimate dispersion parameter from the data
 
 
 ## References
