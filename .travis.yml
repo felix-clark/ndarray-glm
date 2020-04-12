@@ -3,9 +3,17 @@ rust:
   - stable
   - beta
   - nightly
-before_install:
-  - sudo apt-get -q update
-  - sudo apt-get -y install gfortran libblas-dev libopenblas-dev
+# These next two lines are mimicking rust-ndarray's config
+sudo: required
+dist: trusty
+# before_install:
+#   - sudo apt-get -q update
+#   - sudo apt-get -y install gfortran libblas-dev libopenblas-dev
 matrix:
   allow_failures:
     - rust: nightly
+addons:
+  apt:
+    packages:
+      - libopenblas-dev
+      - gfortran
