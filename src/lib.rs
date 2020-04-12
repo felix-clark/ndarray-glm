@@ -5,7 +5,9 @@
 // but maybe it should only go into final library
 // extern crate openblas_src;
 
-// pub mod data;
+// #![feature(const_generics)]
+// pub mod binomial;
+
 pub mod error;
 mod fit;
 mod glm;

@@ -30,7 +30,9 @@ To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate w
 To use in your crate, add the following to the `Cargo.toml`:
 
 ```
-ndarray-glm = { version = "0.0.3", features = ["openblas-src"] }
+ndarray = { version = "0.13", features = ["blas"]}
+blas-src = { version = "0.6", default-features = false, features = ["openblas"] }
+ndarray-glm = { version = "0.0.3", features = ["openblas-static"] }
 ```
 
 An example for linear regression is shown below.
