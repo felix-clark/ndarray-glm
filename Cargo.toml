@@ -15,6 +15,8 @@ categories = ["mathematics", "science"]
 [features]
 openblas = ["ndarray-linalg/openblas"]
 # "openblas-src" implies "openblas"
+# This appears to have changed! Now there is no such feature in ndarray-linalg,
+# only openblas-static.
 openblas-src = ["ndarray-linalg/openblas-src"]
 netlib = ["ndarray-linalg/netlib"]
 intel-mkl = ["ndarray-linalg/intel-mkl"]
@@ -26,7 +28,7 @@ ndarray = { version = "0.13", features = ["blas", "approx"] }
 ndarray-linalg = { version = "0.12" }
 num-traits = "0.2"
 thiserror = "1.0"
-itertools = "0.8"
+itertools = "0.9"
 
 [dev-dependencies]
 # pick a backend to run tests
