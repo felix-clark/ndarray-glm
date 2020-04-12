@@ -1,13 +1,13 @@
 [package]
 name = "ndarray-glm"
-version = "0.0.2"
+version = "0.0.3"
 authors = ["Felix Clark <mfclark3690@gmail.com>"]
 description = "Performs regression for general linear models on data stored in arrays using IRLS."
 edition = "2018"
 repository = "https://github.com/felix-clark/ndarray-glm"
 readme = "README.md"
 license = "MIT"
-keywords = ["statistics", "glm", "irls"]
+keywords = ["statistics", "glm", "regression", "irls"]
 categories = ["mathematics", "science"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -23,7 +23,6 @@ intel-mkl = ["ndarray-linalg/intel-mkl"]
 # TODO: is rayon really needed? it should probably be a library feature
 # ndarray = { version = "0.13", features = ["blas", "rayon"]}
 ndarray = { version = "0.13", features = ["blas", "approx"] }
-# perhaps the "openblas-src" feature should be reserved for a final crate?
 ndarray-linalg = { version = "0.12" }
 num-traits = "0.2"
 thiserror = "1.0"
