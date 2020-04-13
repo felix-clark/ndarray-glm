@@ -3,15 +3,18 @@ rust:
   - stable
   - beta
   - nightly
-matrix:
-  allow_failures:
-    - rust: nightly
 addons:
   apt:
     packages:
       - libopenblas-dev
       - gfortran
-nightly:
-  script:
-    - cargo +nightly build --verbose --features nightly
-    - cargo +nightly test --verbose --features nightly
+matrix:
+  allow_failures:
+    - rust: nightly
+# add a job to test the nightly features on the nightly build
+jobs:
+  include:
+    - rust: nightly
+      script:
+        - cargo +nightly build --verbose --features nightly
+        - cargo +nightly test --verbose --features nightly

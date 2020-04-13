@@ -10,12 +10,15 @@ license = "MIT"
 keywords = ["statistics", "glm", "regression", "irls"]
 categories = ["mathematics", "science"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[badges]
+maintenance = { status = "experimental" }
+travis-ci = { repository = "felix-clark/ndarray-glm" }
 
 [features]
 # enable all nightly features
 nightly = ["binomial"]
 
+# Feature flags to pass to ndarray-linalg
 openblas = ["ndarray-linalg/openblas"]
 openblas-src = ["ndarray-linalg/openblas-src"]
 # These last two are implied by openblas-static
@@ -23,7 +26,8 @@ openblas-static = ["ndarray-linalg/openblas-static"]
 netlib = ["ndarray-linalg/netlib"]
 intel-mkl = ["ndarray-linalg/intel-mkl"]
 
-# simply flag whether to use binomial response, which uses const_generics
+# flag to compile binomial regression, which uses const_generics only available
+# in nightly rust.
 binomial = []
 
 [dependencies]
