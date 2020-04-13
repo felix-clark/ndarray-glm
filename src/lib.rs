@@ -38,7 +38,7 @@ mod tests {
         let model = ModelBuilder::<Logistic, _>::new(&data_y, &data_x).build()?;
         let fit = model.fit()?;
         dbg!(fit.n_iter);
-        assert_abs_diff_eq!(beta, fit.result, epsilon = std::f32::EPSILON as f64);
+        assert_abs_diff_eq!(beta, fit.result, epsilon = 0.05 * std::f32::EPSILON as f64);
         // test the significance function
         let significance = fit.z_scores(&model);
         dbg!(significance);
