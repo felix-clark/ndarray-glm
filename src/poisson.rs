@@ -9,12 +9,12 @@ use ndarray_linalg::Lapack;
 use num_traits::{Float, ToPrimitive, Unsigned};
 use std::marker::PhantomData;
 
-/// trait-based implementation to work towards generalization
+/// Poisson regression over an unsigned integer type.
 pub struct Poisson<D>
 where
     D: Unsigned,
 {
-    unsigned: PhantomData<D>,
+    _unsigned: PhantomData<D>,
 }
 
 impl<D, F> Glm<F> for Poisson<D>

@@ -3,9 +3,17 @@ rust:
   - stable
   - beta
   - nightly
-before_install:
-  - sudo apt-get -q update
-  - sudo apt-get -y install gfortran libblas-dev libopenblas-dev
-matrix:
+addons:
+  apt:
+    packages:
+      - libopenblas-dev
+      - gfortran
+jobs:
   allow_failures:
     - rust: nightly
+  include:
+    # add a job to test the nightly features on the nightly build
+    - rust: nightly
+      script:
+        - cargo +nightly build --verbose --features nightly
+        - cargo +nightly test --verbose --features nightly

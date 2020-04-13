@@ -216,7 +216,7 @@ where
         // Ideally we could only check the step difference but that might not be
         // as stable. Some parameters might be at different scales.
         let mut like = M::quasi_log_likelihood(&self.data, &next_guess);
-        // This should be positive for an improvement
+        // This should be positive for an improved guess
         let mut rel = (like - self.last_like) / (F::epsilon() + like.abs());
         // Terminate if the difference is close to zero
         if rel.abs() <= self.tolerance {
