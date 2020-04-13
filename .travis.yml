@@ -8,13 +8,11 @@ addons:
     packages:
       - libopenblas-dev
       - gfortran
-# add a job to test the nightly features on the nightly build
 jobs:
   allow_failures:
     - rust: nightly
   include:
-    # - rust: stable
-    # - rust: beta
+    # add a job to test the nightly features on the nightly build
     - rust: nightly
       script:
         - cargo +nightly build --verbose --features nightly
