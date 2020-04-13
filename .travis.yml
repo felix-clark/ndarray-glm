@@ -11,7 +11,7 @@ addons:
     packages:
       - libopenblas-dev
       - gfortran
-script:
-  nightly:
+nightly:
+  script:
     - cargo +nightly build --verbose --features nightly
     - cargo +nightly test --verbose --features nightly
