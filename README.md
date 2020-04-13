@@ -71,7 +71,7 @@ regression it must be an unsigned integer.
 - [X] Generic over floating point type
 - [ ] Other exponential family distributions
   - [X] Poisson
-  - [ ] Binomial
+  - [X] Binomial (nightly only)
   - [ ] Exponential
   - [ ] Gamma (which effectively reduces to exponential with an arbitrary
         dispersion parameter)
@@ -83,18 +83,20 @@ regression it must be an unsigned integer.
   - [ ] Allow for off-diagonal correlations between points
   - [ ] Fix likelihood functions for weighted and/or correlated case
   - [ ] Re-visit the tolerance conditions for termination in these instances.
-- [ ] Non-canonical link functions
+- [-] Non-canonical link functions
 - [ ] Goodness-of-fit tests
-  - [ ] Log-likelihood difference from saturated model
+  - [ ] Log-likelihood difference from saturated model (deviance analysis)
   - [ ] Aikaike and Bayesian information criteria
   - [ ] generalized R^2?
 
 ### TODO
 
 - [ ] Generalize GLM interface to allow multi-parameter fits like a gamma
-      distribution.
+      distribution. This would demand other sufficient statistics besides y
+      (e.g. y^2 for Gaussian w/ variance, log(y) for gamma).
 - [ ] Exact Z-scores by re-minimizing after fixing each parameter to zero (?)
 - [ ] Calculate/estimate dispersion parameter from the data
+- [ ] More rigorous convergence tests and options for termination
 
 ## Reference
 

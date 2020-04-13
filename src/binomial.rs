@@ -28,7 +28,7 @@ where
     }
 
     fn mean(lin_pred: F) -> F {
-        F::from(N).unwrap() * lin_pred
+        F::from(N).unwrap() / (F::one() + (-lin_pred).exp())
     }
 
     fn variance(mean: F) -> F {
@@ -60,12 +60,13 @@ mod tests {
         let ln2 = f64::ln(2.);
         let beta = array![0., 1.];
         let data_x = array![[0.], [0.], [ln2], [ln2], [ln2]];
+        // the first two data points should average to 6 and the last 3 should average to 8.
         let data_y = array![5, 7, 9, 6, 9];
         let model = ModelBuilder::<Binomial<N>, _>::new(&data_y, &data_x).build()?;
         let fit = model.fit()?;
         dbg!(&fit.result);
         dbg!(&fit.n_iter);
-        assert_abs_diff_eq!(beta, fit.result, epsilon = 32.0 * std::f64::EPSILON);
+        assert_abs_diff_eq!(beta, fit.result, epsilon = 0.05 * std::f32::EPSILON as f64);
         Ok(())
     }
 }
