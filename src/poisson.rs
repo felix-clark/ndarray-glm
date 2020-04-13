@@ -10,12 +10,11 @@ use num_traits::{Float, ToPrimitive, Unsigned};
 use std::marker::PhantomData;
 
 /// Poisson regression over an unsigned integer type.
-/// TODO: Do we really need the unsigned type in the model specification?
 pub struct Poisson<D>
 where
     D: Unsigned,
 {
-    unsigned: PhantomData<D>,
+    _unsigned: PhantomData<D>,
 }
 
 impl<D, F> Glm<F> for Poisson<D>

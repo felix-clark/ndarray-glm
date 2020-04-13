@@ -5,9 +5,11 @@
 // but maybe it should only go into final library
 // extern crate openblas_src;
 
-// #![feature(const_generics)]
-// pub mod binomial;
-
+// enable const_generics if the binomial feature is used.
+#![cfg_attr(feature = "binomial", feature(const_generics))]
+// opt-in for binomial regression as it utilizes unstable features.
+#[cfg(feature = "binomial")]
+pub mod binomial;
 pub mod error;
 mod fit;
 mod glm;
@@ -20,7 +22,6 @@ mod utility;
 
 #[cfg(test)]
 mod tests {
-    // use super::*;
     use crate::{
         error::RegressionResult, linear::Linear, logistic::Logistic, model::ModelBuilder,
         poisson::Poisson,
