@@ -2,6 +2,7 @@
 
 use crate::{
     glm::{Glm, Likelihood, Response},
+    link::Link,
     model::Model,
 };
 use ndarray::Array1;
@@ -10,12 +11,18 @@ use num_traits::{Float, ToPrimitive, Unsigned};
 use std::marker::PhantomData;
 
 /// Poisson regression over an unsigned integer type.
-pub struct Poisson {}
+pub struct Poisson<L = link::Log>
+where
+    L: Link<Poisson<L>>,
+{
+    _link: PhantomData<L>,
+}
 
 /// Poisson variables can be any unsigned integer.
-impl<U> Response<Poisson> for U
+impl<U, L> Response<Poisson<L>> for U
 where
     U: Unsigned + ToPrimitive,
+    L: Link<Poisson<L>>,
 {
     fn to_float<F: Float>(self) -> F {
         F::from(self).unwrap()
@@ -23,19 +30,18 @@ where
 }
 // TODO: A floating point response for Poisson might also be do-able.
 
-// impl<L> Glm for Poisson<L>
-impl Glm for Poisson
-// where
-//     D: Unsigned + ToPrimitive,
+impl<L> Glm for Poisson<L>
+where
+    L: Link<Poisson<L>>,
 {
     /// the link function, canonically the logarithm.
     fn link<F: Float>(y: F) -> F {
-        Float::ln(y)
+        L::func(y)
     }
 
     /// inverse link function, canonically exponential.
     fn mean<F: Float>(lin_pred: F) -> F {
-        lin_pred.exp()
+        L::inv_func(lin_pred)
     }
 
     /// The variance of a Poisson variable is equal to its mean.
@@ -53,9 +59,10 @@ impl Glm for Poisson
 
 // The true Poisson likelihood includes a factorial of y, which does not contribute to significance calculations.
 // This may technically be a quasi-likelihood, and perhaps the concepts should not be distinguished.
-impl<F> Likelihood<Self, F> for Poisson
+impl<F, L> Likelihood<Self, F> for Poisson<L>
 where
     F: Float + Lapack,
+    L: Link<Poisson<L>>,
 {
     // specialize LL for logistic regression
     fn log_likelihood(data: &Model<Self, F>, regressors: &Array1<F>) -> F {
@@ -73,6 +80,25 @@ where
             &data.y * &linear_predictor - linear_predictor.map(|tx| tx.exp());
         let l2_term = data.l2_like_term(regressors);
         log_like_terms.sum() + l2_term
+    }
+}
+
+pub mod link {
+    //! Link functions for Poisson regression
+    use super::Poisson;
+    use crate::link::{Canonical, Link};
+    use num_traits::Float;
+
+    /// The canonical link function of the Poisson response is the logarithm.
+    pub struct Log {}
+    impl Canonical for Log {}
+    impl Link<Poisson<Log>> for Log {
+        fn func<F: Float>(y: F) -> F {
+            Float::ln(y)
+        }
+        fn inv_func<F: Float>(lin_pred: F) -> F {
+            lin_pred.exp()
+        }
     }
 }
 

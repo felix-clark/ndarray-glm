@@ -2,16 +2,27 @@
 
 use crate::{
     glm::{Glm, Likelihood, Response},
+    link::Link,
     model::Model,
 };
 use ndarray::{Array1, Zip};
 use ndarray_linalg::Lapack;
 use num_traits::float::Float;
+use std::marker::PhantomData;
 
-/// trait-based implementation to work towards generalization
-pub struct Logistic;
+/// Logistic regression
+pub struct Logistic<L = link::Logit>
+where
+    L: Link<Logistic<L>>,
+{
+    _link: PhantomData<L>,
+}
 
-impl Response<Logistic> for bool {
+/// The logistic response variable must be boolean (at least for now).
+impl<L> Response<Logistic<L>> for bool
+where
+    L: Link<Logistic<L>>,
+{
     fn to_float<F: Float>(self) -> F {
         if self {
             F::one()
@@ -24,18 +35,21 @@ impl Response<Logistic> for bool {
 // be changed to return an error in case of a failed check for 0 <= y <= 1.
 
 /// Implementation of GLM functionality for logistic regression.
-impl Glm for Logistic {
-    // the link function, logit
+impl<L> Glm for Logistic<L>
+where
+    L: Link<Logistic<L>>,
+{
+    /// the link function, canonically logit
     fn link<F: Float>(y: F) -> F {
-        Float::ln(y / (F::one() - y))
+        L::func(y)
     }
 
-    // inverse link function, expit
+    /// inverse link function, canonically expit
     fn mean<F: Float>(lin_pred: F) -> F {
-        (F::one() + (-lin_pred).exp()).recip()
+        L::inv_func(lin_pred)
     }
 
-    // var = mu*(1-mu)
+    /// var = mu*(1-mu)
     fn variance<F: Float>(mean: F) -> F {
         mean * (F::one() - mean)
     }
@@ -48,9 +62,10 @@ impl Glm for Logistic {
     }
 }
 
-impl<F> Likelihood<Self, F> for Logistic
+impl<F, L> Likelihood<Self, F> for Logistic<L>
 where
     F: Float + Lapack,
+    L: Link<Logistic<L>>,
 {
     // specialize LL for logistic regression
     fn log_likelihood(data: &Model<Self, F>, regressors: &Array1<F>) -> F {
@@ -81,6 +96,24 @@ where
             });
         let l2_term = data.l2_like_term(regressors);
         log_like_terms.sum() + l2_term
+    }
+}
+
+pub mod link {
+    //! Link functions for logistic regression
+    use super::Logistic;
+    use crate::link::{Canonical, Link};
+    use num_traits::Float;
+
+    pub struct Logit {}
+    impl Canonical for Logit {}
+    impl Link<Logistic<Logit>> for Logit {
+        fn func<F: Float>(y: F) -> F {
+            F::ln(y / (F::one() - y))
+        }
+        fn inv_func<F: Float>(lin_pred: F) -> F {
+            (F::one() + (-lin_pred).exp()).recip()
+        }
     }
 }
 

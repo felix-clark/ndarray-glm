@@ -11,10 +11,7 @@ use std::marker::PhantomData;
 /// for fitting.
 pub trait Glm {
     /// the link function
-    // fn link<F: 'static + Float>(y: Self::Domain) -> F;
     fn link<F: Float>(y: F) -> F;
-
-    // TODO: return both mean and variance as function of eta at once and avoid FPE
 
     /// inverse link function which maps the linear predictors to the expected value of the prediction.
     fn mean<F: Float>(x: F) -> F;
