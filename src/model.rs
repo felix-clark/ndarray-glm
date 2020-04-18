@@ -3,7 +3,7 @@
 use crate::{
     error::{RegressionError, RegressionResult},
     fit::Fit,
-    glm::Glm,
+    glm::{Glm, Response},
     utility::one_pad,
 };
 use ndarray::{Array1, Array2};
@@ -15,7 +15,6 @@ use std::marker::PhantomData;
 /// Holds the data and configuration settings for a regression
 pub struct Model<M, F>
 where
-    // M: Glm<F>,
     M: Glm,
     F: 'static + Float,
 {
@@ -35,7 +34,6 @@ where
 
 impl<M, F> Model<M, F>
 where
-    // M: Glm<F>,
     M: Glm,
     F: Float + Lapack,
 {
@@ -59,15 +57,15 @@ where
     }
 }
 
-pub struct ModelBuilder<'a, M, F>
+pub struct ModelBuilder<'a, M, Y, F>
 where
-    // M: Glm<F>,
     M: Glm,
+    Y: Response<M>,
     F: 'static + Float,
 {
     model: PhantomData<M>,
     // fields passed to Model
-    data_y: &'a Array1<M::Domain>,
+    data_y: &'a Array1<Y>,
     data_x: &'a Array2<F>,
     // offset in the linear predictor for each data point
     linear_offset: Option<Array1<F>>,
@@ -81,15 +79,14 @@ where
 }
 
 /// A builder to generate a Model object
-impl<'a, M, F> ModelBuilder<'a, M, F>
+impl<'a, M, Y, F> ModelBuilder<'a, M, Y, F>
 where
-    // M: Glm<F>,
     M: Glm,
+    Y: Response<M>,
     F: 'static + Float,
-    // <M as Glm<F>>::Domain: Copy,
-    <M as Glm>::Domain: Copy,
+    Y: Copy,
 {
-    pub fn new(data_y: &'a Array1<M::Domain>, data_x: &'a Array2<F>) -> Self {
+    pub fn new(data_y: &'a Array1<Y>, data_x: &'a Array2<F>) -> Self {
         // the number of predictors
         let n_pred = data_x.ncols() + 1;
         Self {
@@ -147,7 +144,6 @@ where
 
     pub fn build(self) -> RegressionResult<Model<M, F>>
     where
-        // M: Glm<F>,
         M: Glm,
         F: Float,
         Array2<F>: DeterminantH,
@@ -193,7 +189,7 @@ where
         }
 
         // convert to floating-point
-        let data_y: Array1<F> = self.data_y.map(|&y| M::y_float(y));
+        let data_y: Array1<F> = self.data_y.map(|&y| y.to_float());
 
         // make the vector of L2 coefficients
         let l2_diag: Array1<F> = {

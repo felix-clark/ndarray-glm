@@ -7,22 +7,9 @@ use ndarray_linalg::{lapack::Lapack, SolveH};
 use num_traits::Float;
 use std::marker::PhantomData;
 
-// Does F need 'static + Float?
-// pub trait Glm<F: Float> {
+/// Trait describing generalized linear model that enables the IRLS algorithm
+/// for fitting.
 pub trait Glm {
-    // the domain of the model
-    // i.e. integer for Poisson, float for Linear, bool for logistic
-    // TODO: perhaps create a custom Domain type or trait to deal with constraints
-    // we typically work with floats as EVs, though.
-    // A (private?) function that maps a general domain to the floating point
-    // type could work as well.
-    type Domain;
-
-    /// Converts the domain to a floating-point value for IRLS
-    fn y_float<F: Float>(y: Self::Domain) -> F;
-
-    // TODO: a function to check if a Y-value is valid
-
     /// the link function
     // fn link<F: 'static + Float>(y: Self::Domain) -> F;
     fn link<F: Float>(y: F) -> F;
@@ -82,6 +69,18 @@ pub trait Glm {
             n_iter,
         })
     }
+}
+
+/// Describes the domain of the response variable for a GLM, e.g. integer for
+/// Poisson, float for Linear, bool for logistic. Implementing this trait for a
+/// type Y shows how to convert to a floating point type and allows that type to
+/// be used as a response variable.
+pub trait Response<M: Glm> {
+    /// Converts the domain to a floating-point value for IRLS.
+    fn to_float<F: Float>(self) -> F;
+
+    // TODO: a function to check if a Y-value is valid? This may be useful for
+    // some models.
 }
 
 /// A subtrait for GLMs that have an unambiguous likelihood function.

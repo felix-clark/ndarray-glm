@@ -1,7 +1,7 @@
 //! Model for Poisson regression
 
 use crate::{
-    glm::{Glm, Likelihood},
+    glm::{Glm, Likelihood, Response},
     model::Model,
 };
 use ndarray::Array1;
@@ -10,38 +10,35 @@ use num_traits::{Float, ToPrimitive, Unsigned};
 use std::marker::PhantomData;
 
 /// Poisson regression over an unsigned integer type.
-pub struct Poisson<D>
-where
-    D: Unsigned,
-{
-    _unsigned: PhantomData<D>,
-}
+pub struct Poisson {}
 
-impl<D> Glm for Poisson<D>
+/// Poisson variables can be any unsigned integer.
+impl<U> Response<Poisson> for U
 where
-    D: Unsigned + ToPrimitive,
+    U: Unsigned + ToPrimitive,
 {
-    // TODO: this could be relaxed to a float with only mild changes, although
-    // it would require checking that 0 <= y <= 1.
-    // There should be a domain and a function that maps domain to a float.
-    // Should this be a generic unsigned integer type?
-    type Domain = D;
-
-    fn y_float<F: Float>(y: Self::Domain) -> F {
-        F::from(y).unwrap()
+    fn to_float<F: Float>(self) -> F {
+        F::from(self).unwrap()
     }
+}
+// TODO: A floating point response for Poisson might also be do-able.
 
-    // the link function, the logarithm
+// impl<L> Glm for Poisson<L>
+impl Glm for Poisson
+// where
+//     D: Unsigned + ToPrimitive,
+{
+    /// the link function, canonically the logarithm.
     fn link<F: Float>(y: F) -> F {
         Float::ln(y)
     }
 
-    // inverse link function, exponential
+    /// inverse link function, canonically exponential.
     fn mean<F: Float>(lin_pred: F) -> F {
         lin_pred.exp()
     }
 
-    // var = mu
+    /// The variance of a Poisson variable is equal to its mean.
     fn variance<F: Float>(mean: F) -> F {
         mean
     }
@@ -56,9 +53,8 @@ where
 
 // The true Poisson likelihood includes a factorial of y, which does not contribute to significance calculations.
 // This may technically be a quasi-likelihood, and perhaps the concepts should not be distinguished.
-impl<D, F> Likelihood<Self, F> for Poisson<D>
+impl<F> Likelihood<Self, F> for Poisson
 where
-    D: Unsigned + ToPrimitive,
     F: Float + Lapack,
 {
     // specialize LL for logistic regression
@@ -92,7 +88,7 @@ mod tests {
         let beta = array![0., ln2, -ln2];
         let data_x = array![[1., 0.], [1., 1.], [0., 1.], [0., 1.]];
         let data_y = array![2, 1, 0, 1];
-        let model = ModelBuilder::<Poisson<u32>, _>::new(&data_y, &data_x)
+        let model = ModelBuilder::<Poisson, _>::new(&data_y, &data_x)
             .max_iter(10)
             .build()?;
         let fit = model.fit()?;

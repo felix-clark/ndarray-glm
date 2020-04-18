@@ -1,43 +1,51 @@
 //! Functions for solving linear regression
 
-use crate::{glm::Glm, link::Link, model::Model};
+use crate::{
+    glm::{Glm, Response},
+    link::Link,
+    model::Model,
+};
 use ndarray::Array1;
 use ndarray_linalg::Lapack;
-use num_traits::Float;
+use num_traits::{Float, ToPrimitive};
+use std::marker::PhantomData;
 
 /// Linear regression with constant variance (Ordinary least squares).
 pub struct Linear<L = link::Id>
 where
     L: Link<Linear<L>>,
 {
-    _link: std::marker::PhantomData<L>,
+    _link: PhantomData<L>,
+}
+
+/// Allow all floating point types in the linear model.
+impl<Y, L> Response<Linear<L>> for Y
+where
+    Y: Float + ToPrimitive,
+    L: Link<Linear<L>>,
+{
+    fn to_float<F: Float>(self) -> F {
+        // TODO: Can we avoid casting and use traits? We'd likely have to define
+        // our own trait constraint.
+        F::from(self).unwrap()
+    }
 }
 
 impl<L> Glm for Linear<L>
 where
     L: Link<Linear<L>>,
 {
-    // TODO: make this a separate trait to implement?
-    // type Domain = F;
-    type Domain = f64;
-
-    fn y_float<F: Float>(y: Self::Domain) -> F {
-        // TODO: fix this when we fix the domain trait
-        // y
-        F::from(y).unwrap()
-    }
-
-    // the link function, canonically the identity
+    /// the link function, canonically the identity
     fn link<F: Float>(y: F) -> F {
         L::func(y)
     }
 
-    // inverse link function, canonically the identity
+    /// inverse link function, canonically the identity
     fn mean<F: Float>(lin_pred: F) -> F {
         L::inv_func(lin_pred)
     }
 
-    // variance is not a function of the mean in OLS regression.
+    /// variance is not a function of the mean in OLS regression.
     fn variance<F: Float>(_mean: F) -> F {
         F::one()
     }

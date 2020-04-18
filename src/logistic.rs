@@ -1,7 +1,7 @@
 //! functions for solving logistic regression
 
 use crate::{
-    glm::{Glm, Likelihood},
+    glm::{Glm, Likelihood, Response},
     model::Model,
 };
 use ndarray::{Array1, Zip};
@@ -11,20 +11,20 @@ use num_traits::float::Float;
 /// trait-based implementation to work towards generalization
 pub struct Logistic;
 
-impl Glm for Logistic {
-    // TODO: this could be relaxed to a float with only mild changes, although
-    // it would require checking that 0 <= y <= 1.
-    // There should be a domain and a function that maps domain to a float.
-    type Domain = bool;
-
-    fn y_float<F: Float>(y: Self::Domain) -> F {
-        if y {
+impl Response<Logistic> for bool {
+    fn to_float<F: Float>(self) -> F {
+        if self {
             F::one()
         } else {
             F::zero()
         }
     }
+}
+// TODO: We could also allow floats as the domain, however the interface should
+// be changed to return an error in case of a failed check for 0 <= y <= 1.
 
+/// Implementation of GLM functionality for logistic regression.
+impl Glm for Logistic {
     // the link function, logit
     fn link<F: Float>(y: F) -> F {
         Float::ln(y / (F::one() - y))

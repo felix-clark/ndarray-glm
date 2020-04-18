@@ -1,8 +1,10 @@
 //! Regression with a binomial response function. The N parameter must be known ahead of time.
 //! This submodule uses const_generics, available only in nightly rust, and must
 //! be activated with the "binomial" feature option.
-use crate::{glm::Glm, model::Model};
-// use cauchy::Scalar;
+use crate::{
+    glm::{Glm, Response},
+    model::Model,
+};
 use ndarray::Array1;
 use ndarray_linalg::Lapack;
 use num_traits::Float;
@@ -13,13 +15,14 @@ type BinDom = u16;
 /// Binomial regression with a fixed N.
 pub struct Binomial<const N: BinDom>;
 
-impl<const N: BinDom> Glm for Binomial<N> {
-    type Domain = BinDom;
-
-    fn y_float<F: Float>(y: Self::Domain) -> F {
-        F::from(y).unwrap()
+impl<const N: BinDom> Response<Binomial<N>> for BinDom {
+    fn to_float<F: Float>(self) -> F {
+        F::from(self).unwrap()
     }
+}
 
+impl<const N: BinDom> Glm for Binomial<N> {
+    /// The canonical link function is a scaled logit
     fn link<F: Float>(y: F) -> F {
         Float::ln(y / (F::from(N).unwrap() - y))
     }
