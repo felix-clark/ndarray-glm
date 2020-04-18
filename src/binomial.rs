@@ -12,7 +12,9 @@ use num_traits::Float;
 /// Use a fixed type of u16 for the domain of the binomial distribution.
 type BinDom = u16;
 
-/// Binomial regression with a fixed N.
+/// Binomial regression with a fixed N. Non-canonical link functions are not
+/// possible at this time due to the awkward ergonomics with the const trait
+/// parameter N.
 pub struct Binomial<const N: BinDom>;
 
 impl<const N: BinDom> Response<Binomial<N>> for BinDom {
