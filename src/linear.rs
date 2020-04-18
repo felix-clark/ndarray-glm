@@ -1,19 +1,29 @@
 //! Functions for solving linear regression
 
-use crate::{glm::Glm, model::Model};
+use crate::{
+    glm::Glm,
+    link::{Canonical, Link},
+    model::Model,
+};
 use ndarray::Array1;
 use ndarray_linalg::Lapack;
 use num_traits::Float;
 
 /// Linear regression with constant variance.
-pub struct Linear<Link = Id> {
-    _link: std::marker::PhantomData<Link>,
-}
-
-impl<F, L> Glm<F> for Linear<L>
+pub struct Linear<F, L = Id>
 where
     F: Float + Lapack,
-    L: LinLink,
+    L: Link<F, Linear<F, L>>,
+{
+    _float: std::marker::PhantomData<F>,
+    _link: std::marker::PhantomData<L>,
+}
+
+impl<F, L> Glm<F> for Linear<F, L>
+where
+    F: Float + Lapack,
+    // L: LinLink,
+    L: Link<F, Linear<F, L>>,
 {
     type Domain = F;
 
@@ -48,27 +58,25 @@ where
     }
 }
 
-/// A trait describing link functions for linear regression.
-pub trait LinLink {
-    fn func<F: Float>(y: F) -> F;
-    fn inv_func<F: Float>(lin_pred: F) -> F;
-    // TODO: parameter transform function, its derivatives, ..., propagate this info to the likelihood
-    // the transformation function that takes the linear predictor to the
-    // canonical parameter. Should always be identify for canonical link
-    // functions.
-    fn canonical<F: Float>(lin_pred: Array1<F>) -> Array1<F>;
-}
+// /// A trait describing link functions for linear regression.
+// pub trait LinLink {
+//     fn func<F: Float>(y: F) -> F;
+//     fn inv_func<F: Float>(lin_pred: F) -> F;
+//     // TODO: parameter transform function, its derivatives, ..., propagate this info to the likelihood
+//     // the transformation function that takes the linear predictor to the
+//     // canonical parameter. Should always be identify for canonical link
+//     // functions.
+//     fn canonical<F: Float>(lin_pred: Array1<F>) -> Array1<F>;
+// }
 
 /// The identity link function, which is canonical for linear regression.
 pub struct Id;
-impl LinLink for Id {
-    fn func<F>(y: F) -> F {
+impl Canonical for Id {}
+impl<F: Float, M: Glm<F>> Link<F, M> for Id {
+    fn func(y: F) -> F {
         y
     }
-    fn inv_func<F>(lin_pred: F) -> F {
-        lin_pred
-    }
-    fn canonical<F>(lin_pred: Array1<F>) -> Array1<F> {
+    fn inv_func(lin_pred: F) -> F {
         lin_pred
     }
 }

@@ -14,12 +14,14 @@ pub mod error;
 mod fit;
 mod glm;
 pub mod linear;
+mod link;
 pub mod logistic;
 pub mod model;
 pub mod poisson;
 pub mod standardize;
 mod utility;
 
+// TODO: move these tests to the respective modules
 #[cfg(test)]
 mod tests {
     use crate::{
