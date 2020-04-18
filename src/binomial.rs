@@ -13,32 +13,32 @@ type BinDom = u16;
 /// Binomial regression with a fixed N.
 pub struct Binomial<const N: BinDom>;
 
-impl<F, const N: BinDom> Glm<F> for Binomial<N>
-where
-    F: Float + Lapack,
-{
+impl<const N: BinDom> Glm for Binomial<N> {
     type Domain = BinDom;
 
-    fn y_float(y: Self::Domain) -> F {
+    fn y_float<F: Float>(y: Self::Domain) -> F {
         F::from(y).unwrap()
     }
 
-    fn link(y: F) -> F {
+    fn link<F: Float>(y: F) -> F {
         Float::ln(y / (F::from(N).unwrap() - y))
     }
 
-    fn mean(lin_pred: F) -> F {
+    fn mean<F: Float>(lin_pred: F) -> F {
         F::from(N).unwrap() / (F::one() + (-lin_pred).exp())
     }
 
-    fn variance(mean: F) -> F {
+    fn variance<F: Float>(mean: F) -> F {
         let n_float: F = F::from(N).unwrap();
         mean * (n_float - mean) / n_float
     }
 
     /// The binomial likelihood includes a BetaLn() term of N and y, which can
     /// be skipped for parameter minimization.
-    fn quasi_log_likelihood(data: &Model<Self, F>, regressors: &Array1<F>) -> F {
+    fn quasi_log_likelihood<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
+    where
+        F: Float + Lapack,
+    {
         let lin_pred: Array1<F> = data.linear_predictor(&regressors);
         // in the canonical version, the natural parameter is logit(p)
         let log_like_sum = (&data.y * &lin_pred).sum()
