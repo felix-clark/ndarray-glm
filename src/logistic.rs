@@ -96,7 +96,7 @@ mod tests {
         let ln2 = f64::ln(2.);
         let data_x = array![[0.], [0.], [ln2], [ln2], [ln2]];
         let data_y = array![true, false, true, true, false];
-        let model = ModelBuilder::<Logistic, _>::new(&data_y, &data_x).build()?;
+        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x).build()?;
         let fit = model.fit()?;
         dbg!(fit.n_iter);
         assert_abs_diff_eq!(beta, fit.result, epsilon = 0.05 * std::f32::EPSILON as f64);

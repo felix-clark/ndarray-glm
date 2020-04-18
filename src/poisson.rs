@@ -80,15 +80,15 @@ where
 mod tests {
     use crate::{error::RegressionResult, model::ModelBuilder, poisson::Poisson};
     use approx::assert_abs_diff_eq;
-    use ndarray::array;
+    use ndarray::{array, Array1};
 
     #[test]
     fn poisson_reg() -> RegressionResult<()> {
         let ln2 = f64::ln(2.);
         let beta = array![0., ln2, -ln2];
         let data_x = array![[1., 0.], [1., 1.], [0., 1.], [0., 1.]];
-        let data_y = array![2, 1, 0, 1];
-        let model = ModelBuilder::<Poisson, _>::new(&data_y, &data_x)
+        let data_y: Array1<u32> = array![2, 1, 0, 1];
+        let model = ModelBuilder::<Poisson>::data(&data_y, &data_x)
             .max_iter(10)
             .build()?;
         let fit = model.fit()?;

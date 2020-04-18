@@ -16,7 +16,7 @@ use std::marker::PhantomData;
 pub struct Model<M, F>
 where
     M: Glm,
-    F: 'static + Float,
+    F: Float,
 {
     model: PhantomData<M>,
     // the observation data by event
@@ -57,59 +57,74 @@ where
     }
 }
 
-pub struct ModelBuilder<'a, M, Y, F>
-where
-    M: Glm,
-    Y: Response<M>,
-    F: 'static + Float,
-{
-    model: PhantomData<M>,
-    // fields passed to Model
-    data_y: &'a Array1<Y>,
-    data_x: &'a Array2<F>,
-    // offset in the linear predictor for each data point
-    linear_offset: Option<Array1<F>>,
-    max_iter: Option<usize>,
-    // fields unique to the builder
-    add_constant_term: bool,
-    // tolerance for determinant check
-    det_tol: F,
-    // L2 regularization
-    l2_reg: F,
+/// Provides an interface to create the full model option struct with convenient
+/// type inference.
+pub struct ModelBuilder<M: Glm> {
+    _model: PhantomData<M>,
 }
 
-/// A builder to generate a Model object
-impl<'a, M, Y, F> ModelBuilder<'a, M, Y, F>
-where
-    M: Glm,
-    Y: Response<M>,
-    F: 'static + Float,
-    Y: Copy,
-{
-    pub fn new(data_y: &'a Array1<Y>, data_x: &'a Array2<F>) -> Self {
+impl<M: Glm> ModelBuilder<M> {
+    /// Borrow the Y and X data where each row in the arrays is a new
+    /// observation, and create the full model builder with the data to allow
+    /// for adjusting additional options.
+    pub fn data<'a, Y, F>(
+        data_y: &'a Array1<Y>,
+        data_x: &'a Array2<F>,
+    ) -> ModelBuilderData<'a, M, Y, F>
+    where
+        Y: Response<M>,
+        F: Float,
+    {
         // the number of predictors
         let n_pred = data_x.ncols() + 1;
-        Self {
+        ModelBuilderData {
             model: PhantomData,
             data_y,
             data_x,
             linear_offset: None,
             max_iter: None,
             add_constant_term: true,
-            det_tol: Self::default_epsilon(n_pred),
+            det_tol: default_epsilon::<F>(n_pred),
             l2_reg: F::zero(),
         }
     }
+}
 
-    /// Default tolerance for colinearity checking.
-    /// Uses the square root of the number of data points times machine epsilon.
-    /// This may not be particularly well-justified and may be too lenient.
-    fn default_epsilon(n_data: usize) -> F {
-        // NOTE: should this scaling factor be capped?
-        let sqrt_n: F = F::from(n_data).unwrap().sqrt();
-        sqrt_n * F::epsilon()
-    }
+/// Holds the data and all the specifications for the model and provides
+/// functions to adjust the settings.
+pub struct ModelBuilderData<'a, M, Y, F>
+where
+    M: Glm,
+    Y: Response<M>,
+    F: 'static + Float,
+{
+    model: PhantomData<M>,
+    /// Observed response variable data where each entry is a new observation.
+    data_y: &'a Array1<Y>,
+    /// Design matrix of observed covariate data where each row is a new
+    /// observation and each column represents a different dependent variable.
+    data_x: &'a Array2<F>,
+    /// The offset in the linear predictor for each data point. This can be used
+    /// to incorporate control terms.
+    linear_offset: Option<Array1<F>>,
+    /// The maximum number of iterations before the regression reports failure.
+    max_iter: Option<usize>,
+    /// Whether to use an intercept term. Defaults to `true`.
+    add_constant_term: bool,
+    /// tolerance for determinant check on rank of data matrix X.
+    det_tol: F,
+    /// L2 regularization parameter for ridge regression. Defaults to zero.
+    l2_reg: F,
+}
 
+/// A builder to generate a Model object
+impl<'a, M, Y, F> ModelBuilderData<'a, M, Y, F>
+where
+    M: Glm,
+    Y: Response<M>,
+    F: Float,
+    Y: Copy,
+{
     /// Represents an offset added to the linear predictor for each data point.
     /// This can be used to control for fixed effects or in multi-level models.
     pub fn linear_offset(mut self, linear_offset: Array1<F>) -> Self {
@@ -211,4 +226,13 @@ where
             l2_reg: l2_diag,
         })
     }
+}
+
+/// Default tolerance for colinearity checking.
+/// Uses the square root of the number of data points times machine epsilon.
+/// This may not be particularly well-justified and may be too lenient.
+fn default_epsilon<F: Float>(n_data: usize) -> F {
+    // NOTE: should this scaling factor be capped?
+    let sqrt_n: F = F::from(n_data).unwrap().sqrt();
+    sqrt_n * F::epsilon()
 }
