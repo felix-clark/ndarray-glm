@@ -1,7 +1,8 @@
 # ndarray-glm
 
 Rust library for solving linear, logistic, and generalized linear models through
-iteratively reweighted least squares, using the `ndarray-linalg` module.
+iteratively reweighted least squares, using the
+[`ndarray-linalg`](https://docs.rs/crate/ndarray-linalg/) module.
 
 [![Crate](https://img.shields.io/crates/v/ndarray-glm.svg)](https://crates.io/crates/ndarray-glm)
 [![Documentation](https://docs.rs/ndarray-glm/badge.svg)](https://docs.rs/ndarray-glm)
@@ -15,6 +16,11 @@ changes. Functionality may change from one release to the next.
 The regression algorithm uses iteratively re-weighted least squares (IRLS) with
 a step-halving procedure applied when the next iteration of guesses does not
 increase the likelihood.
+
+At the moment the master branch of `ndarray-linalg` along with `blas-src = 0.6`
+is required to pass CI, but this precludes publishing new versions of this
+crate. For the time being you may see some version mismatches in the
+instructions below as a result.
 
 ## Prerequisites
 
@@ -83,7 +89,7 @@ regression it must be an unsigned integer.
   - [ ] Allow for off-diagonal correlations between points
   - [ ] Fix likelihood functions for weighted and/or correlated case
   - [ ] Re-visit the tolerance conditions for termination in these instances.
-- [-] Non-canonical link functions
+- [ ] Non-canonical link functions
 - [ ] Goodness-of-fit tests
   - [ ] Log-likelihood difference from saturated model (deviance analysis)
   - [ ] Aikaike and Bayesian information criteria
@@ -93,8 +99,11 @@ regression it must be an unsigned integer.
 
 - [ ] Generalize GLM interface to allow multi-parameter fits like a gamma
       distribution. This would demand other sufficient statistics besides y
-      (e.g. y^2 for Gaussian w/ variance, log(y) for gamma).
+      (e.g. y^2 for Gaussian w/ variance, log(y) for gamma). It might be worth
+      putting off until const generics.
 - [ ] Exact Z-scores by re-minimizing after fixing each parameter to zero (?)
+      (whether or not is it appropriate to allow other parameters to re-fit is
+      probably application-dependent so perhaps we should remain agnostic)
 - [ ] Calculate/estimate dispersion parameter from the data
 - [ ] More rigorous convergence tests and options for termination
 
