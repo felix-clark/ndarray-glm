@@ -34,21 +34,20 @@ binomial = []
 # TODO: is rayon really needed? it should probably be a library feature
 # ndarray = { version = "0.13", features = ["blas", "rayon"]}
 ndarray = { version = "0.13", features = ["blas", "approx"] }
-ndarray-linalg = { version = "0.12" }
+# ndarray-linalg = { version = "0.12" }
 # The version with the latest openblas-src and blas-src versions doesn't have a crate yet.
-# ndarray-linalg = { git = "https://github.com/rust-ndarray/ndarray-linalg" }
+ndarray-linalg = { git = "https://github.com/rust-ndarray/ndarray-linalg" }
 num-traits = "0.2"
 thiserror = "1.0"
 itertools = "0.9"
 
 [dev-dependencies]
 # pick a backend to run tests
-blas-src = { version = "0.4", default-features = false, features = ["openblas"] }
-# blas-src = { version = "0.6", default-features = false, features = ["openblas"] }
-# ndarray-linalg = { version = "0.12", default-features = false, features = ["openblas-src"]}
-ndarray-linalg = { version = "0.12", default-features = false, features = ["openblas-static"]}
+# blas-src = { version = "0.4", default-features = false, features = ["openblas"] }
+blas-src = { version = "0.6", default-features = false, features = ["openblas"] }
+# ndarray-linalg = { version = "0.12", default-features = false, features = ["openblas-static"]}
 # the updates to blas versions have not been released in ndarray-linalg yet.
-# ndarray-linalg = { git = "https://github.com/rust-ndarray/ndarray-linalg", branch = "master", default-features = false, features = ["openblas-static"] }
+ndarray-linalg = { git = "https://github.com/rust-ndarray/ndarray-linalg", branch = "master", default-features = false, features = ["openblas-static"] }
 anyhow = "1.0"
 approx = "0.3"
 # including openblas-src causes linking errors with LAPACKE?
