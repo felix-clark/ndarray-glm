@@ -1,38 +1,20 @@
 //! Functions for solving linear regression
 
-use crate::{
-    glm::Glm,
-    link::{Canonical, Link},
-    model::Model,
-};
+use crate::{glm::Glm, link::Link, model::Model};
 use ndarray::Array1;
 use ndarray_linalg::Lapack;
 use num_traits::Float;
 
-/// Linear regression with constant variance.
-// pub struct Linear<F, L = Id>
-// where
-//     F: Float + Lapack,
-//     L: Link<F, Linear<F, L>>,
-// {
-//     _float: std::marker::PhantomData<F>,
-//     _link: std::marker::PhantomData<L>,
-// }
-pub struct Linear<L = Id>
+/// Linear regression with constant variance (Ordinary least squares).
+pub struct Linear<L = link::Id>
 where
-// L: Link<Linear<F, L>>,
-// L: Link<Linear<L>>,
+    L: Link<Linear<L>>,
 {
-    // _float: std::marker::PhantomData<F>,
     _link: std::marker::PhantomData<L>,
 }
 
-// impl<F, L> Glm<F> for Linear<F, L>
 impl<L> Glm for Linear<L>
 where
-    // F: Float + Lapack,
-    // L: LinLink,
-    // L: Link<F, Linear<F, L>>,
     L: Link<Linear<L>>,
 {
     // TODO: make this a separate trait to implement?
@@ -45,12 +27,12 @@ where
         F::from(y).unwrap()
     }
 
-    // the link function, identity
+    // the link function, canonically the identity
     fn link<F: Float>(y: F) -> F {
         L::func(y)
     }
 
-    // inverse link function, identity
+    // inverse link function, canonically the identity
     fn mean<F: Float>(lin_pred: F) -> F {
         L::inv_func(lin_pred)
     }
@@ -72,16 +54,23 @@ where
     }
 }
 
-/// The identity link function, which is canonical for linear regression.
-pub struct Id;
-/// The identity is the canonical link function so we don't have to manually implement everything.
-impl Canonical for Id {}
-impl Link<Linear> for Id {
-    fn func<F: Float>(y: F) -> F {
-        y
-    }
-    fn inv_func<F: Float>(lin_pred: F) -> F {
-        lin_pred
+mod link {
+    //! Link functions for linear regression.
+    use super::*;
+    use crate::link::{Canonical, Link};
+
+    /// The identity link function, which is canonical for linear regression.
+    pub struct Id;
+    /// The identity is the canonical link function so we don't have to manually
+    /// implement everything.
+    impl Canonical for Id {}
+    impl Link<Linear> for Id {
+        fn func<F: Float>(y: F) -> F {
+            y
+        }
+        fn inv_func<F: Float>(lin_pred: F) -> F {
+            lin_pred
+        }
     }
 }
 
