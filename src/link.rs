@@ -4,10 +4,11 @@ use crate::glm::Glm;
 use ndarray::Array1;
 use num_traits::Float;
 
-pub trait Link<F: Float, M: Glm<F>>: Transform {
+// pub trait Link<F: Float, M: Glm<F>>: Transform {
+pub trait Link<M: Glm>: Transform {
     // fn func<F: Float>(y: F) -> F;
-    fn func(y: F) -> F;
-    fn inv_func(lin_pred: F) -> F;
+    fn func<F: Float>(y: F) -> F;
+    fn inv_func<F: Float>(lin_pred: F) -> F;
     // TODO: parameter transform function, its derivatives, ..., propagate this info to the likelihood
     // the transformation function that takes the linear predictor to the
     // canonical parameter. Should always be identify for canonical link

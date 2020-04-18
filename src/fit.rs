@@ -14,7 +14,8 @@ use std::marker::PhantomData;
 #[derive(Debug)]
 pub struct Fit<M, F>
 where
-    M: Glm<F>,
+    // M: Glm<F>,
+    M: Glm,
     F: Float,
 {
     // we aren't now storing any type that uses the model type

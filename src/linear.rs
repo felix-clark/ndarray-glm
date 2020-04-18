@@ -10,46 +10,60 @@ use ndarray_linalg::Lapack;
 use num_traits::Float;
 
 /// Linear regression with constant variance.
-pub struct Linear<F, L = Id>
+// pub struct Linear<F, L = Id>
+// where
+//     F: Float + Lapack,
+//     L: Link<F, Linear<F, L>>,
+// {
+//     _float: std::marker::PhantomData<F>,
+//     _link: std::marker::PhantomData<L>,
+// }
+pub struct Linear<L = Id>
 where
-    F: Float + Lapack,
-    L: Link<F, Linear<F, L>>,
+// L: Link<Linear<F, L>>,
+// L: Link<Linear<L>>,
 {
-    _float: std::marker::PhantomData<F>,
+    // _float: std::marker::PhantomData<F>,
     _link: std::marker::PhantomData<L>,
 }
 
-impl<F, L> Glm<F> for Linear<F, L>
+// impl<F, L> Glm<F> for Linear<F, L>
+impl<L> Glm for Linear<L>
 where
-    F: Float + Lapack,
+    // F: Float + Lapack,
     // L: LinLink,
-    L: Link<F, Linear<F, L>>,
+    // L: Link<F, Linear<F, L>>,
+    L: Link<Linear<L>>,
 {
-    type Domain = F;
+    // TODO: make this a separate trait to implement?
+    // type Domain = F;
+    type Domain = f64;
 
-    fn y_float(y: Self::Domain) -> F {
-        y
+    fn y_float<F: Float>(y: Self::Domain) -> F {
+        // TODO: fix this when we fix the domain trait
+        // y
+        F::from(y).unwrap()
     }
 
     // the link function, identity
-    fn link(y: F) -> F {
+    fn link<F: Float>(y: F) -> F {
         L::func(y)
     }
 
     // inverse link function, identity
-    fn mean(lin_pred: F) -> F {
+    fn mean<F: Float>(lin_pred: F) -> F {
         L::inv_func(lin_pred)
     }
 
     // variance is not a function of the mean in OLS regression.
-    fn variance(_mean: F) -> F {
+    fn variance<F: Float>(_mean: F) -> F {
         F::one()
     }
 
     // This version doesn't have the variances - either setting them to 1 or
     // 1/2pi to simplify the expression. It returns a simple sum of squares.
     // It also misses a factor of 0.5 in the squares.
-    fn quasi_log_likelihood(data: &Model<Self, F>, regressors: &Array1<F>) -> F {
+    fn quasi_log_likelihood<F: Float + Lapack>(data: &Model<Self, F>, regressors: &Array1<F>) -> F {
         let lin_pred = &data.linear_predictor(&regressors);
         // TODO: transform the linear predictors in the event of a non-identity link function
         let squares: Array1<F> = (&data.y - lin_pred).map(|&d| d * d);
@@ -58,25 +72,43 @@ where
     }
 }
 
-// /// A trait describing link functions for linear regression.
-// pub trait LinLink {
-//     fn func<F: Float>(y: F) -> F;
-//     fn inv_func<F: Float>(lin_pred: F) -> F;
-//     // TODO: parameter transform function, its derivatives, ..., propagate this info to the likelihood
-//     // the transformation function that takes the linear predictor to the
-//     // canonical parameter. Should always be identify for canonical link
-//     // functions.
-//     fn canonical<F: Float>(lin_pred: Array1<F>) -> Array1<F>;
-// }
-
 /// The identity link function, which is canonical for linear regression.
 pub struct Id;
+/// The identity is the canonical link function so we don't have to manually implement everything.
 impl Canonical for Id {}
-impl<F: Float, M: Glm<F>> Link<F, M> for Id {
-    fn func(y: F) -> F {
+impl Link<Linear> for Id {
+    fn func<F: Float>(y: F) -> F {
         y
     }
-    fn inv_func(lin_pred: F) -> F {
+    fn inv_func<F: Float>(lin_pred: F) -> F {
         lin_pred
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Linear;
+    use crate::{error::RegressionResult, model::ModelBuilder};
+    use approx::assert_abs_diff_eq;
+    use ndarray::array;
+
+    #[test]
+    fn lin_reg() -> RegressionResult<()> {
+        let beta = array![0.3, 1.2, -0.5];
+        let data_x = array![[-0.1, 0.2], [0.7, 0.5], [3.2, 0.1]];
+        // let data_x = array![[-0.1, 0.1], [0.7, -0.7], [3.2, -3.2]];
+        let data_y = array![
+            beta[0] + beta[1] * data_x[[0, 0]] + beta[2] * data_x[[0, 1]],
+            beta[0] + beta[1] * data_x[[1, 0]] + beta[2] * data_x[[1, 1]],
+            beta[0] + beta[1] * data_x[[2, 0]] + beta[2] * data_x[[2, 1]],
+        ];
+        let model = ModelBuilder::<Linear, _>::new(&data_y, &data_x)
+            .max_iter(10)
+            .build()?;
+        let fit = model.fit()?;
+        dbg!(fit.n_iter);
+        // This is failing within the default tolerance
+        assert_abs_diff_eq!(beta, fit.result, epsilon = 64.0 * std::f64::EPSILON);
+        Ok(())
     }
 }

@@ -17,10 +17,9 @@ where
     _unsigned: PhantomData<D>,
 }
 
-impl<D, F> Glm<F> for Poisson<D>
+impl<D> Glm for Poisson<D>
 where
     D: Unsigned + ToPrimitive,
-    F: Float + Lapack,
 {
     // TODO: this could be relaxed to a float with only mild changes, although
     // it would require checking that 0 <= y <= 1.
@@ -28,26 +27,29 @@ where
     // Should this be a generic unsigned integer type?
     type Domain = D;
 
-    fn y_float(y: Self::Domain) -> F {
+    fn y_float<F: Float>(y: Self::Domain) -> F {
         F::from(y).unwrap()
     }
 
     // the link function, the logarithm
-    fn link(y: F) -> F {
+    fn link<F: Float>(y: F) -> F {
         Float::ln(y)
     }
 
     // inverse link function, exponential
-    fn mean(lin_pred: F) -> F {
+    fn mean<F: Float>(lin_pred: F) -> F {
         lin_pred.exp()
     }
 
     // var = mu
-    fn variance(mean: F) -> F {
+    fn variance<F: Float>(mean: F) -> F {
         mean
     }
 
-    fn quasi_log_likelihood(data: &Model<Self, F>, regressors: &Array1<F>) -> F {
+    fn quasi_log_likelihood<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
+    where
+        F: Float + Lapack,
+    {
         Self::log_likelihood(data, regressors)
     }
 }
@@ -75,5 +77,27 @@ where
             &data.y * &linear_predictor - linear_predictor.map(|tx| tx.exp());
         let l2_term = data.l2_like_term(regressors);
         log_like_terms.sum() + l2_term
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{error::RegressionResult, model::ModelBuilder, poisson::Poisson};
+    use approx::assert_abs_diff_eq;
+    use ndarray::array;
+
+    #[test]
+    fn poisson_reg() -> RegressionResult<()> {
+        let ln2 = f64::ln(2.);
+        let beta = array![0., ln2, -ln2];
+        let data_x = array![[1., 0.], [1., 1.], [0., 1.], [0., 1.]];
+        let data_y = array![2, 1, 0, 1];
+        let model = ModelBuilder::<Poisson<u32>, _>::new(&data_y, &data_x)
+            .max_iter(10)
+            .build()?;
+        let fit = model.fit()?;
+        dbg!(fit.n_iter);
+        assert_abs_diff_eq!(beta, fit.result, epsilon = std::f32::EPSILON as f64);
+        Ok(())
     }
 }

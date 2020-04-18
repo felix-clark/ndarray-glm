@@ -8,7 +8,8 @@ use num_traits::Float;
 use std::marker::PhantomData;
 
 // Does F need 'static + Float?
-pub trait Glm<F: Float> {
+// pub trait Glm<F: Float> {
+pub trait Glm {
     // the domain of the model
     // i.e. integer for Poisson, float for Linear, bool for logistic
     // TODO: perhaps create a custom Domain type or trait to deal with constraints
@@ -18,32 +19,33 @@ pub trait Glm<F: Float> {
     type Domain;
 
     /// Converts the domain to a floating-point value for IRLS
-    fn y_float(y: Self::Domain) -> F;
+    fn y_float<F: Float>(y: Self::Domain) -> F;
 
     // TODO: a function to check if a Y-value is valid
 
     /// the link function
     // fn link<F: 'static + Float>(y: Self::Domain) -> F;
-    fn link(y: F) -> F;
+    fn link<F: Float>(y: F) -> F;
 
     // TODO: return both mean and variance as function of eta at once and avoid FPE
 
     /// inverse link function which maps the linear predictors to the expected value of the prediction.
-    fn mean(x: F) -> F;
+    fn mean<F: Float>(x: F) -> F;
 
     /// The variance as a function of the mean. This should be related to the
     /// Laplacian of the log-partition function, or in other words, the
     /// derivative of the inverse link function mu = g^{-1}(eta).
-    fn variance(mean: F) -> F;
+    fn variance<F: Float>(mean: F) -> F;
 
     /// Returns the log-likelihood if it is well-defined. If not (like in
     /// unweighted OLS) returns an objective function to be maximized.
-    fn quasi_log_likelihood(data: &Model<Self, F>, regressors: &Array1<F>) -> F
+    fn quasi_log_likelihood<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
     where
+        F: Float + Lapack,
         Self: Sized;
 
     /// Do the regression and return a result. Returns object holding fit result.
-    fn regression(data: &Model<Self, F>) -> Result<Fit<Self, F>, RegressionError>
+    fn regression<F>(data: &Model<Self, F>) -> Result<Fit<Self, F>, RegressionError>
     where
         F: 'static + Float + Lapack,
         Self: Sized,
@@ -88,9 +90,10 @@ pub trait Glm<F: Float> {
 // to the extra parameter. If the dispersion term can be calculated, this can be
 // fixed, although it will be best to separate the true likelihood from an
 // effective one for minimization.
-pub trait Likelihood<M, F>: Glm<F>
+// pub trait Likelihood<M, F>: Glm<F>
+pub trait Likelihood<M, F>: Glm
 where
-    M: Glm<F>,
+    M: Glm,
     F: Float,
 {
     /// logarithm of the likelihood given the data and fit parameters
@@ -101,7 +104,8 @@ where
 /// reaching a specified tolerance.
 struct Irls<'a, M, F>
 where
-    M: Glm<F>,
+    // M: Glm<F>,
+    M: Glm,
     F: 'static + Float + Lapack,
     Array2<F>: SolveH<F>,
 {
@@ -115,7 +119,8 @@ where
 
 impl<'a, M, F> Irls<'a, M, F>
 where
-    M: Glm<F>,
+    // M: Glm<F>,
+    M: Glm,
     F: 'static + Float + Lapack,
     Array2<F>: SolveH<F>,
 {
@@ -154,7 +159,8 @@ where
 
 impl<'a, M, F> Iterator for Irls<'a, M, F>
 where
-    M: Glm<F>,
+    // M: Glm<F>,
+    M: Glm,
     F: 'static + Float + Lapack,
     Array2<F>: SolveH<F>,
 {

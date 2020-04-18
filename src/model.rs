@@ -15,7 +15,8 @@ use std::marker::PhantomData;
 /// Holds the data and configuration settings for a regression
 pub struct Model<M, F>
 where
-    M: Glm<F>,
+    // M: Glm<F>,
+    M: Glm,
     F: 'static + Float,
 {
     model: PhantomData<M>,
@@ -34,7 +35,8 @@ where
 
 impl<M, F> Model<M, F>
 where
-    M: Glm<F>,
+    // M: Glm<F>,
+    M: Glm,
     F: Float + Lapack,
 {
     pub fn fit(&self) -> Result<Fit<M, F>, RegressionError> {
@@ -59,7 +61,8 @@ where
 
 pub struct ModelBuilder<'a, M, F>
 where
-    M: Glm<F>,
+    // M: Glm<F>,
+    M: Glm,
     F: 'static + Float,
 {
     model: PhantomData<M>,
@@ -80,9 +83,11 @@ where
 /// A builder to generate a Model object
 impl<'a, M, F> ModelBuilder<'a, M, F>
 where
-    M: Glm<F>,
+    // M: Glm<F>,
+    M: Glm,
     F: 'static + Float,
-    <M as Glm<F>>::Domain: Copy,
+    // <M as Glm<F>>::Domain: Copy,
+    <M as Glm>::Domain: Copy,
 {
     pub fn new(data_y: &'a Array1<M::Domain>, data_x: &'a Array2<F>) -> Self {
         // the number of predictors
@@ -142,7 +147,8 @@ where
 
     pub fn build(self) -> RegressionResult<Model<M, F>>
     where
-        M: Glm<F>,
+        // M: Glm<F>,
+        M: Glm,
         F: Float,
         Array2<F>: DeterminantH,
         <<Array2<F> as DeterminantH>::Elem as Scalar>::Real: std::convert::Into<F>,
