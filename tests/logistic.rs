@@ -7,7 +7,7 @@ use ndarray_glm::{logistic::Logistic, model::ModelBuilder};
 
 #[test]
 // this data caused an infinite loop with step halving
-fn test_log_termination_0() -> Result<()> {
+fn log_termination_0() -> Result<()> {
     let y: Array1<bool> = array![
         true, true, true, true, true, true, true, true, true, false, false, false, false, false,
         false, false, false, false, false, false, false, false, false, false, false, false, false,
@@ -271,7 +271,7 @@ fn test_log_termination_0() -> Result<()> {
 
 #[test]
 // this data caused an infinite loop with step halving
-fn test_log_termination_1() -> Result<()> {
+fn log_termination_1() -> Result<()> {
     let y: Array1<bool> = array![
         true, true, true, true, true, true, true, true, true, false, false, false, false, false,
         false, false, false, false, false, false, false, false, false, false, false, false, false,
@@ -534,7 +534,7 @@ fn test_log_termination_1() -> Result<()> {
 }
 
 #[test]
-fn test_log_regularization() -> Result<()> {
+fn log_regularization() -> Result<()> {
     let y: Array1<bool> = array![
         true, true, true, true, true, true, true, true, false, false, false, false, false, false,
         false, false, false, false, false, false, false, false, false, false, false, false, false,
