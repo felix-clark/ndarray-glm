@@ -31,7 +31,7 @@ pub trait Glm {
     /// Do the regression and return a result. Returns object holding fit result.
     fn regression<F>(data: &Model<Self, F>) -> Result<Fit<Self, F>, RegressionError>
     where
-        F: 'static + Float + Lapack,
+        F: Float + Lapack,
         Self: Sized,
     {
         let n_data = data.y.len();
@@ -49,6 +49,8 @@ pub trait Glm {
         let irls: Irls<Self, F> = Irls::new(&data, initial);
 
         for iteration in irls {
+            // TODO: This assignment at every loop is probably unnecessary since
+            // we can simply grab the last guess of the IRLS.
             result.assign(&iteration?);
             n_iter += 1;
         }
@@ -77,7 +79,8 @@ pub trait Response<M: Glm> {
     fn to_float<F: Float>(self) -> F;
 
     // TODO: a function to check if a Y-value is valid? This may be useful for
-    // some models.
+    // some models. Actually changing the signature of to_float() to return a
+    // result should serve this purpose.
 }
 
 /// A subtrait for GLMs that have an unambiguous likelihood function.
@@ -86,7 +89,6 @@ pub trait Response<M: Glm> {
 // to the extra parameter. If the dispersion term can be calculated, this can be
 // fixed, although it will be best to separate the true likelihood from an
 // effective one for minimization.
-// pub trait Likelihood<M, F>: Glm<F>
 pub trait Likelihood<M, F>: Glm
 where
     M: Glm,
@@ -100,9 +102,8 @@ where
 /// reaching a specified tolerance.
 struct Irls<'a, M, F>
 where
-    // M: Glm<F>,
     M: Glm,
-    F: 'static + Float + Lapack,
+    F: Float + Lapack,
     Array2<F>: SolveH<F>,
 {
     data: &'a Model<M, F>,
@@ -115,9 +116,8 @@ where
 
 impl<'a, M, F> Irls<'a, M, F>
 where
-    // M: Glm<F>,
     M: Glm,
-    F: 'static + Float + Lapack,
+    F: Float + Lapack,
     Array2<F>: SolveH<F>,
 {
     fn new(data: &'a Model<M, F>, initial: Array1<F>) -> Self {
@@ -130,7 +130,6 @@ where
             n_iter: 0,
             // As a ratio with the variance, this epsilon could be too small.
             tolerance,
-            // last_like: -F::infinity(),
             last_like: init_like,
         }
     }
@@ -155,13 +154,13 @@ where
 
 impl<'a, M, F> Iterator for Irls<'a, M, F>
 where
-    // M: Glm<F>,
     M: Glm,
-    F: 'static + Float + Lapack,
+    F: Float + Lapack,
     Array2<F>: SolveH<F>,
 {
     type Item = Result<Array1<F>, RegressionError>;
 
+    /// Acquire the next IRLS step based on the previous one.
     fn next(&mut self) -> Option<Self::Item> {
         // The linear predictor without control terms
         let linear_predictor_no_control: Array1<F> = self.data.x.dot(&self.guess);
@@ -227,6 +226,7 @@ where
 
         // apply step halving if rel < 0, which means the likelihood has decreased.
         // Don't terminate if rel gets back to within tolerance as a result of this.
+        // TODO: make the maximum step halves customizable
         const MAX_STEP_HALVES: usize = 6;
         let mut step_halves = 0;
         let half: F = F::from(0.5).unwrap();

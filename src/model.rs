@@ -121,9 +121,8 @@ where
 impl<'a, M, Y, F> ModelBuilderData<'a, M, Y, F>
 where
     M: Glm,
-    Y: Response<M>,
+    Y: Response<M> + Copy,
     F: Float,
-    Y: Copy,
 {
     /// Represents an offset added to the linear predictor for each data point.
     /// This can be used to control for fixed effects or in multi-level models.
