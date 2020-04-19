@@ -39,15 +39,7 @@ impl<L> Glm for Logistic<L>
 where
     L: Link<Logistic<L>>,
 {
-    /// the link function, canonically logit
-    fn link<F: Float>(y: F) -> F {
-        L::func(y)
-    }
-
-    /// inverse link function, canonically expit
-    fn mean<F: Float>(lin_pred: F) -> F {
-        L::inv_func(lin_pred)
-    }
+    type Link = L;
 
     /// var = mu*(1-mu)
     fn variance<F: Float>(mean: F) -> F {

@@ -24,14 +24,8 @@ impl<const N: BinDom> Response<Binomial<N>> for BinDom {
 }
 
 impl<const N: BinDom> Glm for Binomial<N> {
-    /// The canonical link function is a scaled logit
-    fn link<F: Float>(y: F) -> F {
-        Float::ln(y / (F::from(N).unwrap() - y))
-    }
-
-    fn mean<F: Float>(lin_pred: F) -> F {
-        F::from(N).unwrap() / (F::one() + (-lin_pred).exp())
-    }
+    /// Only the canonical link function is available for binomial regression.
+    type Link = link::Logit;
 
     fn variance<F: Float>(mean: F) -> F {
         let n_float: F = F::from(N).unwrap();
@@ -49,6 +43,23 @@ impl<const N: BinDom> Glm for Binomial<N> {
         let log_like_sum = (&data.y * &lin_pred).sum()
             - F::from(N).unwrap() * lin_pred.mapv(Float::exp).mapv(F::ln_1p).sum();
         log_like_sum + data.l2_like_term(regressors)
+    }
+}
+
+pub mod link {
+    use super::{BinDom, Binomial};
+    use crate::link::{Canonical, Link};
+    use num_traits::Float;
+
+    pub struct Logit {}
+    impl Canonical for Logit {}
+    impl<const N: BinDom> Link<Binomial<N>> for Logit {
+        fn func<F: Float>(y: F) -> F {
+            Float::ln(y / (F::from(N).unwrap() - y))
+        }
+        fn inv_func<F: Float>(lin_pred: F) -> F {
+            F::from(N).unwrap() / (F::one() + (-lin_pred).exp())
+        }
     }
 }
 

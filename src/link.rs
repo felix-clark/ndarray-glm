@@ -4,29 +4,36 @@ use crate::glm::Glm;
 use ndarray::Array1;
 use num_traits::Float;
 
-// pub trait Link<F: Float, M: Glm<F>>: Transform {
+/// Describes the functions to map to and from the linear predictors and the
+/// expectation of the response. It is constrained mathematically by the
+/// response distribution and the transformation of the linear predictor.
 pub trait Link<M: Glm>: Transform {
-    // fn func<F: Float>(y: F) -> F;
+    /// Maps the expectation value of the response variable to the linear predictor.
     fn func<F: Float>(y: F) -> F;
+    /// Maps the linear predictor to the expectation value of the response.
     fn inv_func<F: Float>(lin_pred: F) -> F;
-    // TODO: parameter transform function, its derivatives, ..., propagate this info to the likelihood
-    // the transformation function that takes the linear predictor to the
-    // canonical parameter. Should always be identify for canonical link
-    // functions.
-    // fn canonical(lin_pred: Array1<F>) -> Array1<F>;
 }
 
-/// Describes the transformation of the linear parameters and its derivatives.
+/// Describes the transformation of the linear parameters into the natural
+/// parameter and the derivatives of this function.
 pub trait Transform {
-    fn canonical<F: Float>(lin_pred: Array1<F>) -> Array1<F>;
+    /// The natural parameter(s) of the exponential distribution as a function
+    /// of the linear predictor. For canonical link functions this is the
+    /// identity.
+    fn nat_param<F: Float>(lin_pred: Array1<F>) -> Array1<F>;
 }
 
+/// The canonical transformation by definition equates the linear predictor with
+/// the natural parameter of the response distribution. Implementing this trait
+/// for a link function automatically defines the trivial transformation
+/// functions.
 pub trait Canonical {}
 impl<T> Transform for T
 where
     T: Canonical,
 {
-    fn canonical<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
+    /// By defintion this function is the identity function for canonical links.
+    fn nat_param<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
         lin_pred
     }
 }

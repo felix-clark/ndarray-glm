@@ -1,6 +1,7 @@
 //! trait defining a generalized linear model and providing common functionality
 //! Models are fit such that E[Y] = g^-1(X*B) where g is the link function.
 
+use crate::link::Link;
 use crate::{error::RegressionError, fit::Fit, model::Model};
 use ndarray::{Array1, Array2, ArrayViewMut1};
 use ndarray_linalg::{lapack::Lapack, SolveH};
@@ -9,16 +10,28 @@ use std::marker::PhantomData;
 
 /// Trait describing generalized linear model that enables the IRLS algorithm
 /// for fitting.
-pub trait Glm {
-    /// the link function
-    fn link<F: Float>(y: F) -> F;
+pub trait Glm: Sized {
+    /// The link function type of the GLM instantiation. Implementations specify
+    /// this manually so that the provided methods can be called in this trait
+    /// without necessitating a trait parameter.
+    type Link: Link<Self>;
 
-    /// inverse link function which maps the linear predictors to the expected value of the prediction.
-    fn mean<F: Float>(x: F) -> F;
+    /// The link function which maps the expected value of the response variable
+    /// to the linear predictor.
+    fn link<F: Float>(y: F) -> F {
+        Self::Link::func(y)
+    }
+
+    /// The inverse of the link function which maps the linear predictors to the
+    /// expected value of the prediction.
+    fn mean<F: Float>(lin_pred: F) -> F {
+        Self::Link::inv_func(lin_pred)
+    }
 
     /// The variance as a function of the mean. This should be related to the
     /// Laplacian of the log-partition function, or in other words, the
-    /// derivative of the inverse link function mu = g^{-1}(eta).
+    /// derivative of the inverse link function mu = g^{-1}(eta). This is unique
+    /// to each response function, but should not depend on the link function.
     fn variance<F: Float>(mean: F) -> F;
 
     /// Returns the log-likelihood if it is well-defined. If not (like in

@@ -35,15 +35,7 @@ impl<L> Glm for Linear<L>
 where
     L: Link<Linear<L>>,
 {
-    /// the link function, canonically the identity
-    fn link<F: Float>(y: F) -> F {
-        L::func(y)
-    }
-
-    /// inverse link function, canonically the identity
-    fn mean<F: Float>(lin_pred: F) -> F {
-        L::inv_func(lin_pred)
-    }
+    type Link = L;
 
     /// variance is not a function of the mean in OLS regression.
     fn variance<F: Float>(_mean: F) -> F {

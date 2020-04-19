@@ -34,15 +34,7 @@ impl<L> Glm for Poisson<L>
 where
     L: Link<Poisson<L>>,
 {
-    /// the link function, canonically the logarithm.
-    fn link<F: Float>(y: F) -> F {
-        L::func(y)
-    }
-
-    /// inverse link function, canonically exponential.
-    fn mean<F: Float>(lin_pred: F) -> F {
-        L::inv_func(lin_pred)
-    }
+    type Link = L;
 
     /// The variance of a Poisson variable is equal to its mean.
     fn variance<F: Float>(mean: F) -> F {
