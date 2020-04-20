@@ -1,11 +1,7 @@
 //! Regression with a binomial response function. The N parameter must be known ahead of time.
 //! This submodule uses const_generics, available only in nightly rust, and must
 //! be activated with the "binomial" feature option.
-use crate::{
-    glm::{Glm, Response},
-    link::Transform,
-    model::Model,
-};
+use crate::glm::{Glm, Response};
 use ndarray::Array1;
 use ndarray_linalg::Lapack;
 use num_traits::Float;
@@ -35,16 +31,13 @@ impl<const N: BinDom> Glm for Binomial<N> {
 
     /// The binomial likelihood includes a BetaLn() term of N and y, which can
     /// be skipped for parameter minimization.
-    fn log_like_params<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
+    fn log_like_natural<F>(y: &Array1<F>, logit_p: &Array1<F>) -> F
     where
         F: Float + Lapack,
     {
-        let lin_pred: Array1<F> = data.linear_predictor(&regressors);
-        // When generalizing link functions we'll need to make sure to change this
-        let eta: Array1<F> = link::Logit::nat_param(lin_pred);
         // in the canonical version, the natural parameter is logit(p)
-        let log_like_sum = (&data.y * &eta).sum()
-            - F::from(N).unwrap() * eta.mapv_into(Float::exp).mapv_into(F::ln_1p).sum();
+        let log_like_sum = (y * logit_p).sum()
+            - F::from(N).unwrap() * logit_p.mapv(Float::exp).mapv_into(F::ln_1p).sum();
         log_like_sum
     }
 }

@@ -46,39 +46,16 @@ where
         mean * (F::one() - mean)
     }
 
-    /// Logistic regression has no additional terms to throw away so this just
-    /// uses the full likelihood.
-    fn log_like_params<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
+    fn log_like_natural<F>(y: &Array1<F>, logit_p: &Array1<F>) -> F
     where
         F: Float + Lapack,
     {
-        Self::log_likelihood(data, regressors)
-    }
-}
-
-impl<F, L> Likelihood<Self, F> for Logistic<L>
-where
-    F: Float + Lapack,
-    L: Link<Logistic<L>>,
-{
-    // specialize LL for logistic regression
-    fn log_likelihood(data: &Model<Self, F>, regressors: &Array1<F>) -> F {
-        // TODO: this assertion should be a result, or these references should
-        // be stored in Fit so they can be checked ahead of time.
-        assert_eq!(
-            data.x.ncols(),
-            regressors.len(),
-            "must have same number of explanatory variables as regressors"
-        );
-
-        let linear_predictor = data.linear_predictor(regressors);
-        let eta = L::nat_param(linear_predictor);
-
         // initialize the log likelihood terms
-        let mut log_like_terms: Array1<F> = Array1::zeros(data.y.len());
+        let mut log_like_terms: Array1<F> = Array1::zeros(y.len());
+        // TODO: This can probably be re-written more elegantly now. We shouldn't need to pre-initialize the result.
         Zip::from(&mut log_like_terms)
-            .and(&data.y)
-            .and(&eta)
+            .and(y)
+            .and(logit_p)
             .apply(|l, &y, &wx| {
                 // Both of these expressions are mathematically identical.
                 // The distinction is made to avoid under/overflow.
@@ -90,6 +67,28 @@ where
                 *l = yt * xt - xt.exp().ln_1p()
             });
         log_like_terms.sum()
+    }
+}
+
+impl<F, L> Likelihood<Self, F> for Logistic<L>
+where
+    F: Float + Lapack,
+    L: Link<Logistic<L>>,
+{
+    // specialize LL for logistic regression
+    // TODO: This trait should be phased out entirely in favor of more general
+    // scoring methods.
+    fn log_likelihood(data: &Model<Self, F>, regressors: &Array1<F>) -> F {
+        // TODO: this assertion should be a result, or these references should
+        // be stored in Fit so they can be checked ahead of time.
+        assert_eq!(
+            data.x.ncols(),
+            regressors.len(),
+            "must have same number of explanatory variables as regressors"
+        );
+        let linear_predictor = data.linear_predictor(regressors);
+        let eta = L::nat_param(linear_predictor);
+        Self::log_like_natural(&data.y, &eta)
     }
 }
 

@@ -11,6 +11,9 @@ pub trait Link<M: Glm>: Transform {
     /// Maps the expectation value of the response variable to the linear predictor.
     fn func<F: Float>(y: Array1<F>) -> Array1<F>;
     /// Maps the linear predictor to the expectation value of the response.
+    // TODO: There may not be a point in using Array versions of these functions
+    // since clones are necessary anyway. Perhaps we could simply define the
+    // scalar function and use mapv().
     fn func_inv<F: Float>(lin_pred: Array1<F>) -> Array1<F>;
 }
 
@@ -21,6 +24,16 @@ pub trait Transform {
     /// of the linear predictor. For canonical link functions this is the
     /// identity.
     fn nat_param<F: Float>(lin_pred: Array1<F>) -> Array1<F>;
+    /// Adjust the error and variance terms of the likelihood function based on
+    /// the first and second derivatives of the transformation. The adjustment
+    /// is performed simultaneously. The linear predictor must be
+    /// un-transformed, i.e. it must be X*beta without the transformation
+    /// applied.
+    fn adjust_errors_variance<F: Float>(
+        errors: Array1<F>,
+        variance: Array1<F>,
+        lin_pred: &Array1<F>,
+    ) -> (Array1<F>, Array1<F>);
 }
 
 /// The canonical transformation by definition equates the linear predictor with
@@ -36,5 +49,14 @@ where
     #[inline]
     fn nat_param<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
         lin_pred
+    }
+    /// The canonical link function requires no transformation of the error and variance terms.
+    #[inline]
+    fn adjust_errors_variance<F: Float>(
+        errors: Array1<F>,
+        variance: Array1<F>,
+        _lin_pred: &Array1<F>,
+    ) -> (Array1<F>, Array1<F>) {
+        (errors, variance)
     }
 }

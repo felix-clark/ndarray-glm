@@ -41,11 +41,12 @@ where
         mean
     }
 
-    fn log_like_params<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
+    fn log_like_natural<F>(y: &Array1<F>, log_lambda: &Array1<F>) -> F
     where
         F: Float + Lapack,
     {
-        Self::log_likelihood(data, regressors)
+        let log_like_terms: Array1<F> = y * log_lambda - log_lambda.mapv(|tx| tx.exp());
+        log_like_terms.sum()
     }
 }
 
@@ -56,7 +57,8 @@ where
     F: Float + Lapack,
     L: Link<Poisson<L>>,
 {
-    // specialize LL for logistic regression
+    // specialize LL for poisson regression
+    // TODO: Phase this trait out entirely.
     fn log_likelihood(data: &Model<Self, F>, regressors: &Array1<F>) -> F {
         // TODO: this assertion should be a result, or these references should
         // be stored in Fit so they can be checked ahead of time.
@@ -68,9 +70,7 @@ where
 
         let linear_predictor = data.linear_predictor(regressors);
         let eta = L::nat_param(linear_predictor);
-
-        let log_like_terms: Array1<F> = &data.y * &eta - eta.mapv_into(|tx| tx.exp());
-        log_like_terms.sum()
+        Self::log_like_natural(&data.y, &eta)
     }
 }
 

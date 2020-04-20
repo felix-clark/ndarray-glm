@@ -1,7 +1,7 @@
 //! trait defining a generalized linear model and providing common functionality
 //! Models are fit such that E[Y] = g^-1(X*B) where g is the link function.
 
-use crate::link::Link;
+use crate::link::{Link, Transform};
 use crate::{
     error::{RegressionError, RegressionResult},
     fit::Fit,
@@ -38,13 +38,25 @@ pub trait Glm: Sized {
     /// to each response function, but should not depend on the link function.
     fn variance<F: Float>(mean: F) -> F;
 
-    /// Returns the likelihood function of the response distribution as a
-    /// function of the regression parameters. Terms that depend only on the
-    /// response variable `y` are dropped. This dispersion parameter is taken to
-    /// be 1, as it does not affect the IRLS steps.
+    // /// Returns the likelihood function of the response distribution as a
+    // /// function of the regression parameters.
     // TODO: A default implementation could be defined in terms of the
     // log-partition function.
-    fn log_like_params<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
+    // TODO: change the interface to only take y and the natural parameter eta.
+    // This will allow the Glm trait functionality to handle a non-canonical
+    // transformation.
+    // fn log_like_params<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
+    // where
+    //     F: Float + Lapack;
+
+    /// Returns the likelihood function of the response distribution as a
+    /// function of the response variable y and the natural parameters of each
+    /// observation. Terms that depend only on the response variable `y` are
+    /// dropped. This dispersion parameter is taken to be 1, as it does not
+    /// affect the IRLS steps.
+    // TODO: A default implementation could be written in terms of the log
+    // partition function, but in some cases this could be more expensive (?).
+    fn log_like_natural<F>(y: &Array1<F>, nat: &Array1<F>) -> F
     where
         F: Float + Lapack;
 
@@ -53,7 +65,10 @@ pub trait Glm: Sized {
     where
         F: Float + Lapack,
     {
-        (*data.reg).likelihood(Self::log_like_params(data, regressors), regressors)
+        let lin_pred = data.linear_predictor(&regressors);
+        // the likelihood prior to regularization
+        let l_unreg = Self::log_like_natural(&data.y, &Self::Link::nat_param(lin_pred));
+        (*data.reg).likelihood(l_unreg, regressors)
     }
 
     /// Do the regression and return a result. Returns object holding fit result.
@@ -117,6 +132,8 @@ pub trait Response<M: Glm> {
 // to the extra parameter. If the dispersion term can be calculated, this can be
 // fixed, although it will be best to separate the true likelihood from an
 // effective one for minimization.
+// TODO: This trait should be phased out, but it affects the Z-scores. That will
+// be changing too.
 pub trait Likelihood<M, F>: Glm
 where
     M: Glm,
@@ -178,18 +195,9 @@ where
         }
         Ok(next_guess)
     }
-}
 
-impl<'a, M, F> Iterator for Irls<'a, M, F>
-where
-    M: Glm,
-    F: Float + Lapack,
-    Array2<F>: SolveH<F>,
-{
-    type Item = RegressionResult<Array1<F>>;
-
-    /// Acquire the next IRLS step based on the previous one.
-    fn next(&mut self) -> Option<Self::Item> {
+    /// Returns the (LHS, RHS) of the IRLS update matrix equation.
+    fn irls_mat_vec(&self) -> (Array2<F>, Array1<F>) {
         // The linear predictor without control terms
         let linear_predictor_no_control: Array1<F> = self.data.x.dot(&self.guess);
         // the linear predictor given the model, including offsets if present
@@ -202,7 +210,9 @@ where
         // to repeat the matrix multiplication.
 
         // The prediction of y given the current model.
-        let predictor: Array1<F> = M::mean(linear_predictor);
+        // This does cause an unnecessary clone with an identity link, but we
+        // need the linear predictor around for the future.
+        let predictor: Array1<F> = M::mean(linear_predictor.clone());
 
         // The variances predicted by the model. This should have weights with
         // it and must be non-zero.
@@ -210,31 +220,48 @@ where
         // TODO: allow the variance conditioning to be a configurable parameter.
         let var_diag: Array1<F> = predictor.mapv(|mu| M::variance(mu) + F::epsilon());
 
+        // The errors represent the difference between observed and predicted.
+        let errors = &self.data.y - &predictor;
+
+        // Adjust the errors and variance using the appropriate derivatives of
+        // the link function.
+        let (errors, var_diag) =
+            M::Link::adjust_errors_variance(errors, var_diag, &linear_predictor);
+
         // X weighted by the model variance for each observation
         // This is really the negative Hessian of the likelihood.
         // When adding correlations between observations this statement will
         // need to be modified.
-        // FIXME: In general for non-canonical link function this should be the
-        // Fisher information matrix.
         let neg_hessian: Array2<F> = (&self.data.x.t() * &var_diag).dot(&self.data.x);
-        // Regularize the matrix term
-        let neg_hessian: Array2<F> = (*self.data.reg).irls_mat(neg_hessian, &self.guess);
 
         // This isn't quite the jacobian because the H*beta_old term is subtracted out.
         let rhs: Array1<F> = {
-            // NOTE: this isn't actually the residuals, which would be divided by
-            // the standard deviation.
-            let residuals = &self.data.y - &predictor;
-            // NOTE: This w*X should not include the linear offset.
-            let target: Array1<F> = (var_diag * linear_predictor_no_control) + &residuals;
-            // TODO: The L2 term cancels out of the Jacobian, but this may not
-            // be true for other forms of regularization.
+            // NOTE: This w*X should not include the linear offset, because it
+            // comes from the Hessian times the last guess.
+            let target: Array1<F> = (var_diag * linear_predictor_no_control) + errors;
             let target: Array1<F> = self.data.x.t().dot(&target);
             target
         };
+        // Regularize the matrix and vector terms
+        let lhs: Array2<F> = (*self.data.reg).irls_mat(neg_hessian, &self.guess);
         let rhs: Array1<F> = (*self.data.reg).irls_vec(rhs, &self.guess);
+        (lhs, rhs)
+    }
+}
 
-        let mut next_guess: Array1<F> = match neg_hessian.solveh_into(rhs) {
+impl<'a, M, F> Iterator for Irls<'a, M, F>
+where
+    M: Glm,
+    F: Float + Lapack,
+    Array2<F>: SolveH<F>,
+{
+    type Item = RegressionResult<Array1<F>>;
+
+    /// Acquire the next IRLS step based on the previous one.
+    fn next(&mut self) -> Option<Self::Item> {
+        let (irls_mat, irls_vec) = self.irls_mat_vec();
+        // let mut next_guess: Array1<F> = match neg_hessian.solveh_into(rhs) {
+        let mut next_guess: Array1<F> = match irls_mat.solveh_into(irls_vec) {
             Ok(solution) => solution,
             Err(err) => return Some(Err(err.into())),
         };

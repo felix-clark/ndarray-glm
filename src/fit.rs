@@ -4,17 +4,15 @@ use crate::{
     glm::{Glm, Likelihood},
     model::Model,
 };
-
-use ndarray::Array1;
+use ndarray::{Array1, Array2};
 use num_traits::Float;
 use std::marker::PhantomData;
 
 /// the result of a successful GLM fit
-/// TODO: finish generalizing, take ownership of Y and X data?
+/// TODO: finish generalizing, take ownership of model?
 #[derive(Debug)]
 pub struct Fit<M, F>
 where
-    // M: Glm<F>,
     M: Glm,
     F: Float,
 {
@@ -30,11 +28,30 @@ where
 
 impl<M, F> Fit<M, F>
 where
+    // TODO: M should only need Glm when we have general testing.
     M: Likelihood<M, F>,
     F: 'static + Float,
     F: std::fmt::Debug,
 {
+    /// Returns the expected value of Y given the input data X. This data need
+    /// not be the training data, so an option for linear offsets is provided.
+    pub fn expectation(&self, data_x: &Array2<F>, lin_off: Option<&Array1<F>>) -> Array1<F> {
+        let lin_pred: Array1<F> = data_x.dot(&self.result);
+        let lin_pred: Array1<F> = if let Some(off) = &lin_off {
+            lin_pred + *off
+        } else {
+            lin_pred
+        };
+        M::mean(lin_pred)
+    }
+
+    /// Returns the errors in the response variables given the model.
+    pub fn errors(&self, data: &Model<M, F>) -> Array1<F> {
+        &data.y - &self.expectation(&data.x, data.linear_offset.as_ref())
+    }
+
     /// return the signed Z-score for each regression parameter.
+    // TODO: phase this out in terms of more general tests.
     pub fn z_scores(&self, data: &Model<M, F>) -> Array1<F> {
         let model_like = M::log_likelihood(&data, &self.result);
         // -2 likelihood deviation is asymptotically chi^2 with ndf degrees of freedom.

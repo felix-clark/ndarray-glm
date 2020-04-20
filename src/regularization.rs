@@ -7,7 +7,7 @@ use num_traits::Float;
 /// Penalize the likelihood with a smooth function of the regression parameters.
 pub trait Regularize<F>
 where
-    F: Float + Lapack,
+    F: Float,
 {
     /// Defines the impact of the regularization approach on the likelihood.
     fn likelihood(&self, l: F, regressors: &Array1<F>) -> F;
@@ -23,7 +23,7 @@ where
 
 /// Represents a lack of regularization.
 pub struct Null {}
-impl<F: Float + Lapack> Regularize<F> for Null {
+impl<F: Float> Regularize<F> for Null {
     #[inline]
     fn likelihood(&self, l: F, _: &Array1<F>) -> F {
         l

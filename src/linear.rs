@@ -3,7 +3,7 @@
 use crate::{
     glm::{Glm, Response},
     link::Link,
-    model::Model,
+    // model::Model,
 };
 use ndarray::Array1;
 use ndarray_linalg::Lapack;
@@ -43,15 +43,11 @@ where
     }
 
     /// The likelihood is -1/2 times the sum of squared deviations.
-    fn log_like_params<F: Float + Lapack>(data: &Model<Self, F>, regressors: &Array1<F>) -> F {
-        let lin_pred: Array1<F> = data.linear_predictor(&regressors);
+    fn log_like_natural<F: Float + Lapack>(y: &Array1<F>, mu: &Array1<F>) -> F {
         // Usually OLS will just use the canonical link function. It would be
         // nice to specialize the canonical case to avoid mapping the identify
-        // function over the whole array. TODO: consider changing link and
-        // mean functions to act on arrays.
-        // let mu = lin_pred.mapv(Self::mean);
-        let mu = L::nat_param(lin_pred);
-        let squares: Array1<F> = (&data.y - &mu).map(|&d| d * d);
+        // function over the whole array.
+        let squares: Array1<F> = (y - mu).mapv_into(|d| d * d);
         -F::from(0.5).unwrap() * squares.sum()
     }
 }
