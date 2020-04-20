@@ -41,7 +41,7 @@ where
         mean
     }
 
-    fn quasi_log_likelihood<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
+    fn log_like_params<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
     where
         F: Float + Lapack,
     {
@@ -67,11 +67,10 @@ where
         );
 
         let linear_predictor = data.linear_predictor(regressors);
+        let eta = L::nat_param(linear_predictor);
 
-        let log_like_terms: Array1<F> =
-            &data.y * &linear_predictor - linear_predictor.map(|tx| tx.exp());
-        let l2_term = data.l2_like_term(regressors);
-        log_like_terms.sum() + l2_term
+        let log_like_terms: Array1<F> = &data.y * &eta - eta.mapv_into(|tx| tx.exp());
+        log_like_terms.sum()
     }
 }
 
@@ -79,17 +78,18 @@ pub mod link {
     //! Link functions for Poisson regression
     use super::Poisson;
     use crate::link::{Canonical, Link};
+    use ndarray::Array1;
     use num_traits::Float;
 
     /// The canonical link function of the Poisson response is the logarithm.
     pub struct Log {}
     impl Canonical for Log {}
     impl Link<Poisson<Log>> for Log {
-        fn func<F: Float>(y: F) -> F {
-            Float::ln(y)
+        fn func<F: Float>(y: Array1<F>) -> Array1<F> {
+            y.mapv_into(F::ln)
         }
-        fn inv_func<F: Float>(lin_pred: F) -> F {
-            lin_pred.exp()
+        fn func_inv<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
+            lin_pred.mapv_into(F::exp)
         }
     }
 }

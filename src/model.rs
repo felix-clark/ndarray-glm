@@ -4,6 +4,7 @@ use crate::{
     error::{RegressionError, RegressionResult},
     fit::Fit,
     glm::{Glm, Response},
+    regularization::{Null, Regularize, Ridge},
     utility::one_pad,
 };
 use ndarray::{Array1, Array2};
@@ -12,24 +13,24 @@ use ndarray_linalg::{types::Scalar, DeterminantH};
 use num_traits::Float;
 use std::marker::PhantomData;
 
-/// Holds the data and configuration settings for a regression
+/// Holds the data and configuration settings for a regression.
 pub struct Model<M, F>
 where
     M: Glm,
     F: Float,
 {
     model: PhantomData<M>,
-    // the observation data by event
+    /// the observation of response data by event
     pub y: Array1<F>,
-    // the regressor data with events in rows and instances in columns
+    /// the design matrix with events in rows and instances in columns
     pub x: Array2<F>,
-    // The offset in the linear predictor for each data point. This can be used
-    // to fix the effect of control variables.
+    /// The offset in the linear predictor for each data point. This can be used
+    /// to fix the effect of control variables.
     pub linear_offset: Option<Array1<F>>,
-    // the maximum number of iterations to try
+    /// the maximum number of iterations to try before failure.
     pub max_iter: Option<usize>,
-    // L2 regularization applied to all but the intercept term.
-    pub l2_reg: Array1<F>,
+    /// Regularization method
+    pub reg: Box<dyn Regularize<F>>,
 }
 
 impl<M, F> Model<M, F>
@@ -37,10 +38,15 @@ where
     M: Glm,
     F: Float + Lapack,
 {
-    pub fn fit(&self) -> Result<Fit<M, F>, RegressionError> {
+    /// Perform the regression and return a fit object holding the results.
+    pub fn fit(&self) -> RegressionResult<Fit<M, F>> {
         M::regression(&self)
     }
 
+    /// Returns the linear predictors, i.e. the design matrix multiplied by the
+    /// regression parameters. Each entry in the resulting array is the linear
+    /// predictor for a given observation. If linear offsets for each
+    /// observation are provided, these are added to the linear predictors
     pub fn linear_predictor(&self, regressors: &Array1<F>) -> Array1<F> {
         let linear_predictor: Array1<F> = self.x.dot(regressors);
         // Add linear offsets to the predictors if they are set
@@ -49,11 +55,6 @@ where
         } else {
             linear_predictor
         }
-    }
-
-    /// The contribution to the likelihood from the L2 term.
-    pub fn l2_like_term(&self, regressors: &Array1<F>) -> F {
-        -F::from(0.5).unwrap() * (&self.l2_reg * &regressors.map(|&b| b * b)).sum()
     }
 }
 
@@ -159,7 +160,7 @@ where
     pub fn build(self) -> RegressionResult<Model<M, F>>
     where
         M: Glm,
-        F: Float,
+        F: Float + Lapack,
         Array2<F>: DeterminantH,
         <<Array2<F> as DeterminantH>::Elem as Scalar>::Real: std::convert::Into<F>,
     {
@@ -205,15 +206,20 @@ where
         // convert to floating-point
         let data_y: Array1<F> = self.data_y.map(|&y| y.to_float());
 
-        // make the vector of L2 coefficients
-        let l2_diag: Array1<F> = {
-            let mut l2_diag: Array1<F> = Array1::<F>::from_elem(data_x.ncols(), self.l2_reg);
-            // if an intercept term is included it should not be subject to
-            // regularization.
-            if self.add_constant_term {
-                l2_diag[0] = F::zero();
-            }
-            l2_diag
+        let reg: Box<dyn Regularize<F>> = if self.l2_reg != F::zero() {
+            // make the vector of L2 coefficients
+            let l2_diag: Array1<F> = {
+                let mut l2_diag: Array1<F> = Array1::<F>::from_elem(data_x.ncols(), self.l2_reg);
+                // if an intercept term is included it should not be subject to
+                // regularization.
+                if self.add_constant_term {
+                    l2_diag[0] = F::zero();
+                }
+                l2_diag
+            };
+            Box::new(Ridge::from_diag(l2_diag))
+        } else {
+            Box::new(Null {})
         };
 
         Ok(Model {
@@ -222,7 +228,7 @@ where
             x: data_x,
             linear_offset: self.linear_offset,
             max_iter: self.max_iter,
-            l2_reg: l2_diag,
+            reg,
         })
     }
 }

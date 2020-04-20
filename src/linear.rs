@@ -42,15 +42,17 @@ where
         F::one()
     }
 
-    // This version doesn't have the variances - either setting them to 1 or
-    // 1/2pi to simplify the expression. It returns a simple sum of squares.
-    // It also misses a factor of 0.5 in the squares.
-    fn quasi_log_likelihood<F: Float + Lapack>(data: &Model<Self, F>, regressors: &Array1<F>) -> F {
-        let lin_pred = &data.linear_predictor(&regressors);
-        // TODO: transform the linear predictors in the event of a non-identity link function
-        let squares: Array1<F> = (&data.y - lin_pred).map(|&d| d * d);
-        let l2_term = data.l2_like_term(regressors);
-        -squares.sum() + l2_term
+    /// The likelihood is -1/2 times the sum of squared deviations.
+    fn log_like_params<F: Float + Lapack>(data: &Model<Self, F>, regressors: &Array1<F>) -> F {
+        let lin_pred: Array1<F> = data.linear_predictor(&regressors);
+        // Usually OLS will just use the canonical link function. It would be
+        // nice to specialize the canonical case to avoid mapping the identify
+        // function over the whole array. TODO: consider changing link and
+        // mean functions to act on arrays.
+        // let mu = lin_pred.mapv(Self::mean);
+        let mu = L::nat_param(lin_pred);
+        let squares: Array1<F> = (&data.y - &mu).map(|&d| d * d);
+        -F::from(0.5).unwrap() * squares.sum()
     }
 }
 
@@ -61,14 +63,15 @@ pub mod link {
 
     /// The identity link function, which is canonical for linear regression.
     pub struct Id;
-    /// The identity is the canonical link function so we don't have to manually
-    /// implement everything.
+    /// The identity is the canonical link function.
     impl Canonical for Id {}
     impl Link<Linear> for Id {
-        fn func<F: Float>(y: F) -> F {
+        #[inline]
+        fn func<F: Float>(y: Array1<F>) -> Array1<F> {
             y
         }
-        fn inv_func<F: Float>(lin_pred: F) -> F {
+        #[inline]
+        fn func_inv<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
             lin_pred
         }
     }

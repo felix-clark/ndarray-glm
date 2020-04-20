@@ -3,6 +3,7 @@
 //! be activated with the "binomial" feature option.
 use crate::{
     glm::{Glm, Response},
+    link::Transform,
     model::Model,
 };
 use ndarray::Array1;
@@ -34,31 +35,35 @@ impl<const N: BinDom> Glm for Binomial<N> {
 
     /// The binomial likelihood includes a BetaLn() term of N and y, which can
     /// be skipped for parameter minimization.
-    fn quasi_log_likelihood<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
+    fn log_like_params<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
     where
         F: Float + Lapack,
     {
         let lin_pred: Array1<F> = data.linear_predictor(&regressors);
+        // When generalizing link functions we'll need to make sure to change this
+        let eta: Array1<F> = link::Logit::nat_param(lin_pred);
         // in the canonical version, the natural parameter is logit(p)
-        let log_like_sum = (&data.y * &lin_pred).sum()
-            - F::from(N).unwrap() * lin_pred.mapv(Float::exp).mapv(F::ln_1p).sum();
-        log_like_sum + data.l2_like_term(regressors)
+        let log_like_sum = (&data.y * &eta).sum()
+            - F::from(N).unwrap() * eta.mapv_into(Float::exp).mapv_into(F::ln_1p).sum();
+        log_like_sum
     }
 }
 
 pub mod link {
-    use super::{BinDom, Binomial};
+    use super::*;
     use crate::link::{Canonical, Link};
     use num_traits::Float;
 
     pub struct Logit {}
     impl Canonical for Logit {}
     impl<const N: BinDom> Link<Binomial<N>> for Logit {
-        fn func<F: Float>(y: F) -> F {
-            Float::ln(y / (F::from(N).unwrap() - y))
+        fn func<F: Float>(y: Array1<F>) -> Array1<F> {
+            let n_float: F = F::from(N).unwrap();
+            y.mapv_into(|y| Float::ln(y / (n_float - y)))
         }
-        fn inv_func<F: Float>(lin_pred: F) -> F {
-            F::from(N).unwrap() / (F::one() + (-lin_pred).exp())
+        fn func_inv<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
+            let n_float: F = F::from(N).unwrap();
+            lin_pred.mapv_into(|xb| n_float / (F::one() + (-xb).exp()))
         }
     }
 }

@@ -15,5 +15,6 @@ pub mod link;
 pub mod logistic;
 pub mod model;
 pub mod poisson;
+mod regularization;
 pub mod standardize;
 mod utility;

@@ -2,8 +2,12 @@
 //! Models are fit such that E[Y] = g^-1(X*B) where g is the link function.
 
 use crate::link::Link;
-use crate::{error::RegressionError, fit::Fit, model::Model};
-use ndarray::{Array1, Array2, ArrayViewMut1};
+use crate::{
+    error::{RegressionError, RegressionResult},
+    fit::Fit,
+    model::Model,
+};
+use ndarray::{Array1, Array2};
 use ndarray_linalg::{lapack::Lapack, SolveH};
 use num_traits::Float;
 use std::marker::PhantomData;
@@ -18,14 +22,14 @@ pub trait Glm: Sized {
 
     /// The link function which maps the expected value of the response variable
     /// to the linear predictor.
-    fn link<F: Float>(y: F) -> F {
+    fn link<F: Float>(y: Array1<F>) -> Array1<F> {
         Self::Link::func(y)
     }
 
     /// The inverse of the link function which maps the linear predictors to the
     /// expected value of the prediction.
-    fn mean<F: Float>(lin_pred: F) -> F {
-        Self::Link::inv_func(lin_pred)
+    fn mean<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
+        Self::Link::func_inv(lin_pred)
     }
 
     /// The variance as a function of the mean. This should be related to the
@@ -34,15 +38,26 @@ pub trait Glm: Sized {
     /// to each response function, but should not depend on the link function.
     fn variance<F: Float>(mean: F) -> F;
 
-    /// Returns the log-likelihood if it is well-defined. If not (like in
-    /// unweighted OLS) returns an objective function to be maximized.
-    fn quasi_log_likelihood<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
+    /// Returns the likelihood function of the response distribution as a
+    /// function of the regression parameters. Terms that depend only on the
+    /// response variable `y` are dropped. This dispersion parameter is taken to
+    /// be 1, as it does not affect the IRLS steps.
+    // TODO: A default implementation could be defined in terms of the
+    // log-partition function.
+    fn log_like_params<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
+    where
+        F: Float + Lapack;
+
+    /// Returns the likelihood function including regularization terms.
+    fn log_like_reg<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
     where
         F: Float + Lapack,
-        Self: Sized;
+    {
+        (*data.reg).likelihood(Self::log_like_params(data, regressors), regressors)
+    }
 
     /// Do the regression and return a result. Returns object holding fit result.
-    fn regression<F>(data: &Model<Self, F>) -> Result<Fit<Self, F>, RegressionError>
+    fn regression<F>(data: &Model<Self, F>) -> RegressionResult<Fit<Self, F>>
     where
         F: Float + Lapack,
         Self: Sized,
@@ -135,7 +150,7 @@ where
 {
     fn new(data: &'a Model<M, F>, initial: Array1<F>) -> Self {
         let tolerance: F = F::epsilon(); // * F::from(data.y.len()).unwrap();
-        let init_like = M::quasi_log_likelihood(&data, &initial);
+        let init_like = M::log_like_reg(&data, &initial);
         Self {
             data,
             guess: initial,
@@ -171,7 +186,7 @@ where
     F: Float + Lapack,
     Array2<F>: SolveH<F>,
 {
-    type Item = Result<Array1<F>, RegressionError>;
+    type Item = RegressionResult<Array1<F>>;
 
     /// Acquire the next IRLS step based on the previous one.
     fn next(&mut self) -> Option<Self::Item> {
@@ -187,26 +202,23 @@ where
         // to repeat the matrix multiplication.
 
         // The prediction of y given the current model.
-        let predictor: Array1<F> = linear_predictor.mapv(M::mean);
+        let predictor: Array1<F> = M::mean(linear_predictor);
 
         // The variances predicted by the model. This should have weights with
         // it and must be non-zero.
         // This could become a full covariance with weights.
-        // TODO: implement a mean_and_var function to return both the mean and
-        // variance while avoiding over/underflow.
+        // TODO: allow the variance conditioning to be a configurable parameter.
         let var_diag: Array1<F> = predictor.mapv(|mu| M::variance(mu) + F::epsilon());
 
         // X weighted by the model variance for each observation
         // This is really the negative Hessian of the likelihood.
         // When adding correlations between observations this statement will
         // need to be modified.
-        let neg_hessian: Array2<F> = {
-            let mut hess: Array2<F> = (&self.data.x.t() * &var_diag).dot(&self.data.x);
-            // If L2 regularization is set, add lambda * I to the Hessian.
-            let mut hess_diag: ArrayViewMut1<F> = hess.diag_mut();
-            hess_diag += &self.data.l2_reg;
-            hess
-        };
+        // FIXME: In general for non-canonical link function this should be the
+        // Fisher information matrix.
+        let neg_hessian: Array2<F> = (&self.data.x.t() * &var_diag).dot(&self.data.x);
+        // Regularize the matrix term
+        let neg_hessian: Array2<F> = (*self.data.reg).irls_mat(neg_hessian, &self.guess);
 
         // This isn't quite the jacobian because the H*beta_old term is subtracted out.
         let rhs: Array1<F> = {
@@ -215,10 +227,12 @@ where
             let residuals = &self.data.y - &predictor;
             // NOTE: This w*X should not include the linear offset.
             let target: Array1<F> = (var_diag * linear_predictor_no_control) + &residuals;
-            // let target: Array1<F> = (var_diag * linear_predictor) + &residuals; // WRONG
+            // TODO: The L2 term cancels out of the Jacobian, but this may not
+            // be true for other forms of regularization.
             let target: Array1<F> = self.data.x.t().dot(&target);
             target
         };
+        let rhs: Array1<F> = (*self.data.reg).irls_vec(rhs, &self.guess);
 
         let mut next_guess: Array1<F> = match neg_hessian.solveh_into(rhs) {
             Ok(solution) => solution,
@@ -226,10 +240,11 @@ where
         };
 
         // NOTE: might be optimizable by not checking the likelihood until step
-        // = next_guess - &self.guess stops decreasing.
+        // = next_guess - &self.guess stops decreasing. There could be edge
+        // cases that lead to poor convergence.
         // Ideally we could only check the step difference but that might not be
         // as stable. Some parameters might be at different scales.
-        let mut like = M::quasi_log_likelihood(&self.data, &next_guess);
+        let mut like = M::log_like_reg(&self.data, &next_guess);
         // This should be positive for an improved guess
         let mut rel = (like - self.last_like) / (F::epsilon() + like.abs());
         // Terminate if the difference is close to zero
@@ -247,7 +262,7 @@ where
         while rel < -self.tolerance && step_halves < MAX_STEP_HALVES {
             let next_guess_sh = next_guess.map(|&x| x * (step_multiplier))
                 + &self.guess.map(|&x| x * (F::one() - step_multiplier));
-            like = M::quasi_log_likelihood(&self.data, &next_guess);
+            like = M::log_like_reg(&self.data, &next_guess);
             let next_rel = (like - self.last_like) / (F::epsilon() + like.abs());
             if next_rel >= rel {
                 next_guess = next_guess_sh;

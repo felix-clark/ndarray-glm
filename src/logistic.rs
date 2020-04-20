@@ -46,7 +46,9 @@ where
         mean * (F::one() - mean)
     }
 
-    fn quasi_log_likelihood<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
+    /// Logistic regression has no additional terms to throw away so this just
+    /// uses the full likelihood.
+    fn log_like_params<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
     where
         F: Float + Lapack,
     {
@@ -70,12 +72,13 @@ where
         );
 
         let linear_predictor = data.linear_predictor(regressors);
+        let eta = L::nat_param(linear_predictor);
 
         // initialize the log likelihood terms
         let mut log_like_terms: Array1<F> = Array1::zeros(data.y.len());
         Zip::from(&mut log_like_terms)
             .and(&data.y)
-            .and(&linear_predictor)
+            .and(&eta)
             .apply(|l, &y, &wx| {
                 // Both of these expressions are mathematically identical.
                 // The distinction is made to avoid under/overflow.
@@ -86,27 +89,28 @@ where
                 };
                 *l = yt * xt - xt.exp().ln_1p()
             });
-        let l2_term = data.l2_like_term(regressors);
-        log_like_terms.sum() + l2_term
+        log_like_terms.sum()
     }
 }
 
 pub mod link {
     //! Link functions for logistic regression
-    use super::Logistic;
+    use super::*;
     use crate::link::{Canonical, Link};
     use num_traits::Float;
 
     pub struct Logit {}
     impl Canonical for Logit {}
     impl Link<Logistic<Logit>> for Logit {
-        fn func<F: Float>(y: F) -> F {
-            F::ln(y / (F::one() - y))
+        fn func<F: Float>(y: Array1<F>) -> Array1<F> {
+            y.mapv_into(|y| F::ln(y / (F::one() - y)))
         }
-        fn inv_func<F: Float>(lin_pred: F) -> F {
-            (F::one() + (-lin_pred).exp()).recip()
+        fn func_inv<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
+            lin_pred.mapv_into(|xb| (F::one() + (-xb).exp()).recip())
         }
     }
+
+    // TODO: CLogLog link function. Possibly probit as well although we'd need inverse CDF of normal.
 }
 
 #[cfg(test)]

@@ -9,9 +9,9 @@ use num_traits::Float;
 /// response distribution and the transformation of the linear predictor.
 pub trait Link<M: Glm>: Transform {
     /// Maps the expectation value of the response variable to the linear predictor.
-    fn func<F: Float>(y: F) -> F;
+    fn func<F: Float>(y: Array1<F>) -> Array1<F>;
     /// Maps the linear predictor to the expectation value of the response.
-    fn inv_func<F: Float>(lin_pred: F) -> F;
+    fn func_inv<F: Float>(lin_pred: Array1<F>) -> Array1<F>;
 }
 
 /// Describes the transformation of the linear parameters into the natural
@@ -33,6 +33,7 @@ where
     T: Canonical,
 {
     /// By defintion this function is the identity function for canonical links.
+    #[inline]
     fn nat_param<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
         lin_pred
     }
