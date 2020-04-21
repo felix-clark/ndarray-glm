@@ -1,8 +1,12 @@
 //! Stores the fit results of the IRLS regression and provides functions that
 //! depend on the MLE estimate. These include statistical tests for goodness-of-fit.
 
-use crate::{glm::Glm, link::Link, model::Model};
-use ndarray::{Array1, Array2};
+use crate::{
+    glm::Glm,
+    link::{Link, Transform},
+    model::Model,
+};
+use ndarray::{array, Array1, Array2};
 use ndarray_linalg::{Lapack, Scalar};
 use num_traits::Float;
 
@@ -61,11 +65,12 @@ where
     // regularization be taken into account? Should the degrees of freedom be a
     // float?
     pub fn lr_test(&self) -> (F, usize) {
-        // TODO: The calculation could be made simpler and faster if it were
-        // guaranteed that each likelihood function was in the natural
-        // exponential form. However, that condition hasn't been enforced -- for
-        // instance, the OLS likelihood is the sum of squares.
-        let model_like = M::log_like_reg(&self.data, &self.result);
+        // The average y
+        let y_bar: F = self
+            .data
+            .y
+            .mean()
+            .expect("Should be able to take average of y values");
         // This is the beta that optimizes the null model. Assuming the
         // intercept is included, it is set to the link function of the mean y.
         // This can be checked by minimizing the likelihood for the null model.
@@ -73,22 +78,40 @@ where
         // using the average of y if L is in the natural exponential form. This
         // could be used to optimize this in the future, if all likelihoods are
         // in the natural exponential form as stated above.
-        let (null_beta, ndf): (Array1<F>, usize) = {
-            let mut beta = Array1::<F>::zeros(self.result.len());
-            let mut ndf = beta.len();
+        // let (null_beta, ndf): (Array1<F>, usize) = {
+        //     let mut beta = Array1::<F>::zeros(self.result.len());
+        //     let mut ndf = beta.len();
+        //     if self.data.use_intercept {
+        //         beta[0] = M::Link::func(y_bar);
+        //         ndf -= 1;
+        //     }
+        //     (beta, ndf)
+        // };
+        // let null_like = M::log_like_reg(&self.data, &null_beta);
+
+        // This approach assumes that the likelihood is in the natural
+        // exponential form as calculated by Glm::log_like_natural(). If that
+        // function is overridden and the values differ significantly, this
+        // approach will give incorrect results. If the likelihood has terms
+        // non-linear in y, then the likelihood must be calculated for every
+        // point rather than averaged.
+        let (null_beta0, ndf): (F, usize) = {
+            // The intercept term is zero if no intercept is used.
+            let mut beta0 = F::zero();
+            let mut ndf = self.result.len();
             if self.data.use_intercept {
-                beta[0] = M::Link::func(
-                    self.data
-                        .y
-                        .mean()
-                        .expect("Should be able to take average of y values"),
-                );
+                beta0 = M::Link::func(y_bar);
                 ndf -= 1;
             }
-            (beta, ndf)
+            (beta0, ndf)
         };
-        let null_like = M::log_like_reg(&self.data, &null_beta);
-        let lr = F::from(-2.).unwrap() * (null_like - model_like);
+        let null_like = {
+            // the natural parameter for a given beta0 = g(y_bar)
+            let eta_beta0 = M::Link::nat_param(array![null_beta0]);
+            let null_like_one = M::log_like_natural(&array![y_bar], &eta_beta0);
+            F::from(self.data.y.len()).unwrap() * null_like_one
+        };
+        let lr = F::from(-2.).unwrap() * (null_like - self.model_like);
         (lr, ndf)
     }
 
@@ -100,7 +123,6 @@ where
     /// return the signed Z-score for each regression parameter.
     // TODO: phase this out in terms of more general tests.
     pub fn z_scores(&self) -> Array1<F> {
-        let model_like = M::log_like_reg(&self.data, &self.result);
         // -2 likelihood deviation is asymptotically chi^2 with ndf degrees of freedom.
         let mut chi_sqs: Array1<F> = Array1::zeros(self.result.len());
         // TODO (style): move to (enumerated?) iterator
@@ -108,13 +130,13 @@ where
             let mut adjusted = self.result.clone();
             adjusted[i_like] = F::zero();
             let null_like = M::log_like_reg(&self.data, &adjusted);
-            let mut chi_sq = F::from(2.).unwrap() * (model_like - null_like);
+            let mut chi_sq = F::from(2.).unwrap() * (self.model_like - null_like);
             // This can happen due to FPE
             if chi_sq < F::zero() {
                 // this tolerance could need adjusting.
                 let tol = F::from(8.).unwrap()
-                    * (if model_like.abs() > F::one() {
-                        model_like.abs()
+                    * (if self.model_like.abs() > F::one() {
+                        self.model_like.abs()
                     } else {
                         F::one()
                     })
@@ -133,5 +155,24 @@ where
         let chis = chi_sqs.map(Scalar::sqrt);
         // return the Z-scores
         signs * chis
+    }
+
+    /// Returns the Akaike information criterion for the model fit.
+    // TODO: Should an effective number of parameters that takes regularization
+    // into acount be considered?
+    pub fn aic(&self) -> F {
+        F::from(2 * self.result.len()).unwrap() - F::from(2.).unwrap() * self.model_like
+    }
+
+    /// Returns the Bayesian information criterion for the model fit.
+    // TODO: Also consider the effect of regularization on this statistic.
+    // TODO: Wikipedia suggests that the variance should included in the number
+    // of parameters for multiple linear regression. Should an additional
+    // parameter be included for the dispersion parameter? This question does
+    // not affect the difference between two models fit with the methodology in
+    // this package.
+    pub fn bic(&self) -> F {
+        let logn = F::from(self.data.y.len()).unwrap().ln();
+        logn * F::from(self.result.len()).unwrap() - F::from(2.).unwrap() * self.model_like
     }
 }

@@ -5,7 +5,6 @@ use crate::{
     link::Link,
 };
 use ndarray::Array1;
-use ndarray_linalg::Lapack;
 use num_traits::{Float, ToPrimitive, Unsigned};
 use std::marker::PhantomData;
 
@@ -35,17 +34,14 @@ where
 {
     type Link = L;
 
+    /// The logarithm of the partition function for Poisson is the exponential of the natural parameter, which is the logarithm of the mean.
+    fn log_partition<F: Float>(nat_par: &Array1<F>) -> F {
+        nat_par.mapv(F::exp).sum()
+    }
+
     /// The variance of a Poisson variable is equal to its mean.
     fn variance<F: Float>(mean: F) -> F {
         mean
-    }
-
-    fn log_like_natural<F>(y: &Array1<F>, log_lambda: &Array1<F>) -> F
-    where
-        F: Float + Lapack,
-    {
-        let log_like_terms: Array1<F> = y * log_lambda - log_lambda.mapv(|tx| tx.exp());
-        log_like_terms.sum()
     }
 }
 

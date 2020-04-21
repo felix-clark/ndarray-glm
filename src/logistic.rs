@@ -40,11 +40,19 @@ where
 {
     type Link = L;
 
+    /// The log of the partition function for logistic regression. The natural
+    /// parameter is the logit of p.
+    fn log_partition<F: Float>(nat_par: &Array1<F>) -> F {
+        nat_par.mapv(|lp| lp.exp().ln_1p()).sum()
+    }
+
     /// var = mu*(1-mu)
     fn variance<F: Float>(mean: F) -> F {
         mean * (F::one() - mean)
     }
 
+    /// This function is specialized over the default provided by Glm in order
+    /// to handle over/underflow issues more precisely.
     fn log_like_natural<F>(y: &Array1<F>, logit_p: &Array1<F>) -> F
     where
         F: Float + Lapack,
@@ -108,6 +116,9 @@ mod tests {
         // test the significance function
         let significance = fit.z_scores();
         dbg!(significance);
+        let (lr, _) = fit.lr_test();
+        dbg!(&lr);
+        dbg!(&lr.sqrt());
         Ok(())
     }
 }

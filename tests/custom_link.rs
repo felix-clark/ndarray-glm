@@ -29,13 +29,9 @@ fn linear_with_lin_transform() -> Result<()> {
     );
     impl Transform for LinTran {
         fn nat_param<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
-            // eprintln!("in nat par");
-            // dbg!(&lin_pred);
             lin_pred.mapv_into(Self::func_inv)
         }
         fn d_nat_param<F: Float>(lin_pred: &Array1<F>) -> Array1<F> {
-            // eprintln!("in d");
-            // dbg!(&lin_pred);
             Array1::<F>::from_elem(lin_pred.len(), F::from(0.4).unwrap())
         }
     }
@@ -67,16 +63,15 @@ fn linear_with_lin_transform() -> Result<()> {
 #[test]
 fn linear_with_cubic() -> Result<()> {
     // An adjusted cube root link function to test on Linear regression. This
-    // fits to y ~ (a + b*x + 1)^3 - 1. The constant terms are to make the
-    // derivative non-zero.
+    // fits to y ~ (a + b*x)^3. If the starting guess is zero this fails to
+    // converge because the derivative of the link function is zero at the
+    // origin.
     struct Cbrt {}
     impl Link<Linear<Cbrt>> for Cbrt {
         fn func<F: Float>(y: F) -> F {
-            // (y + F::one()).cbrt() - F::one()
             y.cbrt()
         }
         fn func_inv<F: Float>(lin_pred: F) -> F {
-            // (lin_pred + F::one()).powi(3) - F::one()
             lin_pred.powi(3)
         }
     }
@@ -87,16 +82,10 @@ fn linear_with_cubic() -> Result<()> {
     );
     impl Transform for Cbrt {
         fn nat_param<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
-            // eprintln!("in nat par");
-            // dbg!(&lin_pred);
-            // lin_pred.mapv_into(|w| (w + F::one()).powi(3) - F::one())
             lin_pred.mapv_into(|w| w.powi(3))
         }
         fn d_nat_param<F: Float>(lin_pred: &Array1<F>) -> Array1<F> {
-            // eprintln!("in d");
-            // dbg!(&lin_pred);
             let three = F::from(3.).unwrap();
-            // lin_pred.mapv(|w| three * (w + F::one()).powi(2))
             lin_pred.mapv(|w| three * w.powi(2))
         }
     }

@@ -6,7 +6,6 @@ use crate::{
     // model::Model,
 };
 use ndarray::Array1;
-use ndarray_linalg::Lapack;
 use num_traits::{Float, ToPrimitive};
 use std::marker::PhantomData;
 
@@ -37,18 +36,16 @@ where
 {
     type Link = L;
 
+    /// Logarithm of the partition function in terms of the natural parameter,
+    /// which is mu for OLS.
+    fn log_partition<F: Float>(nat_par: &Array1<F>) -> F {
+        let half = F::from(0.5).unwrap();
+        half * nat_par.mapv(|mu| mu * mu).sum()
+    }
+
     /// variance is not a function of the mean in OLS regression.
     fn variance<F: Float>(_mean: F) -> F {
         F::one()
-    }
-
-    /// The likelihood is -1/2 times the sum of squared deviations.
-    fn log_like_natural<F: Float + Lapack>(y: &Array1<F>, mu: &Array1<F>) -> F {
-        // Usually OLS will just use the canonical link function. It would be
-        // nice to specialize the canonical case to avoid mapping the identify
-        // function over the whole array.
-        let squares: Array1<F> = (y - mu).mapv_into(|d| d * d);
-        -F::from(0.5).unwrap() * squares.sum()
     }
 }
 
@@ -97,6 +94,11 @@ mod tests {
         dbg!(fit.n_iter);
         // This is failing within the default tolerance
         assert_abs_diff_eq!(beta, fit.result, epsilon = 64.0 * std::f64::EPSILON);
+        let significance = fit.z_scores();
+        dbg!(significance);
+        let (lr, _): (f64, usize) = fit.lr_test();
+        dbg!(&lr);
+        dbg!(&lr.sqrt());
         Ok(())
     }
 }

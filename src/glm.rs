@@ -31,6 +31,11 @@ pub trait Glm: Sized {
         lin_pred.mapv(Self::Link::func_inv)
     }
 
+    /// The logarithm of the partition function in terms of the natural parameter.
+    /// This can be used to calculate the likelihood generally. All input terms
+    /// are summed over in the result.
+    fn log_partition<F: Float>(nat_par: &Array1<F>) -> F;
+
     /// The variance as a function of the mean. This should be related to the
     /// Laplacian of the log-partition function, or in other words, the
     /// derivative of the inverse link function mu = g^{-1}(eta). This is unique
@@ -46,7 +51,10 @@ pub trait Glm: Sized {
     // partition function, but in some cases this could be more expensive (?).
     fn log_like_natural<F>(y: &Array1<F>, nat: &Array1<F>) -> F
     where
-        F: Float + Lapack;
+        F: Float + Lapack,
+    {
+        (y * nat).sum() - Self::log_partition(nat)
+    }
 
     /// Returns the likelihood function including regularization terms.
     fn log_like_reg<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
