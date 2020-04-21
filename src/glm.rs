@@ -100,38 +100,41 @@ pub trait Glm: Sized {
         F: Float + Lapack,
         Self: Sized,
     {
-        let n_data = data.y.len();
-
         // TODO: determine first element based on fraction of cases in sample
         // This is only a possible improvement when the x points are centered
         // around zero, and may introduce more complications than it's worth. It
         // is further complicated by the possibility of linear offsets.
         // For logistic regression, beta = 0 is typically reasonable.
         let initial: Array1<F> = Self::init_guess(&data);
-        let mut n_iter: usize = 0;
 
+        // This represents the number of overall iterations
+        let mut n_iter: usize = 0;
+        // This is the number of steps tried, which includes those arising from step halving.
+        let mut n_steps: usize = 0;
         let mut result: Array1<F> = Array1::<F>::zeros(initial.len());
+        let mut model_like: F = -F::infinity();
 
         let irls: Irls<Self, F> = Irls::new(&data, initial);
 
         for iteration in irls {
-            // TODO: This assignment at every loop is probably unnecessary since
-            // we can simply grab the last guess of the IRLS.
-            result.assign(&iteration?);
+            let it_result = iteration?;
+            result.assign(&it_result.guess);
+            model_like = it_result.like;
+            // This number of iterations does not include any extras from step halving.
             n_iter += 1;
+            n_steps += it_result.steps;
         }
 
         // TODO: Possibly check if the likelihood is improved by setting each
         // parameter to zero, and if so set it to zero. This could be dependent
         // on the order of operations, however.
 
-        // ndf is guaranteed to be > 0 because of the underconstrained check
-        let ndf = n_data - result.len();
         Ok(Fit {
             data,
             result,
-            ndf,
+            model_like,
             n_iter,
+            n_steps,
         })
     }
 }
@@ -172,14 +175,14 @@ where
     Array2<F>: SolveH<F>,
 {
     fn new(data: &'a Model<M, F>, initial: Array1<F>) -> Self {
-        let tolerance: F = F::epsilon(); // * F::from(data.y.len()).unwrap();
+        // This tolerance is rather small, but it is used as a fraction of the likelihood.
+        let tolerance: F = F::epsilon();
         let init_like = M::log_like_reg(&data, &initial);
         Self {
             data,
             guess: initial,
             max_iter: data.max_iter.unwrap_or(50),
             n_iter: 0,
-            // As a ratio with the variance, this epsilon could be too small.
             tolerance,
             last_like: init_like,
         }
@@ -193,13 +196,18 @@ where
         next_like: F,
         extra_iter: usize,
     ) -> <Self as Iterator>::Item {
+        let n_steps: usize = 1 + extra_iter;
         self.guess.assign(&next_guess);
         self.last_like = next_like;
-        self.n_iter += 1 + extra_iter;
+        self.n_iter += n_steps;
         if self.n_iter > self.max_iter {
             return Err(RegressionError::MaxIter(self.max_iter));
         }
-        Ok(next_guess)
+        Ok(IrlsStep {
+            guess: next_guess,
+            like: next_like,
+            steps: n_steps,
+        })
     }
 
     /// Returns the (LHS, RHS) of the IRLS update matrix equation.
@@ -262,13 +270,25 @@ where
     }
 }
 
+/// Represents a step in the IRLS. Holds the current guess, likelihood, and the
+/// number of steps taken this iteration.
+struct IrlsStep<F> {
+    /// The current parameter guess.
+    guess: Array1<F>,
+    /// The log-likelihood of the current guess.
+    like: F,
+    /// The number of steps taken this iteration. Often equal to 1, but step
+    /// halving increases it.
+    steps: usize,
+}
+
 impl<'a, M, F> Iterator for Irls<'a, M, F>
 where
     M: Glm,
     F: Float + Lapack,
     Array2<F>: SolveH<F>,
 {
-    type Item = RegressionResult<Array1<F>>;
+    type Item = RegressionResult<IrlsStep<F>>;
 
     /// Acquire the next IRLS step based on the previous one.
     fn next(&mut self) -> Option<Self::Item> {

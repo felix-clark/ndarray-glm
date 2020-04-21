@@ -18,20 +18,26 @@ where
     pub data: Model<M, F>,
     /// The parameter values that maximize the likelihood as given by the IRLS regression.
     pub result: Array1<F>,
-    /// The number of data points minus number of free parameters.
-    pub ndf: usize,
-    /// The total number of iterations taken in the IRLS.
+    /// The value of the likelihood function for the fit result.
+    pub model_like: F,
+    /// The number of overall iterations taken in the IRLS.
     pub n_iter: usize,
+    /// The number of steps taken in the algorithm, which includes step halving.
+    pub n_steps: usize,
 }
 
 impl<M, F> Fit<M, F>
 where
-    // TODO: M should only need Glm when we have general testing.
-    // M: Likelihood<M, F>,
     M: Glm,
     F: 'static + Float + Lapack,
     F: std::fmt::Debug,
 {
+    /// Returns the number of degrees of freedom in the model, i.e. the number
+    /// of data points minus the number of parameters.
+    pub fn ndf(&self) -> usize {
+        self.data.y.len() - self.result.len()
+    }
+
     /// Returns the expected value of Y given the input data X. This data need
     /// not be the training data, so an option for linear offsets is provided.
     pub fn expectation(&self, data_x: &Array2<F>, lin_off: Option<&Array1<F>>) -> Array1<F> {
