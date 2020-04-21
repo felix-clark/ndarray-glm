@@ -2,6 +2,7 @@
 
 use crate::{
     glm::{Glm, Likelihood},
+    link::Link,
     model::Model,
 };
 use ndarray::{Array1, Array2};
@@ -42,7 +43,7 @@ where
         } else {
             lin_pred
         };
-        M::mean(lin_pred)
+        lin_pred.mapv_into(M::Link::func_inv)
     }
 
     /// Returns the errors in the response variables given the model.

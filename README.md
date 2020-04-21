@@ -89,7 +89,7 @@ regression it must be an unsigned integer.
   - [ ] Allow for off-diagonal correlations between points
   - [ ] Fix likelihood functions for weighted and/or correlated case
   - [ ] Re-visit the tolerance conditions for termination in these instances.
-- [ ] Non-canonical link functions
+- [X] Non-canonical link functions
 - [ ] Goodness-of-fit tests
   - [ ] Log-likelihood difference from saturated model (deviance analysis)
   - [ ] Aikaike and Bayesian information criteria
@@ -106,6 +106,7 @@ regression it must be an unsigned integer.
       probably application-dependent so perhaps we should remain agnostic)
 - [ ] Calculate/estimate dispersion parameter from the data
 - [ ] More rigorous convergence tests and options for termination
+- [ ] Logging system with configurable levels
 
 ## Reference
 

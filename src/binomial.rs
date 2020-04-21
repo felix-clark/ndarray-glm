@@ -50,13 +50,13 @@ pub mod link {
     pub struct Logit {}
     impl Canonical for Logit {}
     impl<const N: BinDom> Link<Binomial<N>> for Logit {
-        fn func<F: Float>(y: Array1<F>) -> Array1<F> {
+        fn func<F: Float>(y: F) -> F {
             let n_float: F = F::from(N).unwrap();
-            y.mapv_into(|y| Float::ln(y / (n_float - y)))
+            Float::ln(y / (n_float - y))
         }
-        fn func_inv<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
+        fn func_inv<F: Float>(lin_pred: F) -> F {
             let n_float: F = F::from(N).unwrap();
-            lin_pred.mapv_into(|xb| n_float / (F::one() + (-xb).exp()))
+            n_float / (F::one() + (-lin_pred).exp())
         }
     }
 }

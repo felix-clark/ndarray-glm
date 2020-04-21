@@ -23,13 +23,13 @@ pub trait Glm: Sized {
     /// The link function which maps the expected value of the response variable
     /// to the linear predictor.
     fn link<F: Float>(y: Array1<F>) -> Array1<F> {
-        Self::Link::func(y)
+        y.mapv(Self::Link::func)
     }
 
     /// The inverse of the link function which maps the linear predictors to the
     /// expected value of the prediction.
-    fn mean<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
-        Self::Link::func_inv(lin_pred)
+    fn mean<F: Float>(lin_pred: &Array1<F>) -> Array1<F> {
+        lin_pred.mapv(Self::Link::func_inv)
     }
 
     /// The variance as a function of the mean. This should be related to the
@@ -37,17 +37,6 @@ pub trait Glm: Sized {
     /// derivative of the inverse link function mu = g^{-1}(eta). This is unique
     /// to each response function, but should not depend on the link function.
     fn variance<F: Float>(mean: F) -> F;
-
-    // /// Returns the likelihood function of the response distribution as a
-    // /// function of the regression parameters.
-    // TODO: A default implementation could be defined in terms of the
-    // log-partition function.
-    // TODO: change the interface to only take y and the natural parameter eta.
-    // This will allow the Glm trait functionality to handle a non-canonical
-    // transformation.
-    // fn log_like_params<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
-    // where
-    //     F: Float + Lapack;
 
     /// Returns the likelihood function of the response distribution as a
     /// function of the response variable y and the natural parameters of each
@@ -71,6 +60,41 @@ pub trait Glm: Sized {
         (*data.reg).likelihood(l_unreg, regressors)
     }
 
+    /// Provide an initial guess for the parameters. This can be overridden
+    /// (e.g. statsmodels uses a different initial guess for binomial
+    /// regression) but this should provide a decent general starting point. The
+    /// y data is averaged with its mean to prevent infinities resulting from
+    /// application of the link function:
+    /// X * beta_0 ~ g(0.5*(y + y_avg))
+    /// This is equivalent to minimizing half the sum of squared differences
+    /// between X*beta and g(0.5*(y + y_avg)).
+    // TODO: consider incorporating weights and/or correlations.
+    fn init_guess<F>(data: &Model<Self, F>) -> Array1<F>
+    where
+        F: Float + Lapack,
+        Array2<F>: SolveH<F>,
+    {
+        let y_bar: F = data.y.mean().unwrap_or_else(F::zero);
+        let mu_y: Array1<F> = data.y.mapv(|y| F::from(0.5).unwrap() * (y + y_bar));
+        let link_y = mu_y.mapv(Self::Link::func);
+        // let beta_zeros = Array1::<F>::zeros(data.x.ncols());
+        let x_mat: Array2<F> = data.x.t().dot(&data.x);
+        // Regularize so the initial guess doesn't start in a crazy place for ill-conditioned data.
+        // This is not exact in general, but works for L2 regularization. It's
+        // probably not worth being more precise because we only want an initial
+        // guess, and this could be very wrong with L1 when plugging in beta = 0.
+        // let x_mat: Array2<F> = (*data.reg).irls_mat(x_mat, &beta_zeros);
+        let init_guess: Array1<F> =
+            x_mat
+                .solveh_into(data.x.t().dot(&link_y))
+                .unwrap_or_else(|err| {
+                    eprintln!("WARNING: failed to get initial guess for IRLS. Will begin at zero.");
+                    eprintln!("{}", err);
+                    Array1::<F>::zeros(data.x.ncols())
+                });
+        init_guess
+    }
+
     /// Do the regression and return a result. Returns object holding fit result.
     fn regression<F>(data: &Model<Self, F>) -> RegressionResult<Fit<Self, F>>
     where
@@ -84,7 +108,7 @@ pub trait Glm: Sized {
         // around zero, and may introduce more complications than it's worth. It
         // is further complicated by the possibility of linear offsets.
         // For logistic regression, beta = 0 is typically reasonable.
-        let initial: Array1<F> = Array1::<F>::zeros(data.x.ncols());
+        let initial: Array1<F> = Self::init_guess(data);
         let mut n_iter: usize = 0;
 
         let mut result: Array1<F> = Array1::<F>::zeros(initial.len());
@@ -212,13 +236,13 @@ where
         // The prediction of y given the current model.
         // This does cause an unnecessary clone with an identity link, but we
         // need the linear predictor around for the future.
-        let predictor: Array1<F> = M::mean(linear_predictor.clone());
+        let predictor: Array1<F> = M::mean(&linear_predictor);
 
         // The variances predicted by the model. This should have weights with
         // it and must be non-zero.
         // This could become a full covariance with weights.
         // TODO: allow the variance conditioning to be a configurable parameter.
-        let var_diag: Array1<F> = predictor.mapv(|mu| M::variance(mu) + F::epsilon());
+        let var_diag: Array1<F> = predictor.mapv(M::variance);
 
         // The errors represent the difference between observed and predicted.
         let errors = &self.data.y - &predictor;
@@ -227,6 +251,13 @@ where
         // the link function.
         let (errors, var_diag) =
             M::Link::adjust_errors_variance(errors, var_diag, &linear_predictor);
+        // Try adjusting only the variance as if the derivative will cancel.
+        // This might not be quite right due to the matrix multiplications.
+        // let var_diag = M::Link::d_nat_param(&linear_predictor) * var_diag;
+
+        // condition after the adjustment in case the derivatives are zero. Or
+        // should the Hessian itself be conditioned?
+        let var_diag: Array1<F> = var_diag.mapv_into(|v| v + F::epsilon());
 
         // X weighted by the model variance for each observation
         // This is really the negative Hessian of the likelihood.
@@ -260,7 +291,6 @@ where
     /// Acquire the next IRLS step based on the previous one.
     fn next(&mut self) -> Option<Self::Item> {
         let (irls_mat, irls_vec) = self.irls_mat_vec();
-        // let mut next_guess: Array1<F> = match neg_hessian.solveh_into(rhs) {
         let mut next_guess: Array1<F> = match irls_mat.solveh_into(irls_vec) {
             Ok(solution) => solution,
             Err(err) => return Some(Err(err.into())),

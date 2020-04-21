@@ -63,11 +63,11 @@ pub mod link {
     impl Canonical for Id {}
     impl Link<Linear> for Id {
         #[inline]
-        fn func<F: Float>(y: Array1<F>) -> Array1<F> {
+        fn func<F: Float>(y: F) -> F {
             y
         }
         #[inline]
-        fn func_inv<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
+        fn func_inv<F: Float>(lin_pred: F) -> F {
             lin_pred
         }
     }

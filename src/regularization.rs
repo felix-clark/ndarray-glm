@@ -70,3 +70,20 @@ impl<F: Float + Lapack> Regularize<F> for Ridge<F> {
 }
 
 // TODO: Smoothed LASSO, Elastic Net (L1 + L2)
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ndarray::array;
+
+    #[test]
+    fn ridge_matrix() {
+        let l = 1e-4;
+        let ridge = Ridge::from_diag(array![0., l]);
+        let mat = array![[0.5, 0.1], [0.1, 0.2]];
+        let mut target_mat = mat.clone();
+        target_mat[[1, 1]] += l;
+        let dummy_beta = array![0., 0.];
+        assert_eq!(ridge.irls_mat(mat, &dummy_beta), target_mat);
+    }
+}

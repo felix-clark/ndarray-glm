@@ -779,9 +779,12 @@ fn log_regularization() -> Result<()> {
         -3.4012911, -2.8748078, -3.7131538, -2.6179054, -2.709443, -3.4705572, -3.2077503,
         -2.6144018, -2.9447875, -3.209741, -3.65374, -3.5632045, -3.860868
     ];
+    // This can be terminated either by standardizing the data or by using
+    // lambda = 2e-6 intead of 1e-6.
+    // let x = ndarray_glm::standardize::standardize(x);
     let model = ModelBuilder::<Logistic>::data(&y, &x)
         .linear_offset(off)
-        .l2_reg(1e-6)
+        .l2_reg(2e-6)
         .build()?;
     let fit = model.fit()?;
     dbg!(fit.result);

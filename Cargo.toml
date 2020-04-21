@@ -2,12 +2,12 @@
 name = "ndarray-glm"
 version = "0.0.3"
 authors = ["Felix Clark <mfclark3690@gmail.com>"]
-description = "Performs regression for general linear models on data stored in arrays using IRLS."
+description = "Performs regression for generalized linear models using IRLS on data stored in arrays."
 edition = "2018"
 repository = "https://github.com/felix-clark/ndarray-glm"
 readme = "README.md"
 license = "MIT"
-keywords = ["statistics", "glm", "regression", "irls"]
+keywords = ["ndarray", "statistics", "regression", "glm", "irls"]
 categories = ["mathematics", "science"]
 
 [badges]

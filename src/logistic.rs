@@ -101,11 +101,11 @@ pub mod link {
     pub struct Logit {}
     impl Canonical for Logit {}
     impl Link<Logistic<Logit>> for Logit {
-        fn func<F: Float>(y: Array1<F>) -> Array1<F> {
-            y.mapv_into(|y| F::ln(y / (F::one() - y)))
+        fn func<F: Float>(y: F) -> F {
+            F::ln(y / (F::one() - y))
         }
-        fn func_inv<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
-            lin_pred.mapv_into(|xb| (F::one() + (-xb).exp()).recip())
+        fn func_inv<F: Float>(lin_pred: F) -> F {
+            (F::one() + (-lin_pred).exp()).recip()
         }
     }
 
