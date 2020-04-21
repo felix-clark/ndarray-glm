@@ -120,8 +120,15 @@ where
         &data.y - &self.expectation(&data.x, data.linear_offset.as_ref())
     }
 
-    /// return the signed Z-score for each regression parameter.
-    // TODO: phase this out in terms of more general tests.
+    /// return the signed Z-score for each regression parameter. This is not a
+    /// particularly robust statistic, as it is sensitive to scaling and offsets
+    /// of the covariates.
+    #[deprecated(
+        since = "0.3.0",
+        note = "This statistic is not a robust one. To get an analogous
+        statistic of the entire fit, take the square root of the likelihood
+        ratio test with `lr_test()`."
+    )]
     pub fn z_scores(&self) -> Array1<F> {
         // -2 likelihood deviation is asymptotically chi^2 with ndf degrees of freedom.
         let mut chi_sqs: Array1<F> = Array1::zeros(self.result.len());
@@ -157,6 +164,8 @@ where
         signs * chis
     }
 
+    // TODO: score test using Fisher score and information matrix.
+
     /// Returns the Akaike information criterion for the model fit.
     // TODO: Should an effective number of parameters that takes regularization
     // into acount be considered?
@@ -175,4 +184,36 @@ where
         let logn = F::from(self.data.y.len()).unwrap().ln();
         logn * F::from(self.result.len()).unwrap() - F::from(2.).unwrap() * self.model_like
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{logistic::Logistic, model::ModelBuilder, standardize::standardize};
+    use anyhow::Result;
+    use approx::assert_abs_diff_eq;
+    use ndarray::Axis;
+
+    /// Checks if the test statistics are invariant based upon whether the data is standardized.
+    #[test]
+    fn standardization_invariance() -> Result<()> {
+        let data_y = array![true, false, false, true, true, true, true, false, true];
+        let data_x = array![-0.5, 0.3, -0.6, 0.2, 0.3, 1.2, 0.8, 0.6, -0.2].insert_axis(Axis(1));
+        let data_x_std = standardize(data_x.clone());
+        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x).build()?;
+        let fit = model.fit()?;
+        let model_std = ModelBuilder::<Logistic>::data(&data_y, &data_x_std).build()?;
+        let fit_std = model_std.fit()?;
+        let (lr, _) = fit.lr_test();
+        let (lr_std, _) = fit_std.lr_test();
+        assert_abs_diff_eq!(lr, lr_std);
+        assert_abs_diff_eq!(fit.aic(), fit_std.aic());
+        assert_abs_diff_eq!(fit.bic(), fit_std.bic());
+        // These Z-scores are not invariant under data standardization.
+        // assert_abs_diff_eq!(fit.z_scores(), fit_std.z_scores());
+        Ok(())
+    }
+
+    // TODO: Test that the statistics behave sensibly under regularization. The
+    // likelihood ratio test should yield a smaller value.
 }
