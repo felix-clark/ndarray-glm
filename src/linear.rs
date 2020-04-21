@@ -94,8 +94,6 @@ mod tests {
         dbg!(fit.n_iter);
         // This is failing within the default tolerance
         assert_abs_diff_eq!(beta, fit.result, epsilon = 64.0 * std::f64::EPSILON);
-        let significance = fit.z_scores();
-        dbg!(significance);
         let (lr, _): (f64, usize) = fit.lr_test();
         dbg!(&lr);
         dbg!(&lr.sqrt());

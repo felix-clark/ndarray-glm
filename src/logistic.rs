@@ -113,9 +113,6 @@ mod tests {
         let fit = model.fit()?;
         dbg!(fit.n_iter);
         assert_abs_diff_eq!(beta, fit.result, epsilon = 0.05 * std::f32::EPSILON as f64);
-        // test the significance function
-        let significance = fit.z_scores();
-        dbg!(significance);
         let (lr, _) = fit.lr_test();
         dbg!(&lr);
         dbg!(&lr.sqrt());
