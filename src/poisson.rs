@@ -1,9 +1,8 @@
 //! Model for Poisson regression
 
 use crate::{
-    glm::{Glm, Likelihood, Response},
+    glm::{Glm, Response},
     link::Link,
-    model::Model,
 };
 use ndarray::Array1;
 use ndarray_linalg::Lapack;
@@ -47,30 +46,6 @@ where
     {
         let log_like_terms: Array1<F> = y * log_lambda - log_lambda.mapv(|tx| tx.exp());
         log_like_terms.sum()
-    }
-}
-
-// The true Poisson likelihood includes a factorial of y, which does not contribute to significance calculations.
-// This may technically be a quasi-likelihood, and perhaps the concepts should not be distinguished.
-impl<F, L> Likelihood<Self, F> for Poisson<L>
-where
-    F: Float + Lapack,
-    L: Link<Poisson<L>>,
-{
-    // specialize LL for poisson regression
-    // TODO: Phase this trait out entirely.
-    fn log_likelihood(data: &Model<Self, F>, regressors: &Array1<F>) -> F {
-        // TODO: this assertion should be a result, or these references should
-        // be stored in Fit so they can be checked ahead of time.
-        assert_eq!(
-            data.x.ncols(),
-            regressors.len(),
-            "must have same number of explanatory variables as regressors"
-        );
-
-        let linear_predictor = data.linear_predictor(regressors);
-        let eta = L::nat_param(linear_predictor);
-        Self::log_like_natural(&data.y, &eta)
     }
 }
 

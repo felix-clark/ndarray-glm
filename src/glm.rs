@@ -10,7 +10,6 @@ use crate::{
 use ndarray::{Array1, Array2};
 use ndarray_linalg::{lapack::Lapack, SolveH};
 use num_traits::Float;
-use std::marker::PhantomData;
 
 /// Trait describing generalized linear model that enables the IRLS algorithm
 /// for fitting.
@@ -96,7 +95,7 @@ pub trait Glm: Sized {
     }
 
     /// Do the regression and return a result. Returns object holding fit result.
-    fn regression<F>(data: &Model<Self, F>) -> RegressionResult<Fit<Self, F>>
+    fn regression<F>(data: Model<Self, F>) -> RegressionResult<Fit<Self, F>>
     where
         F: Float + Lapack,
         Self: Sized,
@@ -108,7 +107,7 @@ pub trait Glm: Sized {
         // around zero, and may introduce more complications than it's worth. It
         // is further complicated by the possibility of linear offsets.
         // For logistic regression, beta = 0 is typically reasonable.
-        let initial: Array1<F> = Self::init_guess(data);
+        let initial: Array1<F> = Self::init_guess(&data);
         let mut n_iter: usize = 0;
 
         let mut result: Array1<F> = Array1::<F>::zeros(initial.len());
@@ -129,7 +128,7 @@ pub trait Glm: Sized {
         // ndf is guaranteed to be > 0 because of the underconstrained check
         let ndf = n_data - result.len();
         Ok(Fit {
-            model: PhantomData::<Self>,
+            data,
             result,
             ndf,
             n_iter,
@@ -148,23 +147,6 @@ pub trait Response<M: Glm> {
     // TODO: a function to check if a Y-value is valid? This may be useful for
     // some models. Actually changing the signature of to_float() to return a
     // result should serve this purpose.
-}
-
-/// A subtrait for GLMs that have an unambiguous likelihood function.
-// Not all regression types have a well-defined likelihood. E.g. logistic
-// (binomial) and Poisson do; linear (normal) and negative binomial do not due
-// to the extra parameter. If the dispersion term can be calculated, this can be
-// fixed, although it will be best to separate the true likelihood from an
-// effective one for minimization.
-// TODO: This trait should be phased out, but it affects the Z-scores. That will
-// be changing too.
-pub trait Likelihood<M, F>: Glm
-where
-    M: Glm,
-    F: Float,
-{
-    /// logarithm of the likelihood given the data and fit parameters
-    fn log_likelihood(data: &Model<M, F>, regressors: &Array1<F>) -> F;
 }
 
 /// Iterate over updates via iteratively re-weighted least-squares until

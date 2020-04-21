@@ -31,6 +31,8 @@ where
     pub max_iter: Option<usize>,
     /// Regularization method
     pub reg: Box<dyn Regularize<F>>,
+    /// Whether the intercept term is used (commonly true)
+    pub use_intercept: bool,
 }
 
 impl<M, F> Model<M, F>
@@ -39,8 +41,8 @@ where
     F: Float + Lapack,
 {
     /// Perform the regression and return a fit object holding the results.
-    pub fn fit(&self) -> RegressionResult<Fit<M, F>> {
-        M::regression(&self)
+    pub fn fit(self) -> RegressionResult<Fit<M, F>> {
+        M::regression(self)
     }
 
     /// Returns the linear predictors, i.e. the design matrix multiplied by the
@@ -84,7 +86,7 @@ impl<M: Glm> ModelBuilder<M> {
             data_x,
             linear_offset: None,
             max_iter: None,
-            add_constant_term: true,
+            use_intercept_term: true,
             det_tol: default_epsilon::<F>(n_pred),
             l2_reg: F::zero(),
         }
@@ -111,7 +113,7 @@ where
     /// The maximum number of iterations before the regression reports failure.
     max_iter: Option<usize>,
     /// Whether to use an intercept term. Defaults to `true`.
-    add_constant_term: bool,
+    use_intercept_term: bool,
     /// tolerance for determinant check on rank of data matrix X.
     det_tol: F,
     /// L2 regularization parameter for ridge regression. Defaults to zero.
@@ -146,7 +148,7 @@ where
 
     /// Do not add a constant term to the design matrix
     pub fn no_constant(mut self) -> Self {
-        self.add_constant_term = false;
+        self.use_intercept_term = false;
         self
     }
 
@@ -191,7 +193,7 @@ where
         }
 
         // add constant term to X data
-        let data_x = if self.add_constant_term {
+        let data_x = if self.use_intercept_term {
             one_pad(&self.data_x)
         } else {
             self.data_x.clone()
@@ -212,7 +214,7 @@ where
                 let mut l2_diag: Array1<F> = Array1::<F>::from_elem(data_x.ncols(), self.l2_reg);
                 // if an intercept term is included it should not be subject to
                 // regularization.
-                if self.add_constant_term {
+                if self.use_intercept_term {
                     l2_diag[0] = F::zero();
                 }
                 l2_diag
@@ -229,6 +231,7 @@ where
             linear_offset: self.linear_offset,
             max_iter: self.max_iter,
             reg,
+            use_intercept: self.use_intercept_term,
         })
     }
 }

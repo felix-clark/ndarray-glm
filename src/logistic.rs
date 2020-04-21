@@ -1,9 +1,8 @@
 //! functions for solving logistic regression
 
 use crate::{
-    glm::{Glm, Likelihood, Response},
+    glm::{Glm, Response},
     link::Link,
-    model::Model,
 };
 use ndarray::{Array1, Zip};
 use ndarray_linalg::Lapack;
@@ -70,28 +69,6 @@ where
     }
 }
 
-impl<F, L> Likelihood<Self, F> for Logistic<L>
-where
-    F: Float + Lapack,
-    L: Link<Logistic<L>>,
-{
-    // specialize LL for logistic regression
-    // TODO: This trait should be phased out entirely in favor of more general
-    // scoring methods.
-    fn log_likelihood(data: &Model<Self, F>, regressors: &Array1<F>) -> F {
-        // TODO: this assertion should be a result, or these references should
-        // be stored in Fit so they can be checked ahead of time.
-        assert_eq!(
-            data.x.ncols(),
-            regressors.len(),
-            "must have same number of explanatory variables as regressors"
-        );
-        let linear_predictor = data.linear_predictor(regressors);
-        let eta = L::nat_param(linear_predictor);
-        Self::log_like_natural(&data.y, &eta)
-    }
-}
-
 pub mod link {
     //! Link functions for logistic regression
     use super::*;
@@ -129,7 +106,7 @@ mod tests {
         dbg!(fit.n_iter);
         assert_abs_diff_eq!(beta, fit.result, epsilon = 0.05 * std::f32::EPSILON as f64);
         // test the significance function
-        let significance = fit.z_scores(&model);
+        let significance = fit.z_scores();
         dbg!(significance);
         Ok(())
     }

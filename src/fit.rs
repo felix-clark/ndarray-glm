@@ -1,37 +1,35 @@
-//! struct holding the fit result of a regression
+//! Stores the fit results of the IRLS regression and provides functions that
+//! depend on the MLE estimate. These include statistical tests for goodness-of-fit.
 
-use crate::{
-    glm::{Glm, Likelihood},
-    link::Link,
-    model::Model,
-};
+use crate::{glm::Glm, link::Link, model::Model};
 use ndarray::{Array1, Array2};
+use ndarray_linalg::{Lapack, Scalar};
 use num_traits::Float;
-use std::marker::PhantomData;
 
 /// the result of a successful GLM fit
-/// TODO: finish generalizing, take ownership of model?
-#[derive(Debug)]
 pub struct Fit<M, F>
 where
     M: Glm,
     F: Float,
 {
-    // we aren't now storing any type that uses the model type
-    pub model: PhantomData<M>,
-    // the parameter values that maximize the likelihood
+    /// The data and model specification used in the fit.
+    // TODO: This field could likely be made private if Fit had a constructor
+    // for Glm::regression() to use.
+    pub data: Model<M, F>,
+    /// The parameter values that maximize the likelihood as given by the IRLS regression.
     pub result: Array1<F>,
-    // number of data points minus number of free parameters
+    /// The number of data points minus number of free parameters.
     pub ndf: usize,
-    // the number of iterations taken
+    /// The total number of iterations taken in the IRLS.
     pub n_iter: usize,
 }
 
 impl<M, F> Fit<M, F>
 where
     // TODO: M should only need Glm when we have general testing.
-    M: Likelihood<M, F>,
-    F: 'static + Float,
+    // M: Likelihood<M, F>,
+    M: Glm,
+    F: 'static + Float + Lapack,
     F: std::fmt::Debug,
 {
     /// Returns the expected value of Y given the input data X. This data need
@@ -46,6 +44,48 @@ where
         lin_pred.mapv_into(M::Link::func_inv)
     }
 
+    /// Perform a likelihood-ratio test, returning the statistic -2*ln(L_0/L)
+    /// where L_0 is the likelihood of the best-fit null model (with no
+    /// parameters but the intercept) and L is the likelihood of the fit result.
+    /// The number of degrees of freedom of this statistic, equal to the number
+    /// of parameters fixed to zero to form the null model, is also returned. By
+    /// Wilks' theorem this statistic is asymptotically chi-squared distributed
+    /// with this number of degrees of freedom.
+    // TODO: Should the effective number of degrees of freedom due to
+    // regularization be taken into account? Should the degrees of freedom be a
+    // float?
+    pub fn lr_test(&self) -> (F, usize) {
+        // TODO: The calculation could be made simpler and faster if it were
+        // guaranteed that each likelihood function was in the natural
+        // exponential form. However, that condition hasn't been enforced -- for
+        // instance, the OLS likelihood is the sum of squares.
+        let model_like = M::log_like_reg(&self.data, &self.result);
+        // This is the beta that optimizes the null model. Assuming the
+        // intercept is included, it is set to the link function of the mean y.
+        // This can be checked by minimizing the likelihood for the null model.
+        // The log-likelihood should be the same as the sum of the likelihood
+        // using the average of y if L is in the natural exponential form. This
+        // could be used to optimize this in the future, if all likelihoods are
+        // in the natural exponential form as stated above.
+        let (null_beta, ndf): (Array1<F>, usize) = {
+            let mut beta = Array1::<F>::zeros(self.result.len());
+            let mut ndf = beta.len();
+            if self.data.use_intercept {
+                beta[0] = M::Link::func(
+                    self.data
+                        .y
+                        .mean()
+                        .expect("Should be able to take average of y values"),
+                );
+                ndf -= 1;
+            }
+            (beta, ndf)
+        };
+        let null_like = M::log_like_reg(&self.data, &null_beta);
+        let lr = F::from(-2.).unwrap() * (null_like - model_like);
+        (lr, ndf)
+    }
+
     /// Returns the errors in the response variables given the model.
     pub fn errors(&self, data: &Model<M, F>) -> Array1<F> {
         &data.y - &self.expectation(&data.x, data.linear_offset.as_ref())
@@ -53,15 +93,15 @@ where
 
     /// return the signed Z-score for each regression parameter.
     // TODO: phase this out in terms of more general tests.
-    pub fn z_scores(&self, data: &Model<M, F>) -> Array1<F> {
-        let model_like = M::log_likelihood(&data, &self.result);
+    pub fn z_scores(&self) -> Array1<F> {
+        let model_like = M::log_like_reg(&self.data, &self.result);
         // -2 likelihood deviation is asymptotically chi^2 with ndf degrees of freedom.
         let mut chi_sqs: Array1<F> = Array1::zeros(self.result.len());
         // TODO (style): move to (enumerated?) iterator
         for i_like in 0..self.result.len() {
             let mut adjusted = self.result.clone();
             adjusted[i_like] = F::zero();
-            let null_like = M::log_likelihood(&data, &adjusted);
+            let null_like = M::log_like_reg(&self.data, &adjusted);
             let mut chi_sq = F::from(2.).unwrap() * (model_like - null_like);
             // This can happen due to FPE
             if chi_sq < F::zero() {
@@ -84,7 +124,7 @@ where
             chi_sqs[i_like] = chi_sq;
         }
         let signs = self.result.mapv(F::signum);
-        let chis = chi_sqs.mapv_into(F::sqrt);
+        let chis = chi_sqs.map(Scalar::sqrt);
         // return the Z-scores
         signs * chis
     }
