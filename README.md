@@ -37,7 +37,7 @@ To use in your crate, add the following to the `Cargo.toml`:
 
 ```
 ndarray = { version = "0.13", features = ["blas"]}
-blas-src = { version = "0.6", default-features = false, features = ["openblas"] }
+blas-src = { version = "0.4", default-features = false, features = ["openblas"] }
 ndarray-glm = { version = "0.0.3", features = ["openblas-static"] }
 ```
 
@@ -65,6 +65,9 @@ println!("Fit result: {}", fit.result);
 For logistic regression, the `y` array data must be boolean, and for Poisson
 regression it must be an unsigned integer.
 
+Custom non-canonical link functions can be defined by the user, although the
+interface is not particularly ergonomic. See `tests/custom_link.rs` for examples.
+
 ## Features
 
 - [X] Linear regression
@@ -91,8 +94,9 @@ regression it must be an unsigned integer.
   - [ ] Re-visit the tolerance conditions for termination in these instances.
 - [X] Non-canonical link functions
 - [ ] Goodness-of-fit tests
+  - [X] Likelihood ratio test
   - [ ] Log-likelihood difference from saturated model (deviance analysis)
-  - [ ] Aikaike and Bayesian information criteria
+  - [X] Akaike and Bayesian information criteria
   - [ ] generalized R^2?
 
 ### TODO
@@ -101,9 +105,7 @@ regression it must be an unsigned integer.
       distribution. This would demand other sufficient statistics besides y
       (e.g. y^2 for Gaussian w/ variance, log(y) for gamma). It might be worth
       putting off until const generics.
-- [ ] Exact Z-scores by re-minimizing after fixing each parameter to zero (?)
-      (whether or not is it appropriate to allow other parameters to re-fit is
-      probably application-dependent so perhaps we should remain agnostic)
+- [ ] Per-parameter test statistic (may require re-minimization)
 - [ ] Calculate/estimate dispersion parameter from the data
 - [ ] More rigorous convergence tests and options for termination
 - [ ] Logging system with configurable levels
