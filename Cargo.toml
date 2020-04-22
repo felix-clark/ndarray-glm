@@ -31,15 +31,18 @@ intel-mkl = ["ndarray-linalg/intel-mkl"]
 binomial = []
 
 [dependencies]
-ndarray = { version = "0.13", features = ["blas", "approx"] }
+ndarray = { version = "0.13", features = ["blas"] }
+# The version with the latest openblas-src and blas-src versions doesn't have a
+# crate yet, so use the master branch for CI.
 # ndarray-linalg = { version = "0.12" }
-# The version with the latest openblas-src and blas-src versions doesn't have a crate yet.
 ndarray-linalg = { git = "https://github.com/rust-ndarray/ndarray-linalg" }
 num-traits = "0.2"
 thiserror = "1.0"
 itertools = "0.9"
 
 [dev-dependencies]
+# Use the "approx" feature for unit tests
+ndarray = { version = "0.13", features = ["blas", "approx"] }
 # pick a backend to run tests
 # blas-src = { version = "0.4", default-features = false, features = ["openblas"] }
 # ndarray-linalg = { version = "0.12", default-features = false, features = ["openblas-static"]}
