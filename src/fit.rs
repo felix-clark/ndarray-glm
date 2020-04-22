@@ -19,7 +19,7 @@ where
     /// The data and model specification used in the fit.
     // TODO: This field could likely be made private if Fit had a constructor
     // for Glm::regression() to use.
-    pub data: Model<M, F>,
+    data: Model<M, F>,
     /// The parameter values that maximize the likelihood as given by the IRLS regression.
     pub result: Array1<F>,
     /// The value of the likelihood function for the fit result.
@@ -28,6 +28,10 @@ where
     pub n_iter: usize,
     /// The number of steps taken in the algorithm, which includes step halving.
     pub n_steps: usize,
+    /// The number of data points
+    n_data: usize,
+    /// The number of parameters
+    n_par: usize,
 }
 
 impl<M, F> Fit<M, F>
@@ -36,10 +40,31 @@ where
     F: 'static + Float + Lapack,
     F: std::fmt::Debug,
 {
+    pub fn new(
+        data: Model<M, F>,
+        result: Array1<F>,
+        model_like: F,
+        n_iter: usize,
+        n_steps: usize,
+    ) -> Self {
+        // Cache some of these variables that will be used often.
+        let n_par = result.len();
+        let n_data = data.y.len();
+        Self {
+            data,
+            result,
+            model_like,
+            n_iter,
+            n_steps,
+            n_data,
+            n_par,
+        }
+    }
+
     /// Returns the number of degrees of freedom in the model, i.e. the number
     /// of data points minus the number of parameters.
     pub fn ndf(&self) -> usize {
-        self.data.y.len() - self.result.len()
+        self.n_data - self.n_par
     }
 
     /// Returns the expected value of Y given the input data X. This data need
@@ -65,6 +90,15 @@ where
     // regularization be taken into account? Should the degrees of freedom be a
     // float?
     pub fn lr_test(&self) -> (F, usize) {
+        let (null_like, ndf) = self.null_like();
+        let lr: F = F::from(-2.).unwrap() * (null_like - self.model_like);
+        (lr, ndf)
+    }
+
+    /// Returns the likelihood given the null model, which fixes all parameters
+    /// to zero except the intercept (if it is used). Also returns the
+    /// additional degrees of freedom discarded in the null model.
+    fn null_like(&self) -> (F, usize) {
         // The average y
         let y_bar: F = self
             .data
@@ -95,24 +129,17 @@ where
         // approach will give incorrect results. If the likelihood has terms
         // non-linear in y, then the likelihood must be calculated for every
         // point rather than averaged.
-        let (null_beta0, ndf): (F, usize) = {
-            // The intercept term is zero if no intercept is used.
-            let mut beta0 = F::zero();
-            let mut ndf = self.result.len();
-            if self.data.use_intercept {
-                beta0 = M::Link::func(y_bar);
-                ndf -= 1;
-            }
-            (beta0, ndf)
+        let (null_beta0, ndf): (F, usize) = if self.data.use_intercept {
+            (M::Link::func(y_bar), self.n_par - 1)
+        } else {
+            (F::zero(), self.n_par)
         };
-        let null_like = {
-            // the natural parameter for a given beta0 = g(y_bar)
-            let eta_beta0 = M::Link::nat_param(array![null_beta0]);
-            let null_like_one = M::log_like_natural(&array![y_bar], &eta_beta0);
-            F::from(self.data.y.len()).unwrap() * null_like_one
-        };
-        let lr = F::from(-2.).unwrap() * (null_like - self.model_like);
-        (lr, ndf)
+        // the natural parameter for a given beta0 = g(y_bar)
+        let eta_beta0 = M::Link::nat_param(array![null_beta0]);
+        // The null likelihood per observation
+        let null_like_one = M::log_like_natural(&array![y_bar], &eta_beta0);
+        let null_like_total = F::from(self.data.y.len()).unwrap() * null_like_one;
+        (null_like_total, ndf)
     }
 
     /// Returns the errors in the response variables given the model.
@@ -211,6 +238,30 @@ mod tests {
         assert_abs_diff_eq!(fit.bic(), fit_std.bic());
         // These Z-scores are not invariant under data standardization.
         // assert_abs_diff_eq!(fit.z_scores(), fit_std.z_scores());
+        Ok(())
+    }
+
+    #[test]
+    fn null_model() -> Result<()> {
+        let data_y = array![true, false, false, true, true];
+        let data_x: Array2<f64> = array![[], [], [], [], []];
+        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x).build()?;
+        let fit = model.fit()?;
+        dbg!(fit.n_iter);
+        dbg!(&fit.result);
+        let (empty_null_like, empty_null_ndf) = fit.null_like();
+        assert_eq!(empty_null_ndf, 0);
+        dbg!(&fit.model_like);
+        let (lr, lr_ndf) = fit.lr_test();
+        dbg!(lr, lr_ndf);
+        assert_abs_diff_eq!(lr, 0.);
+
+        let data_x = array![[0.5], [-0.2], [0.3], [0.4], [-0.1]];
+        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x).build()?;
+        let fit_with = model.fit()?;
+        dbg!(&fit_with.result);
+        assert_abs_diff_eq!(empty_null_like, fit_with.null_like().0);
+
         Ok(())
     }
 

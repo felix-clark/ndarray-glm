@@ -56,6 +56,12 @@ pub trait Glm: Sized {
         (y * nat).sum() - Self::log_partition(nat)
     }
 
+    /// Returns the likelihood of a saturated model where every observation can
+    /// be fit exactly.
+    fn log_like_sat<F>(y: &Array1<F>) -> F
+    where
+        F: Float;
+
     /// Returns the likelihood function including regularization terms.
     fn log_like_reg<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
     where
@@ -137,13 +143,7 @@ pub trait Glm: Sized {
         // parameter to zero, and if so set it to zero. This could be dependent
         // on the order of operations, however.
 
-        Ok(Fit {
-            data,
-            result,
-            model_like,
-            n_iter,
-            n_steps,
-        })
+        Ok(Fit::new(data, result, model_like, n_iter, n_steps))
     }
 }
 
@@ -169,11 +169,17 @@ where
     Array2<F>: SolveH<F>,
 {
     data: &'a Model<M, F>,
+    /// The current parameter guess.
     guess: Array1<F>,
+    /// The maximum iterations before aborting with error.
     max_iter: usize,
     pub n_iter: usize,
     tolerance: F,
     last_like: F,
+    /// Sometimes the next guess is better than the previous but within
+    /// tolerance, so we want to return the current guess but exit immediately
+    /// in the next iteration.
+    done: bool,
 }
 
 impl<'a, M, F> Irls<'a, M, F>
@@ -193,6 +199,7 @@ where
             n_iter: 0,
             tolerance,
             last_like: init_like,
+            done: false,
         }
     }
 
@@ -219,6 +226,8 @@ where
     }
 
     /// Returns the (LHS, RHS) of the IRLS update matrix equation.
+    // TODO: re-factor to have the distributions compute the fisher information,
+    // as that is useful in the score test as well.
     fn irls_mat_vec(&self) -> (Array2<F>, Array1<F>) {
         // The linear predictor without control terms
         let linear_predictor_no_control: Array1<F> = self.data.x.dot(&self.guess);
@@ -300,6 +309,12 @@ where
 
     /// Acquire the next IRLS step based on the previous one.
     fn next(&mut self) -> Option<Self::Item> {
+        // if the last step was an improvement but within tolerance, this step
+        // has been flagged to terminate early.
+        if self.done {
+            return None;
+        }
+
         let (irls_mat, irls_vec) = self.irls_mat_vec();
         let mut next_guess: Array1<F> = match irls_mat.solveh_into(irls_vec) {
             Ok(solution) => solution,
@@ -316,6 +331,14 @@ where
         let mut rel = (like - self.last_like) / (F::epsilon() + like.abs());
         // Terminate if the difference is close to zero
         if rel.abs() <= self.tolerance {
+            // If this guess is an improvement then go ahead and return it, but
+            // quit early on the next iteration. The equivalence with zero is
+            // necessary in order to return a value when the iteration starts at
+            // the best guess.
+            if rel >= F::zero() {
+                self.done = true;
+                return Some(self.step_with(next_guess, like, 0));
+            }
             return None;
         }
 
