@@ -108,9 +108,9 @@ pub mod link {
 mod tests {
     use crate::{error::RegressionResult, logistic::Logistic, model::ModelBuilder};
     use approx::assert_abs_diff_eq;
-    use ndarray::{array, Array2};
-    use num_traits::Float;
+    use ndarray::array;
 
+    /// A simple test where the correct value for the data is known exactly.
     #[test]
     fn log_reg() -> RegressionResult<()> {
         let beta = array![0., 1.0];
@@ -124,20 +124,6 @@ mod tests {
         let (lr, _) = fit.lr_test();
         dbg!(&lr);
         dbg!(&lr.sqrt());
-        Ok(())
-    }
-
-    /// Ensure that a valid likelihood is returned when the initial guess is the
-    /// best one.
-    #[test]
-    fn start_zero() -> RegressionResult<()> {
-        // Exactly half of the data are true, meaning the initial guess of beta = 0 will be the best.
-        let data_y = array![true, false, false, true];
-        let data_x: Array2<f64> = array![[], [], [], []];
-        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x).build()?;
-        let fit = model.fit()?;
-        assert_eq!(fit.model_like > -f64::infinity(), true);
-
         Ok(())
     }
 }
