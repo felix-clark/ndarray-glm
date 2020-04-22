@@ -2,12 +2,13 @@
 //! depend on the MLE estimate. These include statistical tests for goodness-of-fit.
 
 use crate::{
+    error::RegressionResult,
     glm::Glm,
     link::{Link, Transform},
     model::Model,
 };
-use ndarray::{array, Array1, Array2};
-use ndarray_linalg::{Lapack, Scalar};
+use ndarray::{array, Array1, Array2, ArrayView1};
+use ndarray_linalg::{InverseHInto, Lapack, Scalar};
 use num_traits::Float;
 
 /// the result of a successful GLM fit
@@ -32,12 +33,17 @@ where
     n_data: usize,
     /// The number of parameters
     n_par: usize,
+    // /// The estimated covariance matrix of the parameters. Since the calculation
+    // /// requires a matrix inversion, it is computed only when needed and the
+    // /// value is cached. Access through the `covariance()` function. This is not
+    // /// yet implemented.
+    // cov: RefCell<Option<Array2<F>>>,
 }
 
 impl<M, F> Fit<M, F>
 where
     M: Glm,
-    F: 'static + Float + Lapack,
+    F: 'static + Float + Lapack + Scalar,
     F: std::fmt::Debug,
 {
     pub fn new(
@@ -90,7 +96,12 @@ where
     // regularization be taken into account? Should the degrees of freedom be a
     // float?
     pub fn lr_test(&self) -> (F, usize) {
+        // The model likelihood should include regularization terms and there
+        // shouldn't be any in the null model with all non-intercept parameters
+        // set to zero.
         let (null_like, ndf) = self.null_like();
+        eprintln!("null like in LR test: {}", null_like);
+        eprintln!("model like in LR test: {}", self.model_like);
         let lr: F = F::from(-2.).unwrap() * (null_like - self.model_like);
         (lr, ndf)
     }
@@ -112,7 +123,7 @@ where
         // using the average of y if L is in the natural exponential form. This
         // could be used to optimize this in the future, if all likelihoods are
         // in the natural exponential form as stated above.
-        // let (null_beta, ndf): (Array1<F>, usize) = {
+        // let (null_beta_slow, _ndf): (Array1<F>, usize) = {
         //     let mut beta = Array1::<F>::zeros(self.result.len());
         //     let mut ndf = beta.len();
         //     if self.data.use_intercept {
@@ -121,7 +132,7 @@ where
         //     }
         //     (beta, ndf)
         // };
-        // let null_like = M::log_like_reg(&self.data, &null_beta);
+        // let null_like_slow = M::log_like_reg(&self.data, &null_beta_slow);
 
         // This approach assumes that the likelihood is in the natural
         // exponential form as calculated by Glm::log_like_natural(). If that
@@ -129,22 +140,77 @@ where
         // approach will give incorrect results. If the likelihood has terms
         // non-linear in y, then the likelihood must be calculated for every
         // point rather than averaged.
-        let (null_beta0, ndf): (F, usize) = if self.data.use_intercept {
-            (M::Link::func(y_bar), self.n_par - 1)
+        // If the intercept is allowed to maximize the likelihood, the natural
+        // parameter is equal to the link of the expectation. Otherwise it is
+        // the transformation function of zero.
+        let (nat_par, ndf) = if self.data.use_intercept {
+            (array![M::Link::func(y_bar)], self.n_par - 1)
         } else {
-            (F::zero(), self.n_par)
+            (M::Link::nat_param(array![F::zero()]), self.n_par)
         };
-        // the natural parameter for a given beta0 = g(y_bar)
-        let eta_beta0 = M::Link::nat_param(array![null_beta0]);
         // The null likelihood per observation
-        let null_like_one = M::log_like_natural(&array![y_bar], &eta_beta0);
-        let null_like_total = F::from(self.data.y.len()).unwrap() * null_like_one;
+        let null_like_one = M::log_like_natural(&array![y_bar], &nat_par);
+        let null_like_total = F::from(self.n_data).unwrap() * null_like_one;
         (null_like_total, ndf)
+    }
+
+    /// The covariance matrix estimated by the Fisher information and the
+    /// dispersion parameter. The value will be cached to avoid repeating the
+    /// potentially expensive matrix inversion, but this is not yet implemented.
+    // TODO: This will also need to be fixed up for the weighted case.
+    pub fn covariance(&self) -> RegressionResult<Array2<F>> {
+        let lin_pred: Array1<F> = self.data.linear_predictor(&self.result);
+        // let mu: Array1<F> = lin_pred.mapv(M::Link::func_inv);
+        let mu: Array1<F> = M::mean(&lin_pred);
+        // let mu: Array1<F> = self.expectation(&self.data.x, self.data.linear_offset.as_ref());
+
+        let var_diag: Array1<F> = mu.mapv_into(M::variance);
+        // adjust the variance for non-canonical link functions
+        let eta_d = M::Link::d_nat_param(&lin_pred);
+        let adj_var: Array1<F> = &eta_d * &var_diag * eta_d;
+        // calculate the fisher matrix
+        let fisher: Array2<F> = (&self.data.x.t() * &adj_var).dot(&self.data.x);
+        // Regularize the fisher matrix
+        let fisher_reg: Array2<F> = (*self.data.reg).irls_mat(fisher, &self.result);
+        let cov = fisher_reg.invh_into()?;
+        // the covariance must be multiplied by the dispersion parameter.
+        let phi = self.dispersion();
+        Ok(cov.mapv_into(|c| phi * c))
+    }
+
+    /// Returns the deviance of the fit: twice the difference between the
+    /// saturated likelihood and the model likelihood. Asymptotically this fits
+    /// a chi-squared distribution with `self.ndf()` degrees of freedom.
+    // TODO: This is likely sensitive to regularization because the saturated
+    // model is not regularized but the model likelihood is. Perhaps this can be
+    // accounted for with an effective number of degrees of freedom.
+    // TODO: Should this include a term for the dispersion parameter? Probably,
+    // as these likelihoods do not include it.
+    pub fn deviance(&self) -> F {
+        F::from(2.).unwrap() * (M::log_like_sat(&self.data.y) - self.model_like)
+    }
+
+    /// Estimate the dispersion parameter through the method of moments.
+    // NOTE: This appears to be quite similar to the score test.
+    // TODO: This will need to be fixed up for weighted regression, including the weights in the covariance matrix.
+    pub fn dispersion(&self) -> F {
+        let ndf: F = F::from(self.ndf()).unwrap();
+        let mu: Array1<F> = self.expectation(&self.data.x, self.data.linear_offset.as_ref());
+        let errors: Array1<F> = &self.data.y - &mu;
+        let var_diag: Array1<F> = mu.mapv(M::variance);
+        (&errors * &var_diag.mapv_into(|v| (v + F::epsilon()).recip()) * errors).sum() / ndf
     }
 
     /// Returns the errors in the response variables given the model.
     pub fn errors(&self, data: &Model<M, F>) -> Array1<F> {
         &data.y - &self.expectation(&data.x, data.linear_offset.as_ref())
+    }
+
+    /// Returns the signed square root of the Wald test statistic for each parameter.
+    pub fn wald_z(&self) -> RegressionResult<Array1<F>> {
+        let par_cov = self.covariance()?;
+        let par_variances: ArrayView1<F> = par_cov.diag();
+        Ok(&self.result / &par_variances.mapv(Float::sqrt))
     }
 
     /// return the signed Z-score for each regression parameter. This is not a
@@ -153,8 +219,7 @@ where
     #[deprecated(
         since = "0.3.0",
         note = "This statistic is not a robust one. To get an analogous
-        statistic of the entire fit, take the square root of the likelihood
-        ratio test with `lr_test()`."
+        statistic use `wald_z()`."
     )]
     pub fn z_scores(&self) -> Array1<F> {
         // -2 likelihood deviation is asymptotically chi^2 with ndf degrees of freedom.
@@ -164,6 +229,8 @@ where
             let mut adjusted = self.result.clone();
             adjusted[i_like] = F::zero();
             let null_like = M::log_like_reg(&self.data, &adjusted);
+            eprintln!("Null like in Z-scores: {}", null_like);
+            eprintln!("Model like in Z-scores: {}", self.model_like);
             let mut chi_sq = F::from(2.).unwrap() * (self.model_like - null_like);
             // This can happen due to FPE
             if chi_sq < F::zero() {
@@ -216,7 +283,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{logistic::Logistic, model::ModelBuilder, standardize::standardize};
+    use crate::{
+        linear::Linear, logistic::Logistic, model::ModelBuilder, standardize::standardize,
+    };
     use anyhow::Result;
     use approx::assert_abs_diff_eq;
     use ndarray::Axis;
@@ -236,6 +305,19 @@ mod tests {
         assert_abs_diff_eq!(lr, lr_std);
         assert_abs_diff_eq!(fit.aic(), fit_std.aic());
         assert_abs_diff_eq!(fit.bic(), fit_std.bic());
+        assert_abs_diff_eq!(fit.deviance(), fit_std.deviance());
+        // The Wald statistic of the intercept term is not invariant under a
+        // linear transformation of the data, but the parameter part seems to
+        // be, at least for single-component data.
+        assert_abs_diff_eq!(
+            fit.wald_z()[1],
+            fit_std.wald_z()[1],
+            epsilon = 0.01 * std::f32::EPSILON as f64
+        );
+
+        dbg!(fit.deviance());
+        dbg!(fit.deviance() / fit.ndf() as f64);
+        dbg!(lr);
         // These Z-scores are not invariant under data standardization.
         // assert_abs_diff_eq!(fit.z_scores(), fit_std.z_scores());
         Ok(())
@@ -265,6 +347,55 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn null_like_logistic() -> Result<()> {
+        // 6 true and 4 false for y_bar = 0.6.
+        let data_y = array![true, true, true, true, true, true, false, false, false, false];
+        let ybar: f64 = 0.6;
+        let data_x = array![0.4, 0.2, 0.5, 0.1, 0.6, 0.7, 0.3, 0.8, -0.1, 0.1].insert_axis(Axis(1));
+        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x).build()?;
+        let fit = model.fit()?;
+        let target_null_like = fit
+            .data
+            .y
+            .mapv(|y| {
+                let eta = (ybar / (1. - ybar)).ln();
+                y * eta - eta.exp().ln_1p()
+            })
+            .sum();
+        assert_abs_diff_eq!(fit.null_like().0, target_null_like);
+        Ok(())
+    }
+
+    // check the null likelihood for the case where it can be counted exactly.
+    #[test]
+    fn null_like_linear() -> Result<()> {
+        let data_y = array![0.3, -0.1, 0.5, 0.7, 0.2, 1.3, 1.1, 0.2];
+        let data_x = array![0.6, 2.1, 0.4, -3.2, 0.7, 0.1, -0.3, 0.5].insert_axis(Axis(1));
+        let ybar: f64 = data_x.mean().unwrap();
+        let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
+        let fit = model.fit()?;
+        let target_null_like = data_y.mapv(|y| y * ybar - 0.5 * ybar * ybar).sum();
+        let fit_null_like = fit.null_like();
+        assert_eq!(2. * (&fit.model_like - fit_null_like.0), fit.lr_test().0);
+        dbg!(fit.lr_test().0);
+        dbg!(2. * (&fit.model_like - target_null_like));
+        assert_eq!(fit_null_like.1, 1);
+        assert_abs_diff_eq!(fit_null_like.0, target_null_like);
+        Ok(())
+    }
+
+    // check the null likelihood where there is no dependence on the X data.
+    #[test]
+    fn null_like_logistic_nodep() -> Result<()> {
+        let data_y = array![true, true, false, false, true, false, false, true];
+        let data_x = array![0.4, 0.2, 0.4, 0.2, 0.7, 0.7, -0.1, -0.1].insert_axis(Axis(1));
+        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x).build()?;
+        let fit = model.fit()?;
+        let (lr, _) = fit.lr_test();
+        assert_abs_diff_eq!(lr, 0.);
+        Ok(())
+    }
     // TODO: Test that the statistics behave sensibly under regularization. The
     // likelihood ratio test should yield a smaller value.
 }
