@@ -55,7 +55,7 @@ let data_x = array![[0.1, 0.2], [-0.4, 0.1], [0.2, 0.4]];
 let data_x = standardize(data_x);
 // The model is generic over floating point type for the independent data variables, and
 // the type will be inferred from the type of the arrays passed to data().
-// L2 regularization can be applied with l2_reg().
+// L2 (ridge) regularization can be applied with l2_reg().
 let model = ModelBuilder::<Linear>::data(&data_y, &data_x).l2_reg(1e-5).build()?;
 let fit = model.fit()?;
 // Currently the result is a simple array of the MLE estimators, including the intercept term.
@@ -102,9 +102,9 @@ interface is not particularly ergonomic. See `tests/custom_link.rs` for examples
 ### TODO
 
 - [ ] Generalize GLM interface to allow multi-parameter fits like a gamma
-      distribution. This would demand other sufficient statistics besides y
-      (e.g. y^2 for Gaussian w/ variance, log(y) for gamma). It might be worth
-      putting off until const generics.
+      distribution or Gaussian with variable variance. This would demand other
+      sufficient statistics besides y (e.g. y^2 for Gaussian w/ variance, log(y)
+      for gamma). It might be worth putting off until const generics.
 - [ ] Per-parameter test statistic (may require re-minimization)
 - [ ] Calculate/estimate dispersion parameter from the data
 - [ ] More rigorous convergence tests and options for termination
