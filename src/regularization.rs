@@ -9,7 +9,9 @@ pub trait Regularize<F>
 where
     F: Float,
 {
-    /// Defines the impact of the regularization approach on the likelihood.
+    /// Defines the impact of the regularization approach on the likelihood. It
+    /// must be zero when the regressors are zero, otherwise some assumptions in
+    /// the fitting statistics section may be invalidated.
     fn likelihood(&self, l: F, regressors: &Array1<F>) -> F;
     /// Defines the adjustment to the vector side of the IRLS update equation.
     /// It is the negative gradient of the penalty plus the hessian times the
