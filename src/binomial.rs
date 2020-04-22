@@ -1,7 +1,10 @@
 //! Regression with a binomial response function. The N parameter must be known ahead of time.
 //! This submodule uses const_generics, available only in nightly rust, and must
 //! be activated with the "binomial" feature option.
-use crate::glm::{Glm, Response};
+use crate::{
+    glm::{Glm, Response},
+    math::prod_log,
+};
 use ndarray::Array1;
 use num_traits::Float;
 
@@ -33,6 +36,12 @@ impl<const N: BinDom> Glm for Binomial<N> {
     fn variance<F: Float>(mean: F) -> F {
         let n_float: F = F::from(N).unwrap();
         mean * (n_float - mean) / n_float
+    }
+
+    fn log_like_sat<F: Float>(y: &Array1<F>) -> F {
+        let n: F = F::from(N).unwrap();
+        y.mapv(|y| prod_log(y) + prod_log(n - y) - prod_log(n))
+            .sum()
     }
 }
 

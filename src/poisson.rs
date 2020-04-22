@@ -3,6 +3,7 @@
 use crate::{
     glm::{Glm, Response},
     link::Link,
+    math::prod_log,
 };
 use ndarray::Array1;
 use num_traits::{Float, ToPrimitive, Unsigned};
@@ -42,6 +43,12 @@ where
     /// The variance of a Poisson variable is equal to its mean.
     fn variance<F: Float>(mean: F) -> F {
         mean
+    }
+
+    /// The saturation likelihood of the Poisson distribution is non-trivial.
+    /// It is equal to y * (log(y) - 1).
+    fn log_like_sat<F: Float>(y: &Array1<F>) -> F {
+        y.mapv(|y| prod_log(y) - y).sum()
     }
 }
 

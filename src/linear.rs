@@ -47,6 +47,14 @@ where
     fn variance<F: Float>(_mean: F) -> F {
         F::one()
     }
+
+    /// The saturated model likelihood is 0.5*y^2 for each observation. Note
+    /// that if a sum of squares were used for the log-likelihood, this would be
+    /// zero.
+    fn log_like_sat<F: Float>(y: &Array1<F>) -> F {
+        // Only for linear regression does this identity hold.
+        Self::log_partition(y)
+    }
 }
 
 pub mod link {

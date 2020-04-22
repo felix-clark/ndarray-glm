@@ -13,6 +13,7 @@ mod glm;
 pub mod linear;
 pub mod link;
 pub mod logistic;
+mod math;
 pub mod model;
 pub mod poisson;
 mod regularization;
