@@ -2,6 +2,7 @@
 //! This submodule uses const_generics, available only in nightly rust, and must
 //! be activated with the "binomial" feature option.
 use crate::{
+    error::{RegressionError, RegressionResult},
     glm::{Glm, Response},
     math::prod_log,
 };
@@ -17,8 +18,8 @@ type BinDom = u16;
 pub struct Binomial<const N: BinDom>;
 
 impl<const N: BinDom> Response<Binomial<N>> for BinDom {
-    fn to_float<F: Float>(self) -> F {
-        F::from(self).unwrap()
+    fn to_float<F: Float>(self) -> RegressionResult<F> {
+        Ok(F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))?)
     }
 }
 

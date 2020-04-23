@@ -7,6 +7,8 @@ use thiserror::Error;
 pub enum RegressionError {
     #[error("Inconsistent input: {0}")]
     BadInput(String),
+    #[error("Invalid response data: {0}")]
+    InvalidY(String),
     #[error("Linear algebra")]
     LinalgError {
         #[from]

@@ -1,6 +1,7 @@
 //! Model for Poisson regression
 
 use crate::{
+    error::{RegressionError, RegressionResult},
     glm::{Glm, Response},
     link::Link,
     math::prod_log,
@@ -20,11 +21,11 @@ where
 /// Poisson variables can be any unsigned integer.
 impl<U, L> Response<Poisson<L>> for U
 where
-    U: Unsigned + ToPrimitive,
+    U: Unsigned + ToPrimitive + ToString + Copy,
     L: Link<Poisson<L>>,
 {
-    fn to_float<F: Float>(self) -> F {
-        F::from(self).unwrap()
+    fn to_float<F: Float>(self) -> RegressionResult<F> {
+        Ok(F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))?)
     }
 }
 // TODO: A floating point response for Poisson might also be do-able.

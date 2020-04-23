@@ -53,6 +53,11 @@ where
         n_iter: usize,
         n_steps: usize,
     ) -> Self {
+        assert_eq!(
+            model_like,
+            M::log_like_reg(&data, &result),
+            "Model likelihood does not match result"
+        );
         // Cache some of these variables that will be used often.
         let n_par = result.len();
         let n_data = data.y.len();
@@ -92,6 +97,7 @@ where
     /// of parameters fixed to zero to form the null model, is also returned. By
     /// Wilks' theorem this statistic is asymptotically chi-squared distributed
     /// with this number of degrees of freedom.
+    /// WARNING: This sometimes doesn't behave as expected, and may have bugs.
     // TODO: Should the effective number of degrees of freedom due to
     // regularization be taken into account? Should the degrees of freedom be a
     // float?
@@ -100,8 +106,6 @@ where
         // shouldn't be any in the null model with all non-intercept parameters
         // set to zero.
         let (null_like, ndf) = self.null_like();
-        eprintln!("null like in LR test: {}", null_like);
-        eprintln!("model like in LR test: {}", self.model_like);
         let lr: F = F::from(-2.).unwrap() * (null_like - self.model_like);
         (lr, ndf)
     }
@@ -110,48 +114,83 @@ where
     /// to zero except the intercept (if it is used). Also returns the
     /// additional degrees of freedom discarded in the null model.
     fn null_like(&self) -> (F, usize) {
-        // The average y
-        let y_bar: F = self
-            .data
-            .y
-            .mean()
-            .expect("Should be able to take average of y values");
-        // This is the beta that optimizes the null model. Assuming the
-        // intercept is included, it is set to the link function of the mean y.
-        // This can be checked by minimizing the likelihood for the null model.
-        // The log-likelihood should be the same as the sum of the likelihood
-        // using the average of y if L is in the natural exponential form. This
-        // could be used to optimize this in the future, if all likelihoods are
-        // in the natural exponential form as stated above.
-        // let (null_beta_slow, _ndf): (Array1<F>, usize) = {
-        //     let mut beta = Array1::<F>::zeros(self.result.len());
-        //     let mut ndf = beta.len();
-        //     if self.data.use_intercept {
-        //         beta[0] = M::Link::func(y_bar);
-        //         ndf -= 1;
-        //     }
-        //     (beta, ndf)
-        // };
-        // let null_like_slow = M::log_like_reg(&self.data, &null_beta_slow);
-
-        // This approach assumes that the likelihood is in the natural
-        // exponential form as calculated by Glm::log_like_natural(). If that
-        // function is overridden and the values differ significantly, this
-        // approach will give incorrect results. If the likelihood has terms
-        // non-linear in y, then the likelihood must be calculated for every
-        // point rather than averaged.
-        // If the intercept is allowed to maximize the likelihood, the natural
-        // parameter is equal to the link of the expectation. Otherwise it is
-        // the transformation function of zero.
-        let (nat_par, ndf) = if self.data.use_intercept {
-            (array![M::Link::func(y_bar)], self.n_par - 1)
-        } else {
-            (M::Link::nat_param(array![F::zero()]), self.n_par)
+        let null_like: F = match &self.data.linear_offset {
+            None => {
+                // If there is no linear offset, the natural parameter is
+                // identical for all observations so it is sufficient to
+                // calculate the null likelihood for a single point with y equal
+                // to the average.
+                // The average y
+                let y_bar: F = self
+                    .data
+                    .y
+                    .mean()
+                    .expect("Should be able to take average of y values");
+                dbg!(y_bar);
+                // This approach assumes that the likelihood is in the natural
+                // exponential form as calculated by Glm::log_like_natural(). If that
+                // function is overridden and the values differ significantly, this
+                // approach will give incorrect results. If the likelihood has terms
+                // non-linear in y, then the likelihood must be calculated for every
+                // point rather than averaged.
+                // If the intercept is allowed to maximize the likelihood, the natural
+                // parameter is equal to the link of the expectation. Otherwise it is
+                // the transformation function of zero.
+                let nat_par = if self.data.use_intercept {
+                    array![M::Link::func(y_bar)]
+                } else {
+                    M::Link::nat_param(array![F::zero()])
+                };
+                // The null likelihood per observation
+                let null_like_one = M::log_like_natural(&array![y_bar], &nat_par);
+                dbg!(null_like_one);
+                // just multiply the average likelihood by the number of data points, since every term is the same.
+                F::from(self.n_data).unwrap() * null_like_one
+            }
+            Some(off) => {
+                if self.data.use_intercept {
+                    // If there are linear offsets and the intercept is allowed
+                    // to be free, there is not a major simplification and the
+                    // model needs to be re-fit.
+                    // the X data is a single column of 1s. Since this model
+                    // isn't being created by the ModelBuilder, the X data is
+                    // not automatically padded with ones.
+                    let data_x_null = Array2::<F>::ones((self.n_data, 1));
+                    let null_model = Model {
+                        model: std::marker::PhantomData::<M>,
+                        y: self.data.y.clone(),
+                        x: data_x_null,
+                        linear_offset: Some(off.clone()),
+                        // There shouldn't be too much trouble fitting this
+                        // single-parameter fit, but there shouldn't be harm in
+                        // using the same maximum as in the original model.
+                        max_iter: self.data.max_iter,
+                        // the intercept should not be regularized.
+                        reg: Box::new(crate::regularization::Null {}),
+                        // If we are here it is because an intercept is needed.
+                        use_intercept: true,
+                    };
+                    // TODO: Make this function return an error, although it's
+                    // difficult to imagine this case happening.
+                    // TODO: Should the tolerance of this fit be stricter?
+                    let null_fit = null_model.fit().expect("Could not fit null model!");
+                    null_fit.model_like
+                } else {
+                    // If the intercept is fixed to zero, then no minimization is
+                    // required. The natural parameters are directly known in terms
+                    // of the linear offset. The likelihood must still be summed
+                    // over all observations, since they have different offsets.
+                    let nat_par = M::Link::nat_param(off.clone());
+                    M::log_like_natural(&self.data.y, &nat_par)
+                }
+            }
         };
-        // The null likelihood per observation
-        let null_like_one = M::log_like_natural(&array![y_bar], &nat_par);
-        let null_like_total = F::from(self.n_data).unwrap() * null_like_one;
-        (null_like_total, ndf)
+        let ndf = if self.data.use_intercept {
+            self.n_par - 1
+        } else {
+            self.n_par
+        };
+        (null_like, ndf)
     }
 
     /// The covariance matrix estimated by the Fisher information and the
@@ -174,13 +213,19 @@ where
         let fisher_reg: Array2<F> = (*self.data.reg).irls_mat(fisher, &self.result);
         let cov = fisher_reg.invh_into()?;
         // the covariance must be multiplied by the dispersion parameter.
-        let phi = self.dispersion();
-        Ok(cov.mapv_into(|c| phi * c))
+        // However it should be the likelihood dispersion parameter, not the
+        // estimated one. In logistic regression, for instance, the dispersion
+        // parameter is identically 1.
+        // let phi = self.dispersion();
+        // Ok(cov.mapv_into(|c| phi * c))
+        Ok(cov)
     }
 
     /// Returns the deviance of the fit: twice the difference between the
     /// saturated likelihood and the model likelihood. Asymptotically this fits
     /// a chi-squared distribution with `self.ndf()` degrees of freedom.
+    // This could potentially return an array with the contribution to the
+    // deviance at every point.
     // TODO: This is likely sensitive to regularization because the saturated
     // model is not regularized but the model likelihood is. Perhaps this can be
     // accounted for with an effective number of degrees of freedom.
@@ -192,7 +237,8 @@ where
 
     /// Estimate the dispersion parameter through the method of moments.
     // NOTE: This appears to be quite similar to the score test.
-    // TODO: This will need to be fixed up for weighted regression, including the weights in the covariance matrix.
+    // TODO: This will need to be fixed up for weighted regression, including
+    // the weights in the covariance matrix.
     pub fn dispersion(&self) -> F {
         let ndf: F = F::from(self.ndf()).unwrap();
         let mu: Array1<F> = self.expectation(&self.data.x, self.data.linear_offset.as_ref());
@@ -216,6 +262,8 @@ where
     /// return the signed Z-score for each regression parameter. This is not a
     /// particularly robust statistic, as it is sensitive to scaling and offsets
     /// of the covariates.
+    // TODO: we'll keep it around for now because it might be useful for
+    // debugging the real null likelihood.
     #[deprecated(
         since = "0.3.0",
         note = "This statistic is not a robust one. To get an analogous
@@ -223,14 +271,15 @@ where
     )]
     pub fn z_scores(&self) -> Array1<F> {
         // -2 likelihood deviation is asymptotically chi^2 with ndf degrees of freedom.
-        let mut chi_sqs: Array1<F> = Array1::zeros(self.result.len());
+        let mut chi_sqs: Array1<F> = Array1::zeros(self.n_par);
         // TODO (style): move to (enumerated?) iterator
-        for i_like in 0..self.result.len() {
+        for i_like in 0..self.n_par {
             let mut adjusted = self.result.clone();
             adjusted[i_like] = F::zero();
             let null_like = M::log_like_reg(&self.data, &adjusted);
-            eprintln!("Null like in Z-scores: {}", null_like);
-            eprintln!("Model like in Z-scores: {}", self.model_like);
+            if i_like != 0 {
+                assert_eq!(null_like <= self.null_like().0 + F::from(0.001).unwrap(), true, "This fixed set should be less likely than the null where it is supposed to be the best fit.");
+            }
             let mut chi_sq = F::from(2.).unwrap() * (self.model_like - null_like);
             // This can happen due to FPE
             if chi_sq < F::zero() {
@@ -264,7 +313,7 @@ where
     // TODO: Should an effective number of parameters that takes regularization
     // into acount be considered?
     pub fn aic(&self) -> F {
-        F::from(2 * self.result.len()).unwrap() - F::from(2.).unwrap() * self.model_like
+        F::from(2 * self.n_par).unwrap() - F::from(2.).unwrap() * self.model_like
     }
 
     /// Returns the Bayesian information criterion for the model fit.
@@ -276,7 +325,7 @@ where
     // this package.
     pub fn bic(&self) -> F {
         let logn = F::from(self.data.y.len()).unwrap().ln();
-        logn * F::from(self.result.len()).unwrap() - F::from(2.).unwrap() * self.model_like
+        logn * F::from(self.n_par).unwrap() - F::from(2.).unwrap() * self.model_like
     }
 }
 
@@ -295,10 +344,15 @@ mod tests {
     fn standardization_invariance() -> Result<()> {
         let data_y = array![true, false, false, true, true, true, true, false, true];
         let data_x = array![-0.5, 0.3, -0.6, 0.2, 0.3, 1.2, 0.8, 0.6, -0.2].insert_axis(Axis(1));
+        let lin_off = array![0.1, 0.0, -0.1, 0.2, 0.1, 0.3, 0.4, -0.1, 0.1];
         let data_x_std = standardize(data_x.clone());
-        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x).build()?;
+        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x)
+            .linear_offset(lin_off.clone())
+            .build()?;
         let fit = model.fit()?;
-        let model_std = ModelBuilder::<Logistic>::data(&data_y, &data_x_std).build()?;
+        let model_std = ModelBuilder::<Logistic>::data(&data_y, &data_x_std)
+            .linear_offset(lin_off)
+            .build()?;
         let fit_std = model_std.fit()?;
         let (lr, _) = fit.lr_test();
         let (lr_std, _) = fit_std.lr_test();
@@ -310,15 +364,16 @@ mod tests {
         // linear transformation of the data, but the parameter part seems to
         // be, at least for single-component data.
         assert_abs_diff_eq!(
-            fit.wald_z()[1],
-            fit_std.wald_z()[1],
+            fit.wald_z()?[1],
+            fit_std.wald_z()?[1],
             epsilon = 0.01 * std::f32::EPSILON as f64
         );
 
         dbg!(fit.deviance());
         dbg!(fit.deviance() / fit.ndf() as f64);
         dbg!(lr);
-        // These Z-scores are not invariant under data standardization.
+        // These Z-scores are not invariant under data standardization. They
+        // probably don't account for the dispersion parameter.
         // assert_abs_diff_eq!(fit.z_scores(), fit_std.z_scores());
         Ok(())
     }
@@ -331,17 +386,40 @@ mod tests {
         let fit = model.fit()?;
         dbg!(fit.n_iter);
         dbg!(&fit.result);
+        // with no offsets, the result should be the link function of the mean.
+        assert_abs_diff_eq!(
+            fit.result[0],
+            <Logistic as Glm>::Link::func(0.6),
+            epsilon = 4.0 * std::f64::EPSILON
+        );
         let (empty_null_like, empty_null_ndf) = fit.null_like();
         assert_eq!(empty_null_ndf, 0);
         dbg!(&fit.model_like);
         let (lr, lr_ndf) = fit.lr_test();
         dbg!(lr, lr_ndf);
+        // Since there is no data, the null likelihood should be identical to
+        // the fit likelihood, so the likelihood ratio test should yield zero.
         assert_abs_diff_eq!(lr, 0.);
 
-        let data_x = array![[0.5], [-0.2], [0.3], [0.4], [-0.1]];
-        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x).build()?;
+        // Check that the assertions still hold if linear offsets are included.
+        let lin_off: Array1<f64> = array![0.2, -0.1, 0.1, 0.0, 0.1];
+        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x)
+            .linear_offset(lin_off.clone())
+            .build()?;
+        let fit_off = model.fit()?;
+        let empty_model_like_off = fit_off.model_like;
+        let empty_null_like_off = fit_off.null_like().0;
+        // these two assertions should be equivalent
+        assert_eq!(fit_off.lr_test().0, 0.);
+        assert_eq!(empty_model_like_off, empty_null_like_off);
+
+        // check consistency with data provided
+        let data_x_with = array![[0.5], [-0.2], [0.3], [0.4], [-0.1]];
+        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x_with).build()?;
         let fit_with = model.fit()?;
         dbg!(&fit_with.result);
+        // The null likelihood of the model with parameters should be the same
+        // as the likelihood of the model with only the intercept.
         assert_abs_diff_eq!(empty_null_like, fit_with.null_like().0);
 
         Ok(())
@@ -370,18 +448,28 @@ mod tests {
     // check the null likelihood for the case where it can be counted exactly.
     #[test]
     fn null_like_linear() -> Result<()> {
-        let data_y = array![0.3, -0.1, 0.5, 0.7, 0.2, 1.3, 1.1, 0.2];
+        let data_y = array![0.3, -0.2, 0.5, 0.7, 0.2, 1.4, 1.1, 0.2];
         let data_x = array![0.6, 2.1, 0.4, -3.2, 0.7, 0.1, -0.3, 0.5].insert_axis(Axis(1));
-        let ybar: f64 = data_x.mean().unwrap();
+        let ybar: f64 = data_y.mean().unwrap();
         let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
         let fit = model.fit()?;
+        // let target_null_like = data_y.mapv(|y| -0.5 * (y - ybar) * (y - ybar)).sum();
         let target_null_like = data_y.mapv(|y| y * ybar - 0.5 * ybar * ybar).sum();
+        // With the saturated likelihood subtracted the null likelihood should
+        // just be the sum of squared differences from the mean.
+        // let target_null_like = 0.;
+        dbg!(target_null_like);
         let fit_null_like = fit.null_like();
+        dbg!(fit_null_like.0);
         assert_eq!(2. * (&fit.model_like - fit_null_like.0), fit.lr_test().0);
         dbg!(fit.lr_test().0);
         dbg!(2. * (&fit.model_like - target_null_like));
         assert_eq!(fit_null_like.1, 1);
-        assert_abs_diff_eq!(fit_null_like.0, target_null_like);
+        assert_abs_diff_eq!(
+            fit_null_like.0,
+            target_null_like,
+            epsilon = 4.0 * std::f64::EPSILON
+        );
         Ok(())
     }
 

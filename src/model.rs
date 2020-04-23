@@ -19,13 +19,14 @@ where
     M: Glm,
     F: Float,
 {
-    model: PhantomData<M>,
+    pub model: PhantomData<M>,
     /// the observation of response data by event
     pub y: Array1<F>,
     /// the design matrix with events in rows and instances in columns
     pub x: Array2<F>,
     /// The offset in the linear predictor for each data point. This can be used
     /// to fix the effect of control variables.
+    // TODO: Consider making this an option of a reference.
     pub linear_offset: Option<Array1<F>>,
     /// the maximum number of iterations to try before failure.
     pub max_iter: Option<usize>,
@@ -206,7 +207,11 @@ where
         }
 
         // convert to floating-point
-        let data_y: Array1<F> = self.data_y.map(|&y| y.to_float());
+        let data_y: Array1<F> = self
+            .data_y
+            .iter()
+            .map(|&y| y.to_float())
+            .collect::<Result<_, _>>()?;
 
         let reg: Box<dyn Regularize<F>> = if self.l2_reg != F::zero() {
             // make the vector of L2 coefficients

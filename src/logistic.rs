@@ -1,6 +1,7 @@
 //! functions for solving logistic regression
 
 use crate::{
+    error::{RegressionError, RegressionResult},
     glm::{Glm, Response},
     link::Link,
 };
@@ -22,16 +23,35 @@ impl<L> Response<Logistic<L>> for bool
 where
     L: Link<Logistic<L>>,
 {
-    fn to_float<F: Float>(self) -> F {
-        if self {
-            F::one()
-        } else {
-            F::zero()
-        }
+    fn to_float<F: Float>(self) -> RegressionResult<F> {
+        Ok(if self { F::one() } else { F::zero() })
     }
 }
-// TODO: We could also allow floats as the domain, however the interface should
-// be changed to return an error in case of a failed check for 0 <= y <= 1.
+// Allow floats for the domain. We can't use num_traits::Float because of the
+// possibility of conflicting implementations upstream, so manually implement
+// for f32 and f64.
+impl<L> Response<Logistic<L>> for f32
+where
+    L: Link<Logistic<L>>,
+{
+    fn to_float<F: Float>(self) -> RegressionResult<F> {
+        if self < 0.0 || self > 1.0 {
+            return Err(RegressionError::InvalidY(self.to_string()));
+        }
+        Ok(F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))?)
+    }
+}
+impl<L> Response<Logistic<L>> for f64
+where
+    L: Link<Logistic<L>>,
+{
+    fn to_float<F: Float>(self) -> RegressionResult<F> {
+        if self < 0.0 || self > 1.0 {
+            return Err(RegressionError::InvalidY(self.to_string()));
+        }
+        Ok(F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))?)
+    }
+}
 
 /// Implementation of GLM functionality for logistic regression.
 impl<L> Glm for Logistic<L>

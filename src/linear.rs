@@ -1,9 +1,10 @@
 //! Functions for solving linear regression
 
 use crate::{
+    error::{RegressionError, RegressionResult},
+    // model::Model,
     glm::{Glm, Response},
     link::Link,
-    // model::Model,
 };
 use ndarray::Array1;
 use num_traits::{Float, ToPrimitive};
@@ -20,13 +21,13 @@ where
 /// Allow all floating point types in the linear model.
 impl<Y, L> Response<Linear<L>> for Y
 where
-    Y: Float + ToPrimitive,
+    Y: Float + ToPrimitive + ToString,
     L: Link<Linear<L>>,
 {
-    fn to_float<F: Float>(self) -> F {
+    fn to_float<F: Float>(self) -> RegressionResult<F> {
         // TODO: Can we avoid casting and use traits? We'd likely have to define
         // our own trait constraint.
-        F::from(self).unwrap()
+        Ok(F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))?)
     }
 }
 

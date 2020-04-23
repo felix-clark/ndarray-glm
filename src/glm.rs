@@ -53,7 +53,9 @@ pub trait Glm: Sized {
     where
         F: Float + Lapack,
     {
-        (y * nat).sum() - Self::log_partition(nat)
+        // subtracting the saturated likelihood to keep the likelihood closer to
+        // zero, but this can complicate some fit statistics.
+        (y * nat).sum() - Self::log_partition(nat) // - Self::log_like_sat(y)
     }
 
     /// Returns the likelihood of a saturated model where every observation can
@@ -90,12 +92,18 @@ pub trait Glm: Sized {
         let y_bar: F = data.y.mean().unwrap_or_else(F::zero);
         let mu_y: Array1<F> = data.y.mapv(|y| F::from(0.5).unwrap() * (y + y_bar));
         let link_y = mu_y.mapv(Self::Link::func);
-        // let beta_zeros = Array1::<F>::zeros(data.x.ncols());
+        // Compensate for linear offsets if they are present
+        let link_y: Array1<F> = if let Some(off) = &data.linear_offset {
+            &link_y - off
+        } else {
+            link_y
+        };
         let x_mat: Array2<F> = data.x.t().dot(&data.x);
         // Regularize so the initial guess doesn't start in a crazy place for ill-conditioned data.
         // This is not exact in general, but works for L2 regularization. It's
         // probably not worth being more precise because we only want an initial
         // guess, and this could be very wrong with L1 when plugging in beta = 0.
+        // let beta_zeros = Array1::<F>::zeros(data.x.ncols());
         // let x_mat: Array2<F> = (*data.reg).irls_mat(x_mat, &beta_zeros);
         let init_guess: Array1<F> =
             x_mat
@@ -153,7 +161,7 @@ pub trait Glm: Sized {
 /// be used as a response variable.
 pub trait Response<M: Glm> {
     /// Converts the domain to a floating-point value for IRLS.
-    fn to_float<F: Float>(self) -> F;
+    fn to_float<F: Float>(self) -> RegressionResult<F>;
 
     // TODO: a function to check if a Y-value is valid? This may be useful for
     // some models. Actually changing the signature of to_float() to return a
@@ -326,18 +334,23 @@ where
         // cases that lead to poor convergence.
         // Ideally we could only check the step difference but that might not be
         // as stable. Some parameters might be at different scales.
-        let mut like = M::log_like_reg(&self.data, &next_guess);
+        let mut next_like = M::log_like_reg(&self.data, &next_guess);
         // This should be positive for an improved guess
-        let mut rel = (like - self.last_like) / (F::epsilon() + like.abs());
+        let mut rel = (next_like - self.last_like) / (F::epsilon() + next_like.abs());
+        // If this guess is a strict improvement, return it immediately.
+        if rel > F::zero() {
+            return Some(self.step_with(next_guess, next_like, 0));
+        }
         // Terminate if the difference is close to zero
         if rel.abs() <= self.tolerance {
             // If this guess is an improvement then go ahead and return it, but
             // quit early on the next iteration. The equivalence with zero is
             // necessary in order to return a value when the iteration starts at
-            // the best guess.
+            // the best guess. This comparison includes zero so that the
+            // iteration terminates if the likelihood hasn't changed at all.
             if rel >= F::zero() {
                 self.done = true;
-                return Some(self.step_with(next_guess, like, 0));
+                return Some(self.step_with(next_guess, next_like, 0));
             }
             return None;
         }
@@ -345,17 +358,20 @@ where
         // apply step halving if rel < 0, which means the likelihood has decreased.
         // Don't terminate if rel gets back to within tolerance as a result of this.
         // TODO: make the maximum step halves customizable
-        const MAX_STEP_HALVES: usize = 6;
+        // TODO: None of the tests result in step-halving, so this part is untested.
+        const MAX_STEP_HALVES: usize = 8;
         let mut step_halves = 0;
         let half: F = F::from(0.5).unwrap();
         let mut step_multiplier = half;
         while rel < -self.tolerance && step_halves < MAX_STEP_HALVES {
+            // The next guess for the step-halving
             let next_guess_sh = next_guess.map(|&x| x * (step_multiplier))
                 + &self.guess.map(|&x| x * (F::one() - step_multiplier));
-            like = M::log_like_reg(&self.data, &next_guess);
-            let next_rel = (like - self.last_like) / (F::epsilon() + like.abs());
+            let next_like_sh = M::log_like_reg(&self.data, &next_guess_sh);
+            let next_rel = (next_like_sh - self.last_like) / (F::epsilon() + next_like_sh.abs());
             if next_rel >= rel {
                 next_guess = next_guess_sh;
+                next_like = next_like_sh;
                 rel = next_rel;
                 step_multiplier = half;
             } else {
@@ -365,7 +381,7 @@ where
         }
 
         if rel > F::zero() {
-            Some(self.step_with(next_guess, like, step_halves))
+            Some(self.step_with(next_guess, next_like, step_halves))
         } else {
             // We can end up here if the step direction is a poor one.
             // This signals the end of iteration, but more checks should be done
