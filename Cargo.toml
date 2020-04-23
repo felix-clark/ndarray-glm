@@ -1,6 +1,6 @@
 [package]
 name = "ndarray-glm"
-version = "0.0.3"
+version = "0.0.4"
 authors = ["Felix Clark <mfclark3690@gmail.com>"]
 description = "Performs regression for generalized linear models using IRLS on data stored in arrays."
 edition = "2018"
@@ -21,7 +21,7 @@ nightly = ["binomial"]
 # Feature flags to pass to ndarray-linalg
 openblas = ["ndarray-linalg/openblas"]
 openblas-src = ["ndarray-linalg/openblas-src"]
-# These last two are implied by openblas-static
+# The previous two are implied by openblas-static
 openblas-static = ["ndarray-linalg/openblas-static"]
 netlib = ["ndarray-linalg/netlib"]
 intel-mkl = ["ndarray-linalg/intel-mkl"]
@@ -34,8 +34,8 @@ binomial = []
 ndarray = { version = "0.13", features = ["blas"] }
 # The version with the latest openblas-src and blas-src versions doesn't have a
 # crate yet, so use the master branch for CI.
-# ndarray-linalg = { version = "0.12" }
-ndarray-linalg = { git = "https://github.com/rust-ndarray/ndarray-linalg" }
+ndarray-linalg = { version = "0.12" }
+# ndarray-linalg = { git = "https://github.com/rust-ndarray/ndarray-linalg" }
 num-traits = "0.2"
 thiserror = "1.0"
 itertools = "0.9"
@@ -44,11 +44,11 @@ itertools = "0.9"
 # Use the "approx" feature for unit tests
 ndarray = { version = "0.13", features = ["blas", "approx"] }
 # pick a backend to run tests
-# blas-src = { version = "0.4", default-features = false, features = ["openblas"] }
-# ndarray-linalg = { version = "0.12", default-features = false, features = ["openblas-static"]}
+blas-src = { version = "0.4", default-features = false, features = ["openblas"] }
+ndarray-linalg = { version = "0.12", default-features = false, features = ["openblas-static"]}
 # the updates to blas versions have not been released in ndarray-linalg yet.
-blas-src = { version = "0.6", default-features = false, features = ["openblas"] }
-ndarray-linalg = { git = "https://github.com/rust-ndarray/ndarray-linalg", branch = "master", default-features = false, features = ["openblas-static"] }
+# blas-src = { version = "0.6", default-features = false, features = ["openblas"] }
+# ndarray-linalg = { git = "https://github.com/rust-ndarray/ndarray-linalg", branch = "master", default-features = false, features = ["openblas-static"] }
 anyhow = "1.0"
 approx = "0.3"
 # including openblas-src causes linking errors with LAPACKE?
