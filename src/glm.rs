@@ -54,8 +54,10 @@ pub trait Glm: Sized {
         F: Float + Lapack,
     {
         // subtracting the saturated likelihood to keep the likelihood closer to
-        // zero, but this can complicate some fit statistics.
-        (y * nat).sum() - Self::log_partition(nat) // - Self::log_like_sat(y)
+        // zero, but this can complicate some fit statistics. In addition to
+        // causing some null likelihood tests to fail as written, it would make
+        // the deviance calculation incorrect.
+        (y * nat).sum() - Self::log_partition(nat)
     }
 
     /// Returns the likelihood of a saturated model where every observation can
@@ -76,10 +78,9 @@ pub trait Glm: Sized {
     }
 
     /// Provide an initial guess for the parameters. This can be overridden
-    /// (e.g. statsmodels uses a different initial guess for binomial
-    /// regression) but this should provide a decent general starting point. The
-    /// y data is averaged with its mean to prevent infinities resulting from
-    /// application of the link function:
+    /// but this should provide a decent general starting point. The y data is
+    /// averaged with its mean to prevent infinities resulting from application
+    /// of the link function:
     /// X * beta_0 ~ g(0.5*(y + y_avg))
     /// This is equivalent to minimizing half the sum of squared differences
     /// between X*beta and g(0.5*(y + y_avg)).
@@ -99,12 +100,6 @@ pub trait Glm: Sized {
             link_y
         };
         let x_mat: Array2<F> = data.x.t().dot(&data.x);
-        // Regularize so the initial guess doesn't start in a crazy place for ill-conditioned data.
-        // This is not exact in general, but works for L2 regularization. It's
-        // probably not worth being more precise because we only want an initial
-        // guess, and this could be very wrong with L1 when plugging in beta = 0.
-        // let beta_zeros = Array1::<F>::zeros(data.x.ncols());
-        // let x_mat: Array2<F> = (*data.reg).irls_mat(x_mat, &beta_zeros);
         let init_guess: Array1<F> =
             x_mat
                 .solveh_into(data.x.t().dot(&link_y))

@@ -139,11 +139,9 @@ mod tests {
         let data_y = array![true, false, true, true, false];
         let model = ModelBuilder::<Logistic>::data(&data_y, &data_x).build()?;
         let fit = model.fit()?;
-        dbg!(fit.n_iter);
+        // dbg!(fit.n_iter);
         assert_abs_diff_eq!(beta, fit.result, epsilon = 0.05 * std::f32::EPSILON as f64);
-        let (lr, _) = fit.lr_test();
-        dbg!(&lr);
-        dbg!(&lr.sqrt());
+        // let lr = fit.lr_test();
         Ok(())
     }
 }
