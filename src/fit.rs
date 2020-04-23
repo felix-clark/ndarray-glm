@@ -118,6 +118,15 @@ where
         F::from(-2.).unwrap() * (null_like - self.model_like)
     }
 
+    /// Perform a likelihood-ratio test against a general alternative model, not
+    /// necessarily a null model. The alternative model is regularized the same
+    /// way that the regression resulting in this fit was. The degrees of
+    /// freedom cannot be generally inferred.
+    pub fn lr_test_against(&self, alternative: &Array1<F>) -> F {
+        let alt_like = M::log_like_reg(&self.data, &alternative);
+        F::from(2.).unwrap() * (self.model_like - alt_like)
+    }
+
     /// Return the likelihood and intercept for the null model. Since this can
     /// require an additional regression, the values are cached.
     /// This function should not be public: perhaps a private trait can hide it?
@@ -312,12 +321,19 @@ where
     /// chi-squared distributioned with `test_ndf()` degrees of freedom.
     pub fn score_test(&self) -> RegressionResult<F> {
         let (_, null_params) = self.null_model_fit();
-        let score_null = self.score(&null_params);
-        let fisher_null = self.fisher(&null_params);
+        self.score_test_against(null_params)
+    }
+
+    /// Returns the score test statistic compared to another set of model
+    /// parameters, not necessarily a null model. The degrees of freedom cannot
+    /// be generally inferred.
+    pub fn score_test_against(&self, alternative: Array1<F>) -> RegressionResult<F> {
+        let score_alt = self.score(&alternative);
+        let fisher_alt = self.fisher(&alternative);
         // The is not the same as the cached covariance matrix since it is
         // evaluated at the null parameters.
-        let inv_fisher_null = fisher_null.invh_into()?;
-        Ok(score_null.t().dot(&inv_fisher_null.dot(&score_null)))
+        let inv_fisher_alt = fisher_alt.invh_into()?;
+        Ok(score_alt.t().dot(&inv_fisher_alt.dot(&score_alt)))
     }
 
     /// The degrees of freedom for the likelihood ratio test, the score test,
@@ -338,9 +354,16 @@ where
         // The null parameters are all zero except for a possible intercept term
         // which optimizes the null model.
         let (_, null_params) = self.null_model_fit();
-        let d_params: Array1<F> = &self.result - &null_params;
-        let fisher_null: Array2<F> = self.fisher(&null_params);
-        d_params.t().dot(&fisher_null.dot(&d_params))
+        self.wald_test_against(&null_params)
+    }
+
+    /// Returns the Wald test statistic compared to another specified model fit
+    /// instead of the null model. The degrees of freedom cannot be generally
+    /// inferred.
+    pub fn wald_test_against(&self, alternative: &Array1<F>) -> F {
+        let d_params: Array1<F> = &self.result - alternative;
+        let fisher_alt: Array2<F> = self.fisher(&alternative);
+        d_params.t().dot(&fisher_alt.dot(&d_params))
     }
 
     /// Returns the signed square root of the Wald test statistic for each
@@ -601,6 +624,22 @@ mod tests {
         let _null_like = fit.null_like();
         let _cov = fit.covariance()?;
         let _wald = fit.wald_z();
+        Ok(())
+    }
+
+    // Check the consistency of the various statistical tests for linear
+    // regression, where they should be the most comparable.
+    #[test]
+    fn linear_stat_tests() -> Result<()> {
+        let data_y = array![-0.3, -0.1, 0.0, 0.2, 0.4, 0.5, 0.8, 0.8, 1.1];
+        let data_x = array![-0.5, -0.2, 0.1, 0.2, 0.5, 0.6, 0.7, 0.9, 1.3].insert_axis(Axis(1));
+        let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
+        let fit = model.fit()?;
+        let lr = fit.lr_test();
+        let wald = fit.wald_test();
+        let score = fit.score_test()?;
+        assert_abs_diff_eq!(lr, wald, epsilon = 32.0 * f64::EPSILON);
+        assert_abs_diff_eq!(lr, score, epsilon = 32.0 * f64::EPSILON);
         Ok(())
     }
 }
