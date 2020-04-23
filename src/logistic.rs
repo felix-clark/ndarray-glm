@@ -1,6 +1,7 @@
 //! functions for solving logistic regression
 
 use crate::{
+    error::{RegressionError, RegressionResult},
     glm::{Glm, Response},
     link::Link,
 };
@@ -22,16 +23,35 @@ impl<L> Response<Logistic<L>> for bool
 where
     L: Link<Logistic<L>>,
 {
-    fn to_float<F: Float>(self) -> F {
-        if self {
-            F::one()
-        } else {
-            F::zero()
-        }
+    fn to_float<F: Float>(self) -> RegressionResult<F> {
+        Ok(if self { F::one() } else { F::zero() })
     }
 }
-// TODO: We could also allow floats as the domain, however the interface should
-// be changed to return an error in case of a failed check for 0 <= y <= 1.
+// Allow floats for the domain. We can't use num_traits::Float because of the
+// possibility of conflicting implementations upstream, so manually implement
+// for f32 and f64.
+impl<L> Response<Logistic<L>> for f32
+where
+    L: Link<Logistic<L>>,
+{
+    fn to_float<F: Float>(self) -> RegressionResult<F> {
+        if self < 0.0 || self > 1.0 {
+            return Err(RegressionError::InvalidY(self.to_string()));
+        }
+        Ok(F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))?)
+    }
+}
+impl<L> Response<Logistic<L>> for f64
+where
+    L: Link<Logistic<L>>,
+{
+    fn to_float<F: Float>(self) -> RegressionResult<F> {
+        if self < 0.0 || self > 1.0 {
+            return Err(RegressionError::InvalidY(self.to_string()));
+        }
+        Ok(F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))?)
+    }
+}
 
 /// Implementation of GLM functionality for logistic regression.
 impl<L> Glm for Logistic<L>
@@ -75,6 +95,13 @@ where
             });
         log_like_terms.sum()
     }
+
+    /// The saturated likelihood is zero for logistic regression.
+    // Trying to solve directly for logit(p) results in logarithmic divergences,
+    // but the total likelihood vanishes as a limit is taken of y -> 0 or 1.
+    fn log_like_sat<F: Float>(_y: &Array1<F>) -> F {
+        F::zero()
+    }
 }
 
 pub mod link {
@@ -103,6 +130,7 @@ mod tests {
     use approx::assert_abs_diff_eq;
     use ndarray::array;
 
+    /// A simple test where the correct value for the data is known exactly.
     #[test]
     fn log_reg() -> RegressionResult<()> {
         let beta = array![0., 1.0];
@@ -111,11 +139,9 @@ mod tests {
         let data_y = array![true, false, true, true, false];
         let model = ModelBuilder::<Logistic>::data(&data_y, &data_x).build()?;
         let fit = model.fit()?;
-        dbg!(fit.n_iter);
+        // dbg!(fit.n_iter);
         assert_abs_diff_eq!(beta, fit.result, epsilon = 0.05 * std::f32::EPSILON as f64);
-        let (lr, _) = fit.lr_test();
-        dbg!(&lr);
-        dbg!(&lr.sqrt());
+        // let lr = fit.lr_test();
         Ok(())
     }
 }

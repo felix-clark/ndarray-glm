@@ -9,11 +9,16 @@ pub trait Regularize<F>
 where
     F: Float,
 {
-    /// Defines the impact of the regularization approach on the likelihood.
+    /// Defines the impact of the regularization approach on the likelihood. It
+    /// must be zero when the regressors are zero, otherwise some assumptions in
+    /// the fitting statistics section may be invalidated.
     fn likelihood(&self, l: F, regressors: &Array1<F>) -> F;
+    /// Defines the regularization effect on the gradient of the likelihood.
+    fn gradient(&self, l: Array1<F>, regressors: &Array1<F>) -> Array1<F>;
     /// Defines the adjustment to the vector side of the IRLS update equation.
     /// It is the negative gradient of the penalty plus the hessian times the
-    /// regressors.
+    /// regressors. A default implementation is provided, but this is zero for
+    /// ridge regression so it is allowed to be overridden.
     fn irls_vec(&self, vec: Array1<F>, regressors: &Array1<F>) -> Array1<F>;
     /// Defines the change to the matrix side of the IRLS update equation. It
     /// subtracts the Hessian of the penalty from the matrix. The difference is
@@ -27,6 +32,10 @@ impl<F: Float> Regularize<F> for Null {
     #[inline]
     fn likelihood(&self, l: F, _: &Array1<F>) -> F {
         l
+    }
+    #[inline]
+    fn gradient(&self, jac: Array1<F>, _: &Array1<F>) -> Array1<F> {
+        jac
     }
     #[inline]
     fn irls_vec(&self, vec: Array1<F>, _: &Array1<F>) -> Array1<F> {
@@ -55,6 +64,10 @@ impl<F: Float + Lapack> Regularize<F> for Ridge<F> {
     /// The likelihood is penalized by 0.5 * lambda_2 * |beta|^2
     fn likelihood(&self, l: F, beta: &Array1<F>) -> F {
         l - F::from(0.5).unwrap() * (&self.l2_vec * &beta.mapv(|b| b * b)).sum()
+    }
+    /// The gradient is penalized by lambda_2 * beta.
+    fn gradient(&self, jac: Array1<F>, beta: &Array1<F>) -> Array1<F> {
+        jac - (&self.l2_vec * beta)
     }
     /// Ridge regression has no effect on the vector side of the IRLS step equation.
     #[inline]

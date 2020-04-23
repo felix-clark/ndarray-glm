@@ -1,8 +1,10 @@
 //! Model for Poisson regression
 
 use crate::{
+    error::{RegressionError, RegressionResult},
     glm::{Glm, Response},
     link::Link,
+    math::prod_log,
 };
 use ndarray::Array1;
 use num_traits::{Float, ToPrimitive, Unsigned};
@@ -19,11 +21,11 @@ where
 /// Poisson variables can be any unsigned integer.
 impl<U, L> Response<Poisson<L>> for U
 where
-    U: Unsigned + ToPrimitive,
+    U: Unsigned + ToPrimitive + ToString + Copy,
     L: Link<Poisson<L>>,
 {
-    fn to_float<F: Float>(self) -> F {
-        F::from(self).unwrap()
+    fn to_float<F: Float>(self) -> RegressionResult<F> {
+        Ok(F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))?)
     }
 }
 // TODO: A floating point response for Poisson might also be do-able.
@@ -42,6 +44,12 @@ where
     /// The variance of a Poisson variable is equal to its mean.
     fn variance<F: Float>(mean: F) -> F {
         mean
+    }
+
+    /// The saturation likelihood of the Poisson distribution is non-trivial.
+    /// It is equal to y * (log(y) - 1).
+    fn log_like_sat<F: Float>(y: &Array1<F>) -> F {
+        y.mapv(|y| prod_log(y) - y).sum()
     }
 }
 
