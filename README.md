@@ -38,7 +38,7 @@ To use in your crate, add the following to the `Cargo.toml`:
 ```
 ndarray = { version = "0.13", features = ["blas"]}
 blas-src = { version = "0.4", default-features = false, features = ["openblas"] }
-ndarray-glm = { version = "0.0.5", features = ["openblas-static"] }
+ndarray-glm = { version = "0.0.6", features = ["openblas-static"] }
 ```
 
 An example for linear regression is shown below.
