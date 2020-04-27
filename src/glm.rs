@@ -128,10 +128,11 @@ pub trait Glm: Sized {
         let mut n_iter: usize = 0;
         // This is the number of steps tried, which includes those arising from step halving.
         let mut n_steps: usize = 0;
-        let mut result: Array1<F> = Array1::<F>::zeros(initial.len());
-        let mut model_like: F = -F::infinity();
+        // initialize the result and likelihood in case no steps are taken.
+        let mut result: Array1<F> = initial.clone();
+        let mut model_like: F = Self::log_like_reg(&data, &initial);
 
-        let irls: Irls<Self, F> = Irls::new(&data, initial);
+        let irls: Irls<Self, F> = Irls::new(&data, initial, model_like);
 
         for iteration in irls {
             let it_result = iteration?;
@@ -191,17 +192,17 @@ where
     F: Float + Lapack,
     Array2<F>: SolveH<F>,
 {
-    fn new(data: &'a Model<M, F>, initial: Array1<F>) -> Self {
+    fn new(data: &'a Model<M, F>, initial: Array1<F>, initial_like: F) -> Self {
         // This tolerance is rather small, but it is used as a fraction of the likelihood.
         let tolerance: F = F::epsilon();
-        let init_like = M::log_like_reg(&data, &initial);
         Self {
             data,
             guess: initial,
+            // TODO: make this maximum configurable
             max_iter: data.max_iter.unwrap_or(50),
             n_iter: 0,
             tolerance,
-            last_like: init_like,
+            last_like: initial_like,
             done: false,
         }
     }
@@ -228,7 +229,8 @@ where
         })
     }
 
-    /// Returns the (LHS, RHS) of the IRLS update matrix equation.
+    /// Returns the (LHS, RHS) of the IRLS update matrix equation. This is a bit
+    /// faster than computing the Fisher matrix and the Jacobian separately.
     // TODO: re-factor to have the distributions compute the fisher information,
     // as that is useful in the score test as well.
     fn irls_mat_vec(&self) -> (Array2<F>, Array1<F>) {

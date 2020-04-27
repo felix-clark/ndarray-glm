@@ -55,11 +55,13 @@ where
         n_iter: usize,
         n_steps: usize,
     ) -> Self {
-        assert_eq!(
-            model_like,
-            M::log_like_reg(&data, &result),
-            "Model likelihood does not match result"
-        );
+        if model_like != M::log_like_reg(&data, &result) {
+            eprintln!("Model likelihood does not match result! There is an error in the GLM fitting code.");
+            dbg!(&result);
+            dbg!(model_like);
+            dbg!(n_iter);
+            dbg!(n_steps);
+        }
         // Cache some of these variables that will be used often.
         let n_par = result.len();
         let n_data = data.y.len();
