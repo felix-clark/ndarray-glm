@@ -13,12 +13,12 @@ fn lin_off_0() -> Result<()> {
     let offsets: Array1<f64> = array![0.1, -0.1, 0.2, 0.0];
     let x_data: Array2<f64> = array![[1.2, 0.7], [2.1, 0.8], [1.5, 0.6], [1.6, 0.3]];
 
-    let lin_model = ModelBuilder::<Linear>::data(&y_data, &x_data)
+    let lin_model = ModelBuilder::<Linear>::data(y_data.view(), x_data.view())
         .linear_offset(offsets.clone())
         .build()?;
     let lin_fit = lin_model.fit()?;
     let y_offset = y_data - offsets;
-    let lin_model_off = ModelBuilder::<Linear>::data(&y_offset, &x_data).build()?;
+    let lin_model_off = ModelBuilder::<Linear>::data(y_offset.view(), x_data.view()).build()?;
     let lin_fit_off = lin_model_off.fit()?;
     dbg!(&lin_fit.result);
     dbg!(&lin_fit_off.result);
@@ -44,13 +44,13 @@ fn lin_off_1() -> Result<()> {
         [0.4, 3.2, -0.3]
     ];
     let data_y = array![1.23, 0.91, 2.34, 0.62];
-    let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
+    let model = ModelBuilder::<Linear>::data(data_y.view(), data_x.view()).build()?;
     let fit = model.fit()?;
     let result = fit.result;
     // a constant linear offset to add for easy checking
     let lin_off = 1.832;
     let lin_offsets = array![lin_off, lin_off, lin_off, lin_off];
-    let model_off = ModelBuilder::<Linear>::data(&data_y, &data_x)
+    let model_off = ModelBuilder::<Linear>::data(data_y.view(), data_x.view())
         .linear_offset(lin_offsets)
         .build()?;
     let off_fit = model_off.fit()?;

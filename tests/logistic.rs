@@ -260,7 +260,7 @@ fn log_termination_0() -> Result<()> {
         -3.4012935, -4.5889945, -3.653743, -3.8879204, -3.566021, -3.8353205, -2.0306807,
         -2.944789, -3.4705598, -3.5821562, -2.8796465, -3.1926105, -2.709444
     ];
-    let model = ModelBuilder::<Logistic>::data(&y, &x)
+    let model = ModelBuilder::<Logistic>::data(y.view(), x.view())
         .linear_offset(off)
         .build()?;
     let fit = model.fit()?;
@@ -524,7 +524,7 @@ fn log_termination_1() -> Result<()> {
         -3.6537428, -3.88792, -3.5660207, -3.83532, -2.0306816, -2.9447892, -3.4705598, -3.5821557,
         -2.879647, -3.1926105, -2.7094445
     ];
-    let model = ModelBuilder::<Logistic>::data(&y, &x)
+    let model = ModelBuilder::<Logistic>::data(y.view(), x.view())
         .linear_offset(off)
         .build()?;
     let fit = model.fit()?;
@@ -782,7 +782,7 @@ fn log_regularization() -> Result<()> {
     // This can be terminated either by standardizing the data or by using
     // lambda = 2e-6 intead of 1e-6.
     // let x = ndarray_glm::standardize::standardize(x);
-    let model = ModelBuilder::<Logistic>::data(&y, &x)
+    let model = ModelBuilder::<Logistic>::data(y.view(), x.view())
         .linear_offset(off)
         .l2_reg(2e-6)
         .build()?;

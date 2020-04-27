@@ -11,7 +11,7 @@ fn start_zero() -> Result<()> {
     // Exactly half of the data are true, meaning the initial guess of beta = 0 will be the best.
     let data_y = array![true, false, false, true];
     let data_x: Array2<f64> = array![[], [], [], []];
-    let model = ModelBuilder::<Logistic>::data(&data_y, &data_x).build()?;
+    let model = ModelBuilder::<Logistic>::data(data_y.view(), data_x.view()).build()?;
     let fit = model.fit()?;
     assert_eq!(fit.model_like > -f64::infinity(), true);
 

@@ -84,7 +84,7 @@ mod tests {
         let beta = array![0., ln2, -ln2];
         let data_x = array![[1., 0.], [1., 1.], [0., 1.], [0., 1.]];
         let data_y: Array1<u32> = array![2, 1, 0, 1];
-        let model = ModelBuilder::<Poisson>::data(&data_y, &data_x)
+        let model = ModelBuilder::<Poisson>::data(data_y.view(), data_x.view())
             .max_iter(10)
             .build()?;
         let fit = model.fit()?;

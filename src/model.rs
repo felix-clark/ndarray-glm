@@ -7,7 +7,7 @@ use crate::{
     regularization::{Null, Regularize, Ridge},
     utility::one_pad,
 };
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use ndarray_linalg::lapack::Lapack;
 use ndarray_linalg::{types::Scalar, DeterminantH};
 use num_traits::Float;
@@ -72,8 +72,8 @@ impl<M: Glm> ModelBuilder<M> {
     /// observation, and create the full model builder with the data to allow
     /// for adjusting additional options.
     pub fn data<'a, Y, F>(
-        data_y: &'a Array1<Y>,
-        data_x: &'a Array2<F>,
+        data_y: ArrayView1<'a, Y>,
+        data_x: ArrayView2<'a, F>,
     ) -> ModelBuilderData<'a, M, Y, F>
     where
         Y: Response<M>,
@@ -104,10 +104,10 @@ where
 {
     model: PhantomData<M>,
     /// Observed response variable data where each entry is a new observation.
-    data_y: &'a Array1<Y>,
+    data_y: ArrayView1<'a, Y>,
     /// Design matrix of observed covariate data where each row is a new
     /// observation and each column represents a different dependent variable.
-    data_x: &'a Array2<F>,
+    data_x: ArrayView2<'a, F>,
     /// The offset in the linear predictor for each data point. This can be used
     /// to incorporate control terms.
     linear_offset: Option<Array1<F>>,
@@ -183,7 +183,7 @@ where
         }
 
         // Check for co-linearity by ensuring that the determinant of X^T * X is non-zero.
-        let xtx: Array2<F> = self.data_x.t().dot(self.data_x);
+        let xtx: Array2<F> = self.data_x.t().dot(&self.data_x);
         let det: <<Array2<F> as DeterminantH>::Elem as Scalar>::Real = xtx.deth()?;
         let det: F = det.into();
         if det.abs() < self.det_tol {
@@ -195,9 +195,9 @@ where
 
         // add constant term to X data
         let data_x = if self.use_intercept_term {
-            one_pad(&self.data_x)
+            one_pad(self.data_x)
         } else {
-            self.data_x.clone()
+            self.data_x.to_owned()
         };
         // Check if the data is under-constrained
         if n_data < data_x.ncols() {

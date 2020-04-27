@@ -55,8 +55,9 @@ let data_x = array![[0.1, 0.2], [-0.4, 0.1], [0.2, 0.4]];
 let data_x = standardize(data_x);
 // The model is generic over floating point type for the independent data variables, and
 // the type will be inferred from the type of the arrays passed to data().
+// The interface takes `ArrayView`s to allow for efficient passing of slices.
 // L2 (ridge) regularization can be applied with l2_reg().
-let model = ModelBuilder::<Linear>::data(&data_y, &data_x).l2_reg(1e-5).build()?;
+let model = ModelBuilder::<Linear>::data(data_y.view(), data_x.view()).l2_reg(1e-5).build()?;
 let fit = model.fit()?;
 // Currently the result is a simple array of the MLE estimators, including the intercept term.
 println!("Fit result: {}", fit.result);
@@ -109,7 +110,6 @@ interface is not particularly ergonomic. See `tests/custom_link.rs` for examples
       for gamma). It might be worth putting off until const generics.
 - [ ] More rigorous convergence tests and options for termination
 - [ ] Logging system with configurable levels
-- [ ] Investigate using ArrayView instead of &Array in interface
 
 ## Reference
 

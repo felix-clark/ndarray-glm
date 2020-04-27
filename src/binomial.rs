@@ -80,7 +80,7 @@ mod tests {
         let data_x = array![[0.], [0.], [ln2], [ln2], [ln2]];
         // the first two data points should average to 6 and the last 3 should average to 8.
         let data_y = array![5, 7, 9, 6, 9];
-        let model = ModelBuilder::<Binomial<N>>::data(&data_y, &data_x).build()?;
+        let model = ModelBuilder::<Binomial<N>>::data(data_y.view(), data_x.view()).build()?;
         let fit = model.fit()?;
         dbg!(&fit.result);
         dbg!(&fit.n_iter);

@@ -14,10 +14,10 @@ fn same_lin_intercept() -> Result<()> {
     // standardize the data
     let x_data = standardize(x_data);
 
-    let lin_model = ModelBuilder::<Linear>::data(&y_data, &x_data).build()?;
+    let lin_model = ModelBuilder::<Linear>::data(y_data.view(), x_data.view()).build()?;
     let lin_fit = lin_model.fit()?;
     // use a pretty large regularization term to make sure the effect is pronounced
-    let lin_model_reg = ModelBuilder::<Linear>::data(&y_data, &x_data)
+    let lin_model_reg = ModelBuilder::<Linear>::data(y_data.view(), x_data.view())
         .l2_reg(1.0)
         .build()?;
     let lin_fit_reg = lin_model_reg.fit()?;

@@ -51,7 +51,7 @@ fn linear_with_lin_transform() -> Result<()> {
     data_y[12] += 0.3;
     // Change X data into a 2D array
     let data_x = data_x.insert_axis(Axis(1));
-    let model = ModelBuilder::<Linear<LinTran>>::data(&data_y, &data_x).build()?;
+    let model = ModelBuilder::<Linear<LinTran>>::data(data_y.view(), data_x.view()).build()?;
     let fit = model.fit()?;
     dbg!(fit.n_iter);
     dbg!(&fit.result);
@@ -107,7 +107,7 @@ fn linear_with_cubic() -> Result<()> {
     data_y[12] += 0.3;
     // Change X data into a 2D array
     let data_x = data_x.insert_axis(Axis(1));
-    let model = ModelBuilder::<Linear<TestLink>>::data(&data_y, &data_x).build()?;
+    let model = ModelBuilder::<Linear<TestLink>>::data(data_y.view(), data_x.view()).build()?;
     eprintln!("Built model");
     let fit = model.fit()?;
     dbg!(fit.n_iter);
