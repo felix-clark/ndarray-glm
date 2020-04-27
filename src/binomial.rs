@@ -84,7 +84,7 @@ mod tests {
         let fit = model.fit()?;
         dbg!(&fit.result);
         dbg!(&fit.n_iter);
-        assert_abs_diff_eq!(beta, fit.result, epsilon = 0.05 * std::f32::EPSILON as f64);
+        assert_abs_diff_eq!(beta, fit.result, epsilon = 0.05 * f32::EPSILON as f64);
         Ok(())
     }
 }

@@ -26,7 +26,7 @@ fn lin_off_0() -> Result<()> {
     assert_abs_diff_eq!(
         lin_fit.result,
         lin_fit_off.result,
-        epsilon = 16.0 * std::f64::EPSILON
+        epsilon = 16.0 * f64::EPSILON
     );
 
     Ok(())
@@ -61,7 +61,7 @@ fn lin_off_1() -> Result<()> {
     assert_abs_diff_eq!(
         result,
         compensated_offset_result,
-        epsilon = 32. * std::f64::EPSILON
+        epsilon = 32. * f64::EPSILON
     );
     Ok(())
 }

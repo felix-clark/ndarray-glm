@@ -27,7 +27,7 @@ fn same_lin_intercept() -> Result<()> {
     assert_abs_diff_eq!(
         lin_fit.result[0],
         lin_fit_reg.result[0],
-        epsilon = 2.0 * std::f64::EPSILON
+        epsilon = 2.0 * f64::EPSILON
     );
 
     Ok(())

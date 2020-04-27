@@ -25,7 +25,7 @@ fn linear_with_lin_transform() -> Result<()> {
     assert_abs_diff_eq!(
         LinTran::func(LinTran::func_inv(0.45)),
         0.45,
-        epsilon = 4. * std::f64::EPSILON
+        epsilon = 4. * f64::EPSILON
     );
     impl Transform for LinTran {
         fn nat_param<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
@@ -56,7 +56,7 @@ fn linear_with_lin_transform() -> Result<()> {
     dbg!(fit.n_iter);
     dbg!(&fit.result);
     dbg!(&beta);
-    assert_abs_diff_eq!(fit.result, beta, epsilon = 16.0 * std::f64::EPSILON);
+    assert_abs_diff_eq!(fit.result, beta, epsilon = 16.0 * f64::EPSILON);
     Ok(())
 }
 
@@ -78,7 +78,7 @@ fn linear_with_cubic() -> Result<()> {
     assert_abs_diff_eq!(
         Cbrt::func(Cbrt::func_inv(0.45)),
         0.45,
-        epsilon = 4. * std::f64::EPSILON
+        epsilon = 4. * f64::EPSILON
     );
     impl Transform for Cbrt {
         fn nat_param<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
@@ -113,6 +113,6 @@ fn linear_with_cubic() -> Result<()> {
     dbg!(fit.n_iter);
     dbg!(&fit.result);
     dbg!(&beta);
-    assert_abs_diff_eq!(fit.result, beta, epsilon = std::f32::EPSILON as f64);
+    assert_abs_diff_eq!(fit.result, beta, epsilon = f32::EPSILON as f64);
     Ok(())
 }

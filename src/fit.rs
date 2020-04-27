@@ -479,7 +479,11 @@ mod tests {
         eprintln!("about to try score test");
         assert_abs_diff_eq!(fit.score_test()?, fit_std.score_test()?);
         eprintln!("about to try wald test");
-        assert_abs_diff_eq!(fit.wald_test(), fit_std.wald_test());
+        assert_abs_diff_eq!(
+            fit.wald_test(),
+            fit_std.wald_test(),
+            epsilon = 4.0 * f64::EPSILON
+        );
         assert_abs_diff_eq!(fit.aic(), fit_std.aic());
         assert_abs_diff_eq!(fit.bic(), fit_std.bic());
         eprintln!("about to try deviance");
@@ -490,7 +494,7 @@ mod tests {
         assert_abs_diff_eq!(
             fit.wald_z()?[1],
             fit_std.wald_z()?[1],
-            epsilon = 0.01 * std::f32::EPSILON as f64
+            epsilon = 0.01 * f32::EPSILON as f64
         );
 
         Ok(())
@@ -508,7 +512,7 @@ mod tests {
         assert_abs_diff_eq!(
             fit.result[0],
             <Logistic as Glm>::Link::func(0.6),
-            epsilon = 4.0 * std::f64::EPSILON
+            epsilon = 4.0 * f64::EPSILON
         );
         let empty_null_like = fit.null_like();
         assert_eq!(fit.test_ndf(), 0);
@@ -596,7 +600,7 @@ mod tests {
         assert_abs_diff_eq!(
             fit_null_like,
             target_null_like,
-            epsilon = 4.0 * std::f64::EPSILON
+            epsilon = 4.0 * f64::EPSILON
         );
         Ok(())
     }
