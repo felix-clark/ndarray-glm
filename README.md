@@ -109,6 +109,7 @@ interface is not particularly ergonomic. See `tests/custom_link.rs` for examples
       for gamma). It might be worth putting off until const generics.
 - [ ] More rigorous convergence tests and options for termination
 - [ ] Logging system with configurable levels
+- [ ] Investigate using ArrayView instead of &Array in interface
 
 ## Reference
 
