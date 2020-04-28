@@ -45,7 +45,7 @@ An example for linear regression is shown below.
 
 ``` rust
 use ndarray::array;
-use ndarray_glm::{linear::Linear, model::ModelBuilder, standardize::standardize};
+use ndarray_glm::{Linear, ModelBuilder, standardize};
 
 // define some test data
 let data_y = array![0.3, 1.3, 0.7];

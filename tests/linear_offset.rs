@@ -3,7 +3,7 @@
 use anyhow::Result;
 use approx::assert_abs_diff_eq;
 use ndarray::{array, Array1, Array2};
-use ndarray_glm::{linear::Linear, model::ModelBuilder};
+use ndarray_glm::{Linear, ModelBuilder};
 
 #[test]
 /// Check that the result is the same in linear regression when subtracting

@@ -110,6 +110,8 @@ where
     data_x: ArrayView2<'a, F>,
     /// The offset in the linear predictor for each data point. This can be used
     /// to incorporate control terms.
+    // TODO: consider making this a reference/ArrayView. Y and X are effectively
+    // cloned so perhaps this isn't a big deal.
     linear_offset: Option<Array1<F>>,
     /// The maximum number of iterations before the regression reports failure.
     max_iter: Option<usize>,

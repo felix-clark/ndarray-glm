@@ -19,3 +19,11 @@ pub mod poisson;
 mod regularization;
 pub mod standardize;
 mod utility;
+
+// Import some common names into the top-level namespace
+#[cfg(feature = "binomial")]
+pub use binomial::Binomial;
+pub use {
+    linear::Linear, logistic::Logistic, model::ModelBuilder, poisson::Poisson,
+    standardize::standardize,
+};
