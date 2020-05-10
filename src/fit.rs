@@ -396,7 +396,8 @@ where
             adjusted[i_like] = F::zero();
             let null_like = M::log_like_reg(&self.data, &adjusted);
             if !self.data.use_intercept || i_like != 0 {
-                assert_eq!(null_like <= self.null_like() + F::from(0.001).unwrap(), true, "This fixed set should be less likely than the null where it is supposed to be the best fit.");
+                assert_eq!(null_like <= self.null_like() + F::from(0.001).unwrap(),
+                true, "This fixed set should be less likely than the null where it is supposed to be the best fit.");
             }
             let mut chi_sq = F::from(2.).unwrap() * (self.model_like - null_like);
             // This can happen due to FPE
