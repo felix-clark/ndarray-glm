@@ -1,6 +1,6 @@
 [package]
 name = "ndarray-glm"
-version = "0.0.6"
+version = "0.0.7"
 authors = ["Felix Clark <mfclark3690@gmail.com>"]
 description = "Performs regression for generalized linear models using IRLS on data stored in arrays."
 edition = "2018"

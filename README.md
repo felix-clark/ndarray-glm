@@ -29,7 +29,8 @@ fortran and BLAS must be installed:
 sudo apt update && sudo apt install gfortran libblas-dev
 ```
 
-To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate with the "openblas-src" feature.
+To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate with the
+"openblas-static" feature.
 
 ## Example
 
@@ -38,14 +39,13 @@ To use in your crate, add the following to the `Cargo.toml`:
 ```
 ndarray = { version = "0.13", features = ["blas"]}
 blas-src = { version = "0.4", default-features = false, features = ["openblas"] }
-ndarray-glm = { version = "0.0.6", features = ["openblas-static"] }
+ndarray-glm = { version = "0.0.7", features = ["openblas-static"] }
 ```
 
 An example for linear regression is shown below.
 
 ``` rust
-use ndarray::array;
-use ndarray_glm::{Linear, ModelBuilder, standardize};
+use ndarray_glm::{array, Linear, ModelBuilder, standardize};
 
 // define some test data
 let data_y = array![0.3, 1.3, 0.7];
