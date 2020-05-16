@@ -2,10 +2,9 @@
 //! Models are fit such that E[Y] = g^-1(X*B) where g is the link function.
 
 use crate::link::{Link, Transform};
-use crate::{error::RegressionResult, fit::Fit, irls::Irls, model::Model};
+use crate::{error::RegressionResult, fit::Fit, irls::Irls, model::Model, num::Float};
 use ndarray::{Array1, Array2};
-use ndarray_linalg::{lapack::Lapack, SolveH};
-use num_traits::Float;
+use ndarray_linalg::SolveH;
 
 /// Trait describing generalized linear model that enables the IRLS algorithm
 /// for fitting.
@@ -47,7 +46,7 @@ pub trait Glm: Sized {
     // partition function, but in some cases this could be more expensive (?).
     fn log_like_natural<F>(y: &Array1<F>, nat: &Array1<F>) -> F
     where
-        F: Float + Lapack,
+        F: Float,
     {
         // subtracting the saturated likelihood to keep the likelihood closer to
         // zero, but this can complicate some fit statistics. In addition to
@@ -65,7 +64,7 @@ pub trait Glm: Sized {
     /// Returns the likelihood function including regularization terms.
     fn log_like_reg<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
     where
-        F: Float + Lapack,
+        F: Float,
     {
         let lin_pred = data.linear_predictor(&regressors);
         // the likelihood prior to regularization
@@ -83,7 +82,7 @@ pub trait Glm: Sized {
     // TODO: consider incorporating weights and/or correlations.
     fn init_guess<F>(data: &Model<Self, F>) -> Array1<F>
     where
-        F: Float + Lapack,
+        F: Float,
         Array2<F>: SolveH<F>,
     {
         let y_bar: F = data.y.mean().unwrap_or_else(F::zero);
@@ -110,7 +109,7 @@ pub trait Glm: Sized {
     /// Do the regression and return a result. Returns object holding fit result.
     fn regression<F>(data: Model<Self, F>) -> RegressionResult<Fit<Self, F>>
     where
-        F: Float + Lapack,
+        F: Float,
         Self: Sized,
     {
         // TODO: determine first element based on fraction of cases in sample

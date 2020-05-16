@@ -5,9 +5,9 @@ use approx::assert_abs_diff_eq;
 use ndarray::{array, Array1, Axis};
 use ndarray_glm::{
     link::{Link, Transform},
+    num::Float,
     Linear, ModelBuilder,
 };
-use num_traits::Float;
 
 #[test]
 fn linear_with_lin_transform() -> Result<()> {

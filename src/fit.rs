@@ -6,10 +6,10 @@ use crate::{
     glm::Glm,
     link::{Link, Transform},
     model::Model,
+    num::Float,
 };
 use ndarray::{array, Array1, Array2, ArrayView1, ArrayView2};
-use ndarray_linalg::{InverseHInto, Lapack, Scalar};
-use num_traits::Float;
+use ndarray_linalg::InverseHInto;
 use std::cell::RefCell;
 
 /// the result of a successful GLM fit
@@ -45,7 +45,7 @@ where
 impl<M, F> Fit<M, F>
 where
     M: Glm,
-    F: 'static + Float + Lapack + Scalar,
+    F: 'static + Float,
     F: std::fmt::Debug,
 {
     pub fn new(
@@ -374,7 +374,7 @@ where
     pub fn wald_z(&self) -> RegressionResult<Array1<F>> {
         let par_cov = self.covariance()?;
         let par_variances: ArrayView1<F> = par_cov.diag();
-        Ok(&self.result / &par_variances.mapv(Float::sqrt))
+        Ok(&self.result / &par_variances.mapv(num_traits::Float::sqrt))
     }
 
     /// return the signed Z-score for each regression parameter. This is not a
@@ -387,7 +387,7 @@ where
         note = "This statistic is not a robust one. To get an analogous
         statistic use `wald_z()`."
     )]
-    pub fn z_scores(&self) -> Array1<F> {
+    pub fn z_scores(&self) -> Array1<F> where F: Float {
         // -2 likelihood deviation is asymptotically chi^2 with ndf degrees of freedom.
         let mut chi_sqs: Array1<F> = Array1::zeros(self.n_par);
         // TODO (style): move to (enumerated?) iterator
@@ -421,7 +421,7 @@ where
             chi_sqs[i_like] = chi_sq;
         }
         let signs = self.result.mapv(F::signum);
-        let chis = chi_sqs.map(Scalar::sqrt);
+        let chis = chi_sqs.mapv(num_traits::Float::sqrt);
         // return the Z-scores
         signs * chis
     }
@@ -452,8 +452,7 @@ where
 mod tests {
     use super::*;
     use crate::{
-        Linear, Logistic, model::ModelBuilder, standardize::standardize,
-        utility::one_pad,
+        model::ModelBuilder, standardize::standardize, utility::one_pad, Linear, Logistic,
     };
     use anyhow::Result;
     use approx::assert_abs_diff_eq;

@@ -11,7 +11,7 @@ mod irls;
 pub mod link;
 mod math;
 pub mod model;
-mod num;
+pub mod num;
 mod regularization;
 mod response;
 mod standardize;
@@ -22,8 +22,6 @@ mod utility;
 pub use response::binomial::Binomial;
 pub use {
     model::ModelBuilder,
-    response::{
-    linear::Linear, logistic::Logistic, poisson::Poisson,
-    },
+    response::{linear::Linear, logistic::Logistic, poisson::Poisson},
     standardize::standardize,
 };

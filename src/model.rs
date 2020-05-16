@@ -4,13 +4,12 @@ use crate::{
     error::{RegressionError, RegressionResult},
     fit::Fit,
     glm::{Glm, Response},
+    num::Float,
     regularization::{Null, Regularize, Ridge},
     utility::one_pad,
 };
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
-use ndarray_linalg::lapack::Lapack;
 use ndarray_linalg::{types::Scalar, DeterminantH};
-use num_traits::Float;
 use std::marker::PhantomData;
 
 /// Holds the data and configuration settings for a regression.
@@ -39,7 +38,7 @@ where
 impl<M, F> Model<M, F>
 where
     M: Glm,
-    F: Float + Lapack,
+    F: Float,
 {
     /// Perform the regression and return a fit object holding the results.
     pub fn fit(self) -> RegressionResult<Fit<M, F>> {
@@ -165,7 +164,7 @@ where
     pub fn build(self) -> RegressionResult<Model<M, F>>
     where
         M: Glm,
-        F: Float + Lapack,
+        F: Float,
         Array2<F>: DeterminantH,
         <<Array2<F> as DeterminantH>::Elem as Scalar>::Real: std::convert::Into<F>,
     {

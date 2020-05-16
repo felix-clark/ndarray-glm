@@ -1,8 +1,7 @@
 //! Defines traits for link functions
 
-use crate::glm::Glm;
+use crate::{glm::Glm, num::Float};
 use ndarray::Array1;
-use num_traits::Float;
 
 /// Describes the functions to map to and from the linear predictors and the
 /// expectation of the response. It is constrained mathematically by the

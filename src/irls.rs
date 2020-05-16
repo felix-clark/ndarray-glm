@@ -5,17 +5,17 @@ use crate::link::Transform;
 use crate::{
     error::{RegressionError, RegressionResult},
     model::Model,
+    num::Float,
 };
 use ndarray::{Array1, Array2};
-use ndarray_linalg::{lapack::Lapack, SolveH};
-use num_traits::Float;
+use ndarray_linalg::SolveH;
 
 /// Iterate over updates via iteratively re-weighted least-squares until
 /// reaching a specified tolerance.
 pub struct Irls<'a, M, F>
 where
     M: Glm,
-    F: Float + Lapack,
+    F: Float,
     Array2<F>: SolveH<F>,
 {
     data: &'a Model<M, F>,
@@ -35,7 +35,7 @@ where
 impl<'a, M, F> Irls<'a, M, F>
 where
     M: Glm,
-    F: Float + Lapack,
+    F: Float,
     Array2<F>: SolveH<F>,
 {
     pub fn new(data: &'a Model<M, F>, initial: Array1<F>, initial_like: F) -> Self {
@@ -153,7 +153,7 @@ pub struct IrlsStep<F> {
 impl<'a, M, F> Iterator for Irls<'a, M, F>
 where
     M: Glm,
-    F: Float + Lapack,
+    F: Float,
     Array2<F>: SolveH<F>,
 {
     type Item = RegressionResult<IrlsStep<F>>;
