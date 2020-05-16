@@ -126,7 +126,8 @@ pub mod link {
 
 #[cfg(test)]
 mod tests {
-    use crate::{error::RegressionResult, logistic::Logistic, model::ModelBuilder};
+    use super::*;
+    use crate::{error::RegressionResult, model::ModelBuilder};
     use approx::assert_abs_diff_eq;
     use ndarray::array;
 

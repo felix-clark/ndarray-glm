@@ -452,7 +452,7 @@ where
 mod tests {
     use super::*;
     use crate::{
-        linear::Linear, logistic::Logistic, model::ModelBuilder, standardize::standardize,
+        Linear, Logistic, model::ModelBuilder, standardize::standardize,
         utility::one_pad,
     };
     use anyhow::Result;

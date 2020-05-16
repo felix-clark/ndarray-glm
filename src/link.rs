@@ -53,6 +53,7 @@ pub trait Transform {
         (err_adj, var_adj)
     }
 }
+
 /// The canonical transformation by definition equates the linear predictor with
 /// the natural parameter of the response distribution. Implementing this trait
 /// for a link function automatically defines the trivial transformation
