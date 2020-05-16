@@ -5,9 +5,10 @@ use crate::{
     glm::{Glm, Response},
     link::Link,
     math::prod_log,
+    num::Float,
 };
 use ndarray::Array1;
-use num_traits::{Float, ToPrimitive, Unsigned};
+use num_traits::{ToPrimitive, Unsigned};
 use std::marker::PhantomData;
 
 /// Poisson regression over an unsigned integer type.
@@ -38,7 +39,7 @@ where
 
     /// The logarithm of the partition function for Poisson is the exponential of the natural parameter, which is the logarithm of the mean.
     fn log_partition<F: Float>(nat_par: &Array1<F>) -> F {
-        nat_par.mapv(F::exp).sum()
+        nat_par.mapv(num_traits::Float::exp).sum()
     }
 
     /// The variance of a Poisson variable is equal to its mean.
@@ -56,8 +57,10 @@ where
 pub mod link {
     //! Link functions for Poisson regression
     use super::Poisson;
-    use crate::link::{Canonical, Link};
-    use num_traits::Float;
+    use crate::{
+        link::{Canonical, Link},
+        num::Float,
+    };
 
     /// The canonical link function of the Poisson response is the logarithm.
     pub struct Log {}

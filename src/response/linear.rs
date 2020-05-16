@@ -2,12 +2,12 @@
 
 use crate::{
     error::{RegressionError, RegressionResult},
-    // model::Model,
     glm::{Glm, Response},
     link::Link,
+    num::Float,
 };
 use ndarray::Array1;
-use num_traits::{Float, ToPrimitive};
+use num_traits::ToPrimitive;
 use std::marker::PhantomData;
 
 /// Linear regression with constant variance (Ordinary least squares).

@@ -4,10 +4,9 @@ use crate::{
     error::{RegressionError, RegressionResult},
     glm::{Glm, Response},
     link::Link,
+    num::Float,
 };
 use ndarray::{Array1, Zip};
-use ndarray_linalg::Lapack;
-use num_traits::float::Float;
 use std::marker::PhantomData;
 
 /// Logistic regression
@@ -75,7 +74,7 @@ where
     /// to handle over/underflow issues more precisely.
     fn log_like_natural<F>(y: &Array1<F>, logit_p: &Array1<F>) -> F
     where
-        F: Float + Lapack,
+        F: Float,
     {
         // initialize the log likelihood terms
         let mut log_like_terms: Array1<F> = Array1::zeros(y.len());
