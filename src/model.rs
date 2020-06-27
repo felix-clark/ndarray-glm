@@ -156,6 +156,7 @@ where
 
     /// Set the tolerance for the co-linearity check.
     // TODO: perhaps this should be optional
+    // TODO: Consider QR decomposition to calculate the rank
     pub fn colinearity_tolerance(mut self, tol: F) -> Self {
         self.det_tol = tol;
         self
