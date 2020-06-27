@@ -185,6 +185,7 @@ where
         }
 
         // Check for co-linearity by ensuring that the determinant of X^T * X is non-zero.
+        // TODO: use SVD instead (faster than QR decomp)
         let xtx: Array2<F> = self.data_x.t().dot(&self.data_x);
         let det: <<Array2<F> as DeterminantH>::Elem as Scalar>::Real = xtx.deth()?;
         let det: F = det.into();
