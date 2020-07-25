@@ -13,7 +13,7 @@ use ndarray_linalg::InverseHInto;
 use std::cell::RefCell;
 
 /// the result of a successful GLM fit
-pub struct Fit<M, F>
+pub struct Fit<'a, M, F>
 where
     M: Glm,
     F: Float,
@@ -21,7 +21,7 @@ where
     /// The data and model specification used in the fit.
     // TODO: This field could likely be made private if Fit had a constructor
     // for Glm::regression() to use.
-    data: Model<M, F>,
+    data: &'a Model<M, F>,
     /// The parameter values that maximize the likelihood as given by the IRLS regression.
     pub result: Array1<F>,
     /// The value of the likelihood function for the fit result.
@@ -42,20 +42,20 @@ where
     null_model: RefCell<Option<(F, Array1<F>)>>,
 }
 
-impl<M, F> Fit<M, F>
+impl<'a, M, F> Fit<'a, M, F>
 where
     M: Glm,
     F: 'static + Float,
     F: std::fmt::Debug,
 {
     pub fn new(
-        data: Model<M, F>,
+        data: &'a Model<M, F>,
         result: Array1<F>,
         model_like: F,
         n_iter: usize,
         n_steps: usize,
     ) -> Self {
-        if model_like != M::log_like_reg(&data, &result) {
+        if model_like != M::log_like_reg(data, &result) {
             eprintln!("Model likelihood does not match result! There is an error in the GLM fitting code.");
             dbg!(&result);
             dbg!(model_like);
@@ -387,7 +387,10 @@ where
         note = "This statistic is not a robust one. To get an analogous
         statistic use `wald_z()`."
     )]
-    pub fn z_scores(&self) -> Array1<F> where F: Float {
+    pub fn z_scores(&self) -> Array1<F>
+    where
+        F: Float,
+    {
         // -2 likelihood deviation is asymptotically chi^2 with ndf degrees of freedom.
         let mut chi_sqs: Array1<F> = Array1::zeros(self.n_par);
         // TODO (style): move to (enumerated?) iterator
@@ -525,14 +528,14 @@ mod tests {
         // Check that the assertions still hold if linear offsets are included.
         let lin_off: Array1<f64> = array![0.2, -0.1, 0.1, 0.0, 0.1];
         let model = ModelBuilder::<Logistic>::data(data_y.view(), data_x.view())
-            .linear_offset(lin_off.clone())
+            .linear_offset(lin_off)
             .build()?;
         let fit_off = model.fit()?;
         let empty_model_like_off = fit_off.model_like;
         let empty_null_like_off = fit_off.null_like();
         // these two assertions should be equivalent
-        assert_eq!(fit_off.lr_test(), 0.);
-        assert_eq!(empty_model_like_off, empty_null_like_off);
+        assert_abs_diff_eq!(fit_off.lr_test(), 0.);
+        assert_abs_diff_eq!(empty_model_like_off, empty_null_like_off);
 
         // check consistency with data provided
         let data_x_with = array![[0.5], [-0.2], [0.3], [0.4], [-0.1]];
@@ -595,7 +598,7 @@ mod tests {
         // let target_null_like = 0.;
         // dbg!(target_null_like);
         let fit_null_like = fit.null_like();
-        assert_eq!(2. * (&fit.model_like - fit_null_like), fit.lr_test());
+        assert_abs_diff_eq!(2. * (fit.model_like - fit_null_like), fit.lr_test());
         assert_eq!(fit.test_ndf(), 1);
         assert_abs_diff_eq!(
             fit_null_like,

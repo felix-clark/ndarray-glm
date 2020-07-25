@@ -4,12 +4,12 @@ use crate::{
     error::{RegressionError, RegressionResult},
     fit::Fit,
     glm::{Glm, Response},
+    math::is_rank_deficient,
     num::Float,
     regularization::{Null, Regularize, Ridge},
     utility::one_pad,
 };
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
-use ndarray_linalg::{types::Scalar, DeterminantH};
 use std::marker::PhantomData;
 
 /// Holds the data and configuration settings for a regression.
@@ -41,8 +41,8 @@ where
     F: Float,
 {
     /// Perform the regression and return a fit object holding the results.
-    pub fn fit(self) -> RegressionResult<Fit<M, F>> {
-        M::regression(self)
+    pub fn fit(&self) -> RegressionResult<Fit<M, F>> {
+        M::regression(&self)
     }
 
     /// Returns the linear predictors, i.e. the design matrix multiplied by the
@@ -87,7 +87,7 @@ impl<M: Glm> ModelBuilder<M> {
             linear_offset: None,
             max_iter: None,
             use_intercept_term: true,
-            det_tol: default_epsilon::<F>(n_pred),
+            colin_tol: default_epsilon::<F>(n_pred),
             l2_reg: F::zero(),
         }
     }
@@ -117,7 +117,7 @@ where
     /// Whether to use an intercept term. Defaults to `true`.
     use_intercept_term: bool,
     /// tolerance for determinant check on rank of data matrix X.
-    det_tol: F,
+    colin_tol: F,
     /// L2 regularization parameter for ridge regression. Defaults to zero.
     l2_reg: F,
 }
@@ -156,9 +156,8 @@ where
 
     /// Set the tolerance for the co-linearity check.
     // TODO: perhaps this should be optional
-    // TODO: Consider QR decomposition to calculate the rank
     pub fn colinearity_tolerance(mut self, tol: F) -> Self {
-        self.det_tol = tol;
+        self.colin_tol = tol;
         self
     }
 
@@ -166,8 +165,6 @@ where
     where
         M: Glm,
         F: Float,
-        Array2<F>: DeterminantH,
-        <<Array2<F> as DeterminantH>::Elem as Scalar>::Real: std::convert::Into<F>,
     {
         let n_data = self.data_y.len();
         if n_data != self.data_x.nrows() {
@@ -184,18 +181,6 @@ where
             }
         }
 
-        // Check for co-linearity by ensuring that the determinant of X^T * X is non-zero.
-        // TODO: use SVD instead (faster than QR decomp)
-        let xtx: Array2<F> = self.data_x.t().dot(&self.data_x);
-        let det: <<Array2<F> as DeterminantH>::Elem as Scalar>::Real = xtx.deth()?;
-        let det: F = det.into();
-        if det.abs() < self.det_tol {
-            // Perhaps this error should be left to a linear algebra failure,
-            // but in that case an error message should be informative. Maybe
-            // only do the check in that case.
-            return Err(RegressionError::ColinearData);
-        }
-
         // add constant term to X data
         let data_x = if self.use_intercept_term {
             one_pad(self.data_x)
@@ -207,6 +192,11 @@ where
             // The regression can find a solution if n_data == ncols, but
             // there will be no estimate for the uncertainty.
             return Err(RegressionError::Underconstrained);
+        }
+        // Check for co-linearity up to a tolerance
+        let xtx: Array2<F> = data_x.t().dot(&data_x);
+        if is_rank_deficient(xtx, self.colin_tol)? {
+            return Err(RegressionError::ColinearData);
         }
 
         // convert to floating-point

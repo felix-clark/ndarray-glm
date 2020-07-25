@@ -107,7 +107,7 @@ pub trait Glm: Sized {
     }
 
     /// Do the regression and return a result. Returns object holding fit result.
-    fn regression<F>(data: Model<Self, F>) -> RegressionResult<Fit<Self, F>>
+    fn regression<F>(data: &Model<Self, F>) -> RegressionResult<Fit<Self, F>>
     where
         F: Float,
         Self: Sized,

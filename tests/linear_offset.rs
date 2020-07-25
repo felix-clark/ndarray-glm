@@ -56,7 +56,7 @@ fn lin_off_1() -> Result<()> {
     let off_fit = model_off.fit()?;
     dbg!(off_fit.n_iter);
     let off_result = off_fit.result;
-    let mut compensated_offset_result = off_result.clone();
+    let mut compensated_offset_result = off_result;
     compensated_offset_result[0] += lin_off;
     assert_abs_diff_eq!(
         result,
