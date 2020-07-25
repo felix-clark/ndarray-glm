@@ -87,7 +87,7 @@ impl<M: Glm> ModelBuilder<M> {
             linear_offset: None,
             max_iter: None,
             use_intercept_term: true,
-            colin_tol: default_epsilon::<F>(n_pred),
+            colin_tol: F::epsilon(),
             l2_reg: F::zero(),
         }
     }
@@ -155,7 +155,7 @@ where
     }
 
     /// Set the tolerance for the co-linearity check.
-    // TODO: perhaps this should be optional
+    /// The check can be effectively disabled by setting the tolerance to a negative value.
     pub fn colinearity_tolerance(mut self, tol: F) -> Self {
         self.colin_tol = tol;
         self
@@ -232,13 +232,4 @@ where
             use_intercept: self.use_intercept_term,
         })
     }
-}
-
-/// Default tolerance for colinearity checking.
-/// Uses the square root of the number of data points times machine epsilon.
-/// This may not be particularly well-justified and may be too lenient.
-fn default_epsilon<F: Float>(n_data: usize) -> F {
-    // NOTE: should this scaling factor be capped?
-    let sqrt_n: F = F::from(n_data).unwrap().sqrt();
-    sqrt_n * F::epsilon()
 }
