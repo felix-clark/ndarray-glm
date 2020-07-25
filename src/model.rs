@@ -78,8 +78,6 @@ impl<M: Glm> ModelBuilder<M> {
         Y: Response<M>,
         F: Float,
     {
-        // the number of predictors
-        let n_pred = data_x.ncols() + 1;
         ModelBuilderData {
             model: PhantomData,
             data_y,
