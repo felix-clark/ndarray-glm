@@ -57,3 +57,6 @@ approx = "0.3"
 # openblas-src = { version = "0.7.0", default-features = false, features = ["cblas", "lapacke", "system"] }
 # This appears to work but isn't necessary:
 # openblas-src = "0.9"
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--no-deps"]
