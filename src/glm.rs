@@ -112,11 +112,6 @@ pub trait Glm: Sized {
         F: Float,
         Self: Sized,
     {
-        // TODO: determine first element based on fraction of cases in sample
-        // This is only a possible improvement when the x points are centered
-        // around zero, and may introduce more complications than it's worth. It
-        // is further complicated by the possibility of linear offsets.
-        // For logistic regression, beta = 0 is typically reasonable.
         let initial: Array1<F> = Self::init_guess(&data);
 
         // This represents the number of overall iterations
@@ -138,10 +133,6 @@ pub trait Glm: Sized {
             n_steps += it_result.steps;
         }
 
-        // TODO: Possibly check if the likelihood is improved by setting each
-        // parameter to zero, and if so set it to zero. This could be dependent
-        // on the order of operations, however.
-
         Ok(Fit::new(data, result, model_like, n_iter, n_steps))
     }
 }
@@ -153,8 +144,4 @@ pub trait Glm: Sized {
 pub trait Response<M: Glm> {
     /// Converts the domain to a floating-point value for IRLS.
     fn to_float<F: Float>(self) -> RegressionResult<F>;
-
-    // TODO: a function to check if a Y-value is valid? This may be useful for
-    // some models. Actually changing the signature of to_float() to return a
-    // result should serve this purpose.
 }

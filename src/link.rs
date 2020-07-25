@@ -24,7 +24,7 @@ pub trait Link<M: Glm>: Transform {
 }
 
 pub trait Transform {
-    /// The natural parameter(s) of the exponential distribution as a function
+    /// The natural parameter(s) of the response distribution as a function
     /// of the linear predictor. For canonical link functions this is the
     /// identity. It must be monotonic, invertible, and twice-differentiable.
     fn nat_param<F: Float>(lin_pred: Array1<F>) -> Array1<F>;

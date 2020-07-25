@@ -131,7 +131,6 @@ where
 
     /// Return the likelihood and intercept for the null model. Since this can
     /// require an additional regression, the values are cached.
-    /// This function should not be public: perhaps a private trait can hide it?
     fn null_model_fit(&self) -> (F, Array1<F>) {
         // TODO: make a result instead of allowing a potential panic in the borrow.
         if self.null_model.borrow().is_none() {

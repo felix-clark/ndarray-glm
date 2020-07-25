@@ -78,7 +78,6 @@ where
     {
         // initialize the log likelihood terms
         let mut log_like_terms: Array1<F> = Array1::zeros(y.len());
-        // TODO: This can probably be re-written more elegantly now. We shouldn't need to pre-initialize the result.
         Zip::from(&mut log_like_terms)
             .and(y)
             .and(logit_p)
@@ -106,7 +105,7 @@ where
 pub mod link {
     //! Link functions for logistic regression
     use super::*;
-    use crate::link::{Canonical, Link};
+    use crate::link::{Canonical, Link, Transform};
     use num_traits::Float;
 
     pub struct Logit {}
@@ -120,7 +119,23 @@ pub mod link {
         }
     }
 
-    // TODO: CLogLog link function. Possibly probit as well although we'd need inverse CDF of normal.
+    pub struct CLogLog {}
+    impl Link<Logistic<CLogLog>> for CLogLog {
+        fn func<F: Float>(y: F) -> F {
+            F::ln(-F::ln(F::one() - y))
+        }
+        fn func_inv<F: Float>(lin_pred: F) -> F {
+            F::one() - F::exp(-F::exp(lin_pred))
+        }
+    }
+    impl Transform for CLogLog {
+        fn nat_param<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
+            todo!()
+        }
+        fn d_nat_param<F: Float>(lin_pred: &Array1<F>) -> Array1<F> {
+            todo!()
+        }
+    }
 }
 
 #[cfg(test)]
