@@ -10,7 +10,9 @@ use std::{
 };
 
 /// Read y, x pairs from a CSV. Right now it's assumed that there is only one covariate.
+// This function isn't used yet, but it will be.
 #[cfg(test)]
+#[allow(dead_code)]
 pub fn y_x_from_csv<Y, X>(file: &str) -> Result<(Array1<Y>, Array2<X>)>
 where
     Y: FromStr,
