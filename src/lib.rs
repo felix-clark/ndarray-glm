@@ -8,7 +8,7 @@
 //!
 //! At the moment the docs and CI are blocked by an upstream issue. For more detail see the README.
 //!
-//! Example:
+//! # Examples:
 //! ```
 //! use ndarray_glm::{array, Linear, ModelBuilder, standardize};
 //!
@@ -21,9 +21,23 @@
 //! // the type will be inferred from the type of the arrays passed to data().
 //! // The interface takes `ArrayView`s to allow for efficient passing of slices.
 //! // L2 (ridge) regularization can be applied with l2_reg().
-//! let model = ModelBuilder::<Linear>::data(data_y.view(), data_x.view()).l2_reg(1e-5).build().unwrap();
+//! let model = ModelBuilder::<Linear>::data(data_y.view(), data_x.view())
+//!                 .l2_reg(1e-5).build().unwrap();
 //! let fit = model.fit().unwrap();
 //! // The result is a flat array with the first term as the intercept.
+//! println!("Fit result: {}", fit.result);
+//! ```
+//!
+//! The canonical link function is used by default. An alternative link function can be
+//! specified as a type parameter to the response struct.
+//! ```
+//! use ndarray_glm::{array, Logistic, logistic_link::Cloglog, ModelBuilder};
+//!
+//! let data_y = array![true, false, false, true, true];
+//! let data_x = array![[0.5, 0.2], [0.1, 0.3], [0.2, 0.6], [0.6, 0.3], [0.4, 0.4]];
+//! let model = ModelBuilder::<Logistic<Cloglog>>::data(data_y.view(), data_x.view())
+//!                 .l2_reg(1e-5).build().unwrap();
+//! let fit = model.fit().unwrap();
 //! println!("Fit result: {}", fit.result);
 //! ```
 //!
@@ -61,6 +75,7 @@ pub use {
     model::ModelBuilder,
     // re-export common structs from ndarray
     ndarray::{array, Array1, Array2, ArrayView1, ArrayView2},
+    response::logistic::link as logistic_link,
     response::{linear::Linear, logistic::Logistic, poisson::Poisson},
     standardize::standardize,
 };

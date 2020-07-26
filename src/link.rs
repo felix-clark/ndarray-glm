@@ -27,6 +27,8 @@ pub trait Transform {
     /// The natural parameter(s) of the response distribution as a function
     /// of the linear predictor. For canonical link functions this is the
     /// identity. It must be monotonic, invertible, and twice-differentiable.
+    /// For link function g and canonical link function g_0 it is equal to
+    /// g_0 ( g^{-1}(lin_pred) ) .
     fn nat_param<F: Float>(lin_pred: Array1<F>) -> Array1<F>;
     /// The derivative of the transformation to the natural parameter. If it is
     /// zero in a region that the IRLS is in the algorithm may have difficulty

@@ -108,6 +108,8 @@ pub mod link {
     use crate::link::{Canonical, Link, Transform};
     use num_traits::Float;
 
+    /// The canonical link function for logistic regression is the logit function g(p) =
+    /// log(p/(1-p)).
     pub struct Logit {}
     impl Canonical for Logit {}
     impl Link<Logistic<Logit>> for Logit {
@@ -119,21 +121,26 @@ pub mod link {
         }
     }
 
-    pub struct CLogLog {}
-    impl Link<Logistic<CLogLog>> for CLogLog {
+    /// The complementary log-log link g(p) = log(-log(1-p)) is appropriate when
+    /// modeling the probability of non-zero counts when the counts are
+    /// Poisson-distributed with mean lambda = exp(lin_pred).
+    pub struct Cloglog {}
+    impl Link<Logistic<Cloglog>> for Cloglog {
         fn func<F: Float>(y: F) -> F {
-            F::ln(-F::ln(F::one() - y))
+            F::ln(-F::ln_1p(-y))
         }
+        // This quickly underflows to zero for inputs greater than ~2.
         fn func_inv<F: Float>(lin_pred: F) -> F {
-            F::one() - F::exp(-F::exp(lin_pred))
+            -F::exp_m1(-F::exp(lin_pred))
         }
     }
-    impl Transform for CLogLog {
+    impl Transform for Cloglog {
         fn nat_param<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
-            todo!()
+            lin_pred.mapv(|x| x.exp().exp_m1().ln())
         }
         fn d_nat_param<F: Float>(lin_pred: &Array1<F>) -> Array1<F> {
-            todo!()
+            let neg_exp_lin = -lin_pred.mapv(F::exp);
+            &neg_exp_lin / &neg_exp_lin.mapv(F::exp_m1)
         }
     }
 }
@@ -158,5 +165,22 @@ mod tests {
         assert_abs_diff_eq!(beta, fit.result, epsilon = 0.05 * f32::EPSILON as f64);
         // let lr = fit.lr_test();
         Ok(())
+    }
+
+    // verify that the link and inverse are indeed inverses.
+    #[test]
+    fn cloglog_closure() {
+        use link::Cloglog;
+        let mu_test_vals = array![1e-8, 0.01, 0.1, 0.3, 0.5, 0.7, 0.9, 0.99, 0.9999999];
+        assert_abs_diff_eq!(
+            mu_test_vals,
+            mu_test_vals.mapv(|mu| Cloglog::func_inv(Cloglog::func(mu)))
+        );
+        let lin_test_vals = array![-10., -2., -0.1, 0.0, 0.1, 1., 2.];
+        assert_abs_diff_eq!(
+            lin_test_vals,
+            lin_test_vals.mapv(|lin| Cloglog::func(Cloglog::func_inv(lin))),
+            epsilon = 1e-3 * f32::EPSILON as f64
+        );
     }
 }
