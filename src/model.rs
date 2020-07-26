@@ -6,7 +6,7 @@ use crate::{
     glm::{Glm, Response},
     math::is_rank_deficient,
     num::Float,
-    regularization::{Null, Regularize, Ridge},
+    regularization::{IrlsReg, IrlsRegType, LassoSmooth, Null, Ridge},
     utility::one_pad,
 };
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
@@ -30,7 +30,7 @@ where
     /// the maximum number of iterations to try before failure.
     pub max_iter: Option<usize>,
     /// Regularization method
-    pub reg: Box<dyn Regularize<F>>,
+    pub reg: Box<dyn IrlsReg<F>>,
     /// Whether the intercept term is used (commonly true)
     pub use_intercept: bool,
 }
@@ -86,7 +86,7 @@ impl<M: Glm> ModelBuilder<M> {
             max_iter: None,
             use_intercept_term: true,
             colin_tol: F::epsilon(),
-            l2_reg: F::zero(),
+            reg: IrlsRegType::Null,
         }
     }
 }
@@ -116,8 +116,8 @@ where
     use_intercept_term: bool,
     /// tolerance for determinant check on rank of data matrix X.
     colin_tol: F,
-    /// L2 regularization parameter for ridge regression. Defaults to zero.
-    l2_reg: F,
+    /// Regularization for the regression. Defaults to none.
+    reg: IrlsRegType<F>,
 }
 
 /// A builder to generate a Model object
@@ -142,7 +142,13 @@ where
 
     /// Use to set a L2 regularization parameter
     pub fn l2_reg(mut self, l2: F) -> Self {
-        self.l2_reg = l2;
+        self.reg = IrlsRegType::Ridge(l2);
+        self
+    }
+
+    /// Use to set a L1 regularization parameter with a smoother tolerance
+    pub fn l1_smooth_reg(mut self, l1: F, eps: F) -> Self {
+        self.reg = IrlsRegType::LassoSmooth(l1, eps);
         self
     }
 
@@ -204,20 +210,33 @@ where
             .map(|&y| y.to_float())
             .collect::<Result<_, _>>()?;
 
-        let reg: Box<dyn Regularize<F>> = if self.l2_reg != F::zero() {
-            // make the vector of L2 coefficients
-            let l2_diag: Array1<F> = {
-                let mut l2_diag: Array1<F> = Array1::<F>::from_elem(data_x.ncols(), self.l2_reg);
-                // if an intercept term is included it should not be subject to
-                // regularization.
-                if self.use_intercept_term {
-                    l2_diag[0] = F::zero();
-                }
-                l2_diag
-            };
-            Box::new(Ridge::from_diag(l2_diag))
-        } else {
-            Box::new(Null {})
+        let reg: Box<dyn IrlsReg<F>> = match self.reg {
+            IrlsRegType::Null => Box::new(Null {}),
+            IrlsRegType::Ridge(l2) => {
+                // make the vector of L2 coefficients
+                let l2_diag: Array1<F> = {
+                    let mut l2_diag: Array1<F> = Array1::<F>::from_elem(data_x.ncols(), l2);
+                    // if an intercept term is included it should not be subject to
+                    // regularization.
+                    if self.use_intercept_term {
+                        l2_diag[0] = F::zero();
+                    }
+                    l2_diag
+                };
+                Box::new(Ridge::from_diag(l2_diag))
+            }
+            IrlsRegType::LassoSmooth(l1, eps) => {
+                let l1_diag: Array1<F> = {
+                    let mut l1_diag: Array1<F> = Array1::<F>::from_elem(data_x.ncols(), l1);
+                    // if an intercept term is included it should not be subject to
+                    // regularization.
+                    if self.use_intercept_term {
+                        l1_diag[0] = F::zero();
+                    }
+                    l1_diag
+                };
+                Box::new(LassoSmooth::from_diag(l1_diag, eps))
+            }
         };
 
         Ok(Model {
