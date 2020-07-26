@@ -17,6 +17,10 @@ The regression algorithm uses iteratively re-weighted least squares (IRLS) with
 a step-halving procedure applied when the next iteration of guesses does not
 increase the likelihood.
 
+Much of the logic is done at the type/trait level to avoid compiling code a user does
+not need and to allow general implementations that the compiler can optimize in trivial
+cases.
+
 At the moment the master branch of `ndarray-linalg` along with `blas-src = 0.6`
 is required to pass CI, but this precludes publishing new versions of this
 crate. For the time being you may see some version mismatches in the
@@ -75,47 +79,22 @@ interface is not particularly ergonomic. See `tests/custom_link.rs` for examples
 - [X] Logistic regression
 - [X] Generalized linear model IRLS
 - [X] Linear offsets
-- [X] Allow non-float domain types
+- [X] Generic over floating point type
+- [X] Non-float domain types
 - [X] L2 (ridge) Regularization
 - [ ] L1 (lasso) Regularization
-- [X] Generic over floating point type
 - [ ] Other exponential family distributions
   - [X] Poisson
   - [X] Binomial (nightly only)
   - [ ] Exponential
-  - [ ] Gamma (which effectively reduces to exponential with an arbitrary
-        dispersion parameter)
+  - [ ] Gamma
   - [ ] Inverse Gaussian
-  - [ ] ...
 - [X] Option for data standardization/normalization
 - [ ] Weighted and correlated regressions
-  - [ ] Weight the covariance matrix with point-by-point error bars
-  - [ ] Allow for off-diagonal correlations between points
-  - [ ] Fix likelihood functions for weighted and/or correlated case
-  - [ ] Re-visit the tolerance conditions for termination in these instances.
 - [X] Non-canonical link functions
-- [ ] Goodness-of-fit tests
-  - [X] Likelihood ratio test
-  - [X] Score test
-  - [X] Wald test
-  - [X] Log-likelihood difference from saturated model (deviance analysis)
-  - [X] Akaike and Bayesian information criteria
-  - [ ] generalized R^2?
-
-### TODO
-
-- [ ] Generalize GLM interface to allow multi-parameter fits like a gamma
-      distribution or Gaussian with variable variance. This would demand other
-      sufficient statistics besides y (e.g. y^2 for Gaussian w/ variance, log(y)
-      for gamma). It might be worth putting off until const generics.
-- [ ] More rigorous convergence tests and options for termination
-- [ ] Logging system with configurable levels
-- [ ] GPU acceleration?
-  - [accel](https://gitlab.com/termoshtt/accel)
-  - [GPUfit](https://github.com/gpufit/GPUfit)
+- [X] Goodness-of-fit tests
 
 ## Reference
 
-The author's [notes on generalized linear
-models](https://felix-clark.github.io/glm-math) summarize many of the relevant
-concepts and provide some additional references.
+These [notes on generalized linear models](https://felix-clark.github.io/glm-math)
+summarize many of the relevant concepts and provide some additional references.
