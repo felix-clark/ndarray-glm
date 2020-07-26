@@ -193,9 +193,13 @@ where
         };
         // Check if the data is under-constrained
         if n_data < data_x.ncols() {
-            // The regression can find a solution if n_data == ncols, but
-            // there will be no estimate for the uncertainty.
-            return Err(RegressionError::Underconstrained);
+            if let IrlsRegType::Null = &self.reg {
+                // The regression can find a solution if n_data == ncols, but
+                // there will be no estimate for the uncertainty.
+                return Err(RegressionError::Underconstrained);
+            } else {
+                eprintln!("Warning: data is underconstrained");
+            }
         }
         // Check for co-linearity up to a tolerance
         let xtx: Array2<F> = data_x.t().dot(&data_x);

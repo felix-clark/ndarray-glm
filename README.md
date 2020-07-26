@@ -83,6 +83,7 @@ interface is not particularly ergonomic. See `tests/custom_link.rs` for examples
 - [X] Non-float domain types
 - [X] L2 (ridge) Regularization
 - [ ] L1 (lasso) Regularization
+  - An experimental smoothed version with an epsilon tolerance is WIP
 - [ ] Other exponential family distributions
   - [X] Poisson
   - [X] Binomial (nightly only)
