@@ -19,8 +19,6 @@ where
     F: Float,
 {
     /// The data and model specification used in the fit.
-    // TODO: This field could likely be made private if Fit had a constructor
-    // for Glm::regression() to use.
     data: &'a Model<M, F>,
     /// The parameter values that maximize the likelihood as given by the IRLS regression.
     pub result: Array1<F>,
@@ -46,7 +44,7 @@ impl<'a, M, F> Fit<'a, M, F>
 where
     M: Glm,
     F: 'static + Float,
-    F: std::fmt::Debug,
+    // F: std::fmt::Debug,
 {
     pub fn new(
         data: &'a Model<M, F>,
