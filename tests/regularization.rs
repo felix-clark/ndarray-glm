@@ -39,8 +39,8 @@ fn lasso_smooth_underconstrained() -> Result<()> {
     let y_data: Array1<bool> = array![true, false, true];
     let x_data: Array2<f64> = array![[0.1, 1.5, 8.0], [-0.1, 1.0, -12.0], [0.2, 0.5, 9.5]];
     let model = ModelBuilder::<Logistic>::data(y_data.view(), x_data.view())
-        .l1_smooth_reg(1.0, 1e-4)
-        // .l2_reg(1.0)
+        // The smoothing parameter needs to be relatively large in order to work
+        .l1_smooth_reg(1.0, 1e-2)
         .build()?;
     let fit = model.fit()?;
     dbg!(fit.result);

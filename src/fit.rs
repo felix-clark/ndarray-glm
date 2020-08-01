@@ -53,7 +53,7 @@ where
         n_iter: usize,
         n_steps: usize,
     ) -> Self {
-        if model_like != M::log_like_reg(data, &result) {
+        if !model_like.is_nan() && model_like != M::log_like_reg(data, &result) {
             eprintln!("Model likelihood does not match result! There is an error in the GLM fitting code.");
             dbg!(&result);
             dbg!(model_like);
