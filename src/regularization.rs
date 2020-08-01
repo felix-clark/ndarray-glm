@@ -3,20 +3,6 @@
 use crate::{num::Float, Array1, Array2};
 use ndarray::ArrayViewMut1;
 
-/// An enum to describe the definition of the regularization without initializing the
-/// data.
-pub enum IrlsRegType<F>
-where
-    F: Float,
-{
-    /// No regularization
-    Null,
-    /// L2 (ridge) regularization
-    Ridge(F),
-    /// A smoothed L1 (lasso) regularization with an "epsilon" parameter.
-    LassoSmooth(F, F),
-}
-
 /// Penalize the likelihood with a smooth function of the regression parameters.
 pub trait IrlsReg<F>
 where
@@ -38,6 +24,9 @@ where
     /// subtracts the Hessian of the penalty from the matrix. The difference is
     /// typically only on the diagonal.
     fn irls_mat(&self, mat: Array2<F>, regressors: &Array1<F>) -> Array2<F>;
+
+    /// True for the empty regularization
+    fn is_null(&self) -> bool;
 }
 
 /// Represents a lack of regularization.
@@ -58,6 +47,10 @@ impl<F: Float> IrlsReg<F> for Null {
     #[inline]
     fn irls_mat(&self, mat: Array2<F>, _: &Array1<F>) -> Array2<F> {
         mat
+    }
+
+    fn is_null(&self) -> bool {
+        true
     }
 }
 
@@ -94,6 +87,10 @@ impl<F: Float> IrlsReg<F> for Ridge<F> {
         let mut mat_diag: ArrayViewMut1<F> = mat.diag_mut();
         mat_diag += &self.l2_vec;
         mat
+    }
+
+    fn is_null(&self) -> bool {
+        false
     }
 }
 
@@ -141,6 +138,10 @@ impl<F: Float> IrlsReg<F> for LassoSmooth<F> {
         let mut mat_diag: ArrayViewMut1<F> = mat.diag_mut();
         mat_diag += &(&self.l1_vec * &beta.mapv(|b| self.s.recip() * self.sech_sq(b)));
         mat
+    }
+
+    fn is_null(&self) -> bool {
+        false
     }
 }
 

@@ -1,6 +1,7 @@
 //! Stores the fit results of the IRLS regression and provides functions that
 //! depend on the MLE estimate. These include statistical tests for goodness-of-fit.
 
+pub mod options;
 use crate::{
     error::RegressionResult,
     glm::Glm,
@@ -10,6 +11,7 @@ use crate::{
 };
 use ndarray::{array, Array1, Array2, ArrayView1, ArrayView2};
 use ndarray_linalg::InverseHInto;
+use options::FitOptions;
 use std::cell::RefCell;
 
 /// the result of a successful GLM fit
@@ -22,6 +24,8 @@ where
     data: &'a Model<M, F>,
     /// The parameter values that maximize the likelihood as given by the IRLS regression.
     pub result: Array1<F>,
+    /// The options used in the fit
+    pub options: FitOptions<F>,
     /// The value of the likelihood function for the fit result.
     pub model_like: F,
     /// The number of overall iterations taken in the IRLS.
@@ -49,11 +53,14 @@ where
     pub fn new(
         data: &'a Model<M, F>,
         result: Array1<F>,
+        options: FitOptions<F>,
         model_like: F,
         n_iter: usize,
         n_steps: usize,
     ) -> Self {
-        if !model_like.is_nan() && model_like != M::log_like_reg(data, &result) {
+        if !model_like.is_nan()
+            && model_like != M::log_like_reg(data, &result, options.reg.as_ref())
+        {
             eprintln!("Model likelihood does not match result! There is an error in the GLM fitting code.");
             dbg!(&result);
             dbg!(model_like);
@@ -66,6 +73,7 @@ where
         Self {
             data,
             result,
+            options,
             model_like,
             n_iter,
             n_steps,
@@ -123,7 +131,7 @@ where
     /// way that the regression resulting in this fit was. The degrees of
     /// freedom cannot be generally inferred.
     pub fn lr_test_against(&self, alternative: &Array1<F>) -> F {
-        let alt_like = M::log_like_reg(&self.data, &alternative);
+        let alt_like = M::log_like_reg(&self.data, &alternative, self.options.reg.as_ref());
         F::from(2.).unwrap() * (self.model_like - alt_like)
     }
 
@@ -186,19 +194,21 @@ where
                             y: self.data.y.clone(),
                             x: data_x_null,
                             linear_offset: Some(off.clone()),
-                            // There shouldn't be too much trouble fitting this
-                            // single-parameter fit, but there shouldn't be harm in
-                            // using the same maximum as in the original model.
-                            max_iter: self.data.max_iter,
-                            // the intercept should not be regularized.
-                            reg: Box::new(crate::regularization::Null {}),
                             // If we are here it is because an intercept is needed.
                             use_intercept: true,
                         };
                         // TODO: Make this function return an error, although it's
                         // difficult to imagine this case happening.
                         // TODO: Should the tolerance of this fit be stricter?
-                        let null_fit = null_model.fit().expect("Could not fit null model!");
+                        // The intercept should not be regularized
+                        let null_fit = null_model
+                            .fit_options()
+                            // There shouldn't be too much trouble fitting this
+                            // single-parameter fit, but there shouldn't be harm in
+                            // using the same maximum as in the original model.
+                            .max_iter(self.options.max_iter)
+                            .fit()
+                            .expect("Could not fit null model!");
                         let null_params: Array1<F> = {
                             let mut par = Array1::<F>::zeros(self.n_par);
                             // there is only one parameter in this fit.
@@ -299,7 +309,7 @@ where
         // calculate the fisher matrix
         let fisher: Array2<F> = (&self.data.x.t() * &adj_var).dot(&self.data.x);
         // Regularize the fisher matrix
-        (*self.data.reg).irls_mat(fisher, params)
+        self.options.reg.as_ref().irls_mat(fisher, params)
     }
 
     /// Returns the score function (the gradient of the likelihood) at the
@@ -313,7 +323,7 @@ where
         // adjust for non-canonical link functions.
         let eta_d = M::Link::d_nat_param(&lin_pred);
         let score_unreg = self.data.x.t().dot(&(eta_d * (&self.data.y - &mu)));
-        (*self.data.reg).gradient(score_unreg, &params)
+        self.options.reg.as_ref().gradient(score_unreg, &params)
     }
 
     /// Returns the score test statistic. This statistic is asymptotically
@@ -394,7 +404,7 @@ where
         for i_like in 0..self.n_par {
             let mut adjusted = self.result.clone();
             adjusted[i_like] = F::zero();
-            let null_like = M::log_like_reg(&self.data, &adjusted);
+            let null_like = M::log_like_reg(&self.data, &adjusted, self.options.reg.as_ref());
             if !self.data.use_intercept || i_like != 0 {
                 assert_eq!(null_like <= self.null_like() + F::from(0.001).unwrap(),
                 true, "This fixed set should be less likely than the null where it is supposed to be the best fit.");

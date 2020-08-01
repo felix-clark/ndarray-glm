@@ -2,7 +2,14 @@
 //! Models are fit such that E[Y] = g^-1(X*B) where g is the link function.
 
 use crate::link::{Link, Transform};
-use crate::{error::RegressionResult, fit::Fit, irls::Irls, model::Model, num::Float};
+use crate::{
+    error::RegressionResult,
+    fit::{options::FitOptions, Fit},
+    irls::Irls,
+    model::Model,
+    num::Float,
+    regularization::IrlsReg,
+};
 use ndarray::{Array1, Array2};
 use ndarray_linalg::SolveH;
 
@@ -42,8 +49,8 @@ pub trait Glm: Sized {
     /// observation. Terms that depend only on the response variable `y` are
     /// dropped. This dispersion parameter is taken to be 1, as it does not
     /// affect the IRLS steps.
-    // TODO: A default implementation could be written in terms of the log
-    // partition function, but in some cases this could be more expensive (?).
+    /// The default implementation can be overwritten for performance or numerical
+    /// accuracy, but should be mathematically equivalent to the default implementation.
     fn log_like_natural<F>(y: &Array1<F>, nat: &Array1<F>) -> F
     where
         F: Float,
@@ -51,7 +58,7 @@ pub trait Glm: Sized {
         // subtracting the saturated likelihood to keep the likelihood closer to
         // zero, but this can complicate some fit statistics. In addition to
         // causing some null likelihood tests to fail as written, it would make
-        // the deviance calculation incorrect.
+        // the current deviance calculation incorrect.
         (y * nat).sum() - Self::log_partition(nat)
     }
 
@@ -62,14 +69,18 @@ pub trait Glm: Sized {
         F: Float;
 
     /// Returns the likelihood function including regularization terms.
-    fn log_like_reg<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> F
+    fn log_like_reg<F>(
+        data: &Model<Self, F>,
+        regressors: &Array1<F>,
+        regularization: &dyn IrlsReg<F>,
+    ) -> F
     where
         F: Float,
     {
         let lin_pred = data.linear_predictor(&regressors);
         // the likelihood prior to regularization
         let l_unreg = Self::log_like_natural(&data.y, &Self::Link::nat_param(lin_pred));
-        (*data.reg).likelihood(l_unreg, regressors)
+        (*regularization).likelihood(l_unreg, regressors)
     }
 
     /// Provide an initial guess for the parameters. This can be overridden
@@ -107,12 +118,18 @@ pub trait Glm: Sized {
     }
 
     /// Do the regression and return a result. Returns object holding fit result.
-    fn regression<F>(data: &Model<Self, F>) -> RegressionResult<Fit<Self, F>>
+    fn regression<F>(
+        data: &Model<Self, F>,
+        options: FitOptions<F>,
+    ) -> RegressionResult<Fit<Self, F>>
     where
         F: Float,
         Self: Sized,
     {
-        let initial: Array1<F> = Self::init_guess(&data);
+        let initial: Array1<F> = options
+            .init_guess
+            .clone()
+            .unwrap_or_else(|| Self::init_guess(&data));
 
         // This represents the number of overall iterations
         let mut n_iter: usize = 0;
@@ -120,9 +137,9 @@ pub trait Glm: Sized {
         let mut n_steps: usize = 0;
         // initialize the result and likelihood in case no steps are taken.
         let mut result: Array1<F> = initial.clone();
-        let mut model_like: F = Self::log_like_reg(&data, &initial);
+        let mut model_like: F = Self::log_like_reg(&data, &initial, options.reg.as_ref());
 
-        let irls: Irls<Self, F> = Irls::new(&data, initial, model_like);
+        let irls: Irls<Self, F> = Irls::new(&data, initial, &options, model_like);
 
         for iteration in irls {
             let it_result = iteration?;
@@ -133,7 +150,7 @@ pub trait Glm: Sized {
             n_steps += it_result.steps;
         }
 
-        Ok(Fit::new(data, result, model_like, n_iter, n_steps))
+        Ok(Fit::new(data, result, options, model_like, n_iter, n_steps))
     }
 }
 

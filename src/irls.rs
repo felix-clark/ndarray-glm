@@ -4,6 +4,7 @@ use crate::glm::Glm;
 use crate::link::Transform;
 use crate::{
     error::{RegressionError, RegressionResult},
+    fit::options::FitOptions,
     model::Model,
     num::Float,
 };
@@ -21,10 +22,11 @@ where
     data: &'a Model<M, F>,
     /// The current parameter guess.
     guess: Array1<F>,
-    /// The maximum iterations before aborting with error.
-    max_iter: usize,
+    /// The options for the fit
+    options: &'a FitOptions<F>,
+    /// The number of iterations taken so far
     pub n_iter: usize,
-    tolerance: F,
+    /// The likelihood for the previous iteration
     last_like: F,
     /// Sometimes the next guess is better than the previous but within
     /// tolerance, so we want to return the current guess but exit immediately
@@ -38,16 +40,17 @@ where
     F: Float,
     Array2<F>: SolveH<F>,
 {
-    pub fn new(data: &'a Model<M, F>, initial: Array1<F>, initial_like: F) -> Self {
-        // This tolerance is rather small, but it is used as a fraction of the likelihood.
-        let tolerance: F = F::epsilon();
+    pub fn new(
+        data: &'a Model<M, F>,
+        initial: Array1<F>,
+        options: &'a FitOptions<F>,
+        initial_like: F,
+    ) -> Self {
         Self {
             data,
             guess: initial,
-            // TODO: make this maximum configurable
-            max_iter: data.max_iter.unwrap_or(50),
+            options,
             n_iter: 0,
-            tolerance,
             last_like: initial_like,
             done: false,
         }
@@ -65,8 +68,8 @@ where
         self.guess.assign(&next_guess);
         self.last_like = next_like;
         self.n_iter += n_steps;
-        if self.n_iter > self.max_iter {
-            return Err(RegressionError::MaxIter(self.max_iter));
+        if self.n_iter > self.options.max_iter {
+            return Err(RegressionError::MaxIter(self.options.max_iter));
         }
         Ok(IrlsStep {
             guess: next_guess,
@@ -132,8 +135,8 @@ where
             target
         };
         // Regularize the matrix and vector terms
-        let lhs: Array2<F> = (*self.data.reg).irls_mat(neg_hessian, &self.guess);
-        let rhs: Array1<F> = (*self.data.reg).irls_vec(rhs, &self.guess);
+        let lhs: Array2<F> = (*self.options.reg).irls_mat(neg_hessian, &self.guess);
+        let rhs: Array1<F> = (*self.options.reg).irls_vec(rhs, &self.guess);
         (lhs, rhs)
     }
 }
@@ -177,7 +180,7 @@ where
         // cases that lead to poor convergence.
         // Ideally we could only check the step difference but that might not be
         // as stable. Some parameters might be at different scales.
-        let mut next_like = M::log_like_reg(&self.data, &next_guess);
+        let mut next_like = M::log_like_reg(&self.data, &next_guess, self.options.reg.as_ref());
         // This should be positive for an improved guess
         let mut rel = (next_like - self.last_like) / (F::epsilon() + next_like.abs());
         // If this guess is a strict improvement, return it immediately.
@@ -185,7 +188,7 @@ where
             return Some(self.step_with(next_guess, next_like, 0));
         }
         // Terminate if the difference is close to zero
-        if rel.abs() <= self.tolerance {
+        if rel.abs() <= self.options.tol {
             // If this guess is an improvement then go ahead and return it, but
             // quit early on the next iteration. The equivalence with zero is
             // necessary in order to return a value when the iteration starts at
@@ -200,17 +203,16 @@ where
 
         // apply step halving if rel < 0, which means the likelihood has decreased.
         // Don't terminate if rel gets back to within tolerance as a result of this.
-        // TODO: make the maximum step halves customizable
         // TODO: None of the tests result in step-halving, so this part is untested.
-        const MAX_STEP_HALVES: usize = 8;
         let mut step_halves = 0;
         let half: F = F::from(0.5).unwrap();
         let mut step_multiplier = half;
-        while rel < -self.tolerance && step_halves < MAX_STEP_HALVES {
+        while rel < -self.options.tol && step_halves < self.options.max_step_halves {
             // The next guess for the step-halving
             let next_guess_sh = next_guess.map(|&x| x * (step_multiplier))
                 + &self.guess.map(|&x| x * (F::one() - step_multiplier));
-            let next_like_sh = M::log_like_reg(&self.data, &next_guess_sh);
+            let next_like_sh =
+                M::log_like_reg(&self.data, &next_guess_sh, self.options.reg.as_ref());
             let next_rel = (next_like_sh - self.last_like) / (F::epsilon() + next_like_sh.abs());
             if next_rel >= rel {
                 next_guess = next_guess_sh;

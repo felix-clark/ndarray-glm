@@ -2,13 +2,13 @@
 
 use crate::{
     error::{RegressionError, RegressionResult},
-    fit::Fit,
+    fit::{self, Fit},
     glm::{Glm, Response},
     math::is_rank_deficient,
     num::Float,
-    regularization::{IrlsReg, IrlsRegType, LassoSmooth, Null, Ridge},
     utility::one_pad,
 };
+use fit::options::{FitConfig, FitOptions};
 use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use std::marker::PhantomData;
 
@@ -27,10 +27,6 @@ where
     /// to fix the effect of control variables.
     // TODO: Consider making this an option of a reference.
     pub linear_offset: Option<Array1<F>>,
-    /// the maximum number of iterations to try before failure.
-    pub max_iter: Option<usize>,
-    /// Regularization method
-    pub reg: Box<dyn IrlsReg<F>>,
     /// Whether the intercept term is used (commonly true)
     pub use_intercept: bool,
 }
@@ -42,7 +38,15 @@ where
 {
     /// Perform the regression and return a fit object holding the results.
     pub fn fit(&self) -> RegressionResult<Fit<M, F>> {
-        M::regression(&self)
+        self.fit_options().fit()
+    }
+
+    /// Fit options builder interface
+    pub fn fit_options(&self) -> FitConfig<M, F> {
+        FitConfig {
+            model: &self,
+            options: FitOptions::default(),
+        }
     }
 
     /// Returns the linear predictors, i.e. the design matrix multiplied by the
@@ -83,10 +87,8 @@ impl<M: Glm> ModelBuilder<M> {
             data_y,
             data_x,
             linear_offset: None,
-            max_iter: None,
             use_intercept_term: true,
             colin_tol: F::epsilon(),
-            reg: IrlsRegType::Null,
         }
     }
 }
@@ -110,14 +112,10 @@ where
     // TODO: consider making this a reference/ArrayView. Y and X are effectively
     // cloned so perhaps this isn't a big deal.
     linear_offset: Option<Array1<F>>,
-    /// The maximum number of iterations before the regression reports failure.
-    max_iter: Option<usize>,
     /// Whether to use an intercept term. Defaults to `true`.
     use_intercept_term: bool,
     /// tolerance for determinant check on rank of data matrix X.
     colin_tol: F,
-    /// Regularization for the regression. Defaults to none.
-    reg: IrlsRegType<F>,
 }
 
 /// A builder to generate a Model object
@@ -134,24 +132,6 @@ where
         self
     }
 
-    /// Use a maximum number of iterations
-    pub fn max_iter(mut self, max_iter: usize) -> Self {
-        self.max_iter = Some(max_iter);
-        self
-    }
-
-    /// Use to set a L2 regularization parameter
-    pub fn l2_reg(mut self, l2: F) -> Self {
-        self.reg = IrlsRegType::Ridge(l2);
-        self
-    }
-
-    /// Use to set a L1 regularization parameter with a smoother tolerance
-    pub fn l1_smooth_reg(mut self, l1: F, eps: F) -> Self {
-        self.reg = IrlsRegType::LassoSmooth(l1, eps);
-        self
-    }
-
     /// Do not add a constant term to the design matrix
     pub fn no_constant(mut self) -> Self {
         self.use_intercept_term = false;
@@ -160,7 +140,7 @@ where
 
     /// Set the tolerance for the co-linearity check.
     /// The check can be effectively disabled by setting the tolerance to a negative value.
-    pub fn colinearity_tolerance(mut self, tol: F) -> Self {
+    pub fn colinear_tol(mut self, tol: F) -> Self {
         self.colin_tol = tol;
         self
     }
@@ -193,13 +173,11 @@ where
         };
         // Check if the data is under-constrained
         if n_data < data_x.ncols() {
-            if let IrlsRegType::Null = &self.reg {
-                // The regression can find a solution if n_data == ncols, but
-                // there will be no estimate for the uncertainty.
-                return Err(RegressionError::Underconstrained);
-            } else {
-                eprintln!("Warning: data is underconstrained");
-            }
+            // The regression can find a solution if n_data == ncols, but there will be
+            // no estimate for the uncertainty. Regularization can solve this, so keep
+            // it to a warning.
+            // return Err(RegressionError::Underconstrained);
+            eprintln!("Warning: data is underconstrained");
         }
         // Check for co-linearity up to a tolerance
         let xtx: Array2<F> = data_x.t().dot(&data_x);
@@ -214,42 +192,11 @@ where
             .map(|&y| y.to_float())
             .collect::<Result<_, _>>()?;
 
-        let reg: Box<dyn IrlsReg<F>> = match self.reg {
-            IrlsRegType::Null => Box::new(Null {}),
-            IrlsRegType::Ridge(l2) => {
-                // make the vector of L2 coefficients
-                let l2_diag: Array1<F> = {
-                    let mut l2_diag: Array1<F> = Array1::<F>::from_elem(data_x.ncols(), l2);
-                    // if an intercept term is included it should not be subject to
-                    // regularization.
-                    if self.use_intercept_term {
-                        l2_diag[0] = F::zero();
-                    }
-                    l2_diag
-                };
-                Box::new(Ridge::from_diag(l2_diag))
-            }
-            IrlsRegType::LassoSmooth(l1, eps) => {
-                let l1_diag: Array1<F> = {
-                    let mut l1_diag: Array1<F> = Array1::<F>::from_elem(data_x.ncols(), l1);
-                    // if an intercept term is included it should not be subject to
-                    // regularization.
-                    if self.use_intercept_term {
-                        l1_diag[0] = F::zero();
-                    }
-                    l1_diag
-                };
-                Box::new(LassoSmooth::from_diag(l1_diag, eps))
-            }
-        };
-
         Ok(Model {
             model: PhantomData,
             y: data_y,
             x: data_x,
             linear_offset: self.linear_offset,
-            max_iter: self.max_iter,
-            reg,
             use_intercept: self.use_intercept_term,
         })
     }
