@@ -17,6 +17,10 @@ The regression algorithm uses iteratively re-weighted least squares (IRLS) with
 a step-halving procedure applied when the next iteration of guesses does not
 increase the likelihood.
 
+Much of the logic is done at the type/trait level to avoid compiling code a user does
+not need and to allow general implementations that the compiler can optimize in trivial
+cases.
+
 At the moment the master branch of `ndarray-linalg` along with `blas-src = 0.6`
 is required to pass CI, but this precludes publishing new versions of this
 crate. For the time being you may see some version mismatches in the
@@ -29,7 +33,8 @@ fortran and BLAS must be installed:
 sudo apt update && sudo apt install gfortran libblas-dev
 ```
 
-To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate with the "openblas-src" feature.
+To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate with the
+"openblas-static" feature.
 
 ## Example
 
@@ -37,15 +42,13 @@ To use in your crate, add the following to the `Cargo.toml`:
 
 ```
 ndarray = { version = "0.13", features = ["blas"]}
-blas-src = { version = "0.4", default-features = false, features = ["openblas"] }
-ndarray-glm = { version = "0.0.6", features = ["openblas-static"] }
+ndarray-glm = { version = "0.0.7", features = ["openblas-static"] }
 ```
 
 An example for linear regression is shown below.
 
 ``` rust
-use ndarray::array;
-use ndarray_glm::{linear::Linear, model::ModelBuilder, standardize::standardize};
+use ndarray_glm::{array, Linear, ModelBuilder, standardize};
 
 // define some test data
 let data_y = array![0.3, 1.3, 0.7];
@@ -53,12 +56,10 @@ let data_x = array![[0.1, 0.2], [-0.4, 0.1], [0.2, 0.4]];
 // The design matrix can optionally be standardized, where the mean of each independent
 // variable is subtracted and each is then divided by the standard deviation of that variable.
 let data_x = standardize(data_x);
-// The model is generic over floating point type for the independent data variables, and
-// the type will be inferred from the type of the arrays passed to data().
 // The interface takes `ArrayView`s to allow for efficient passing of slices.
+let model = ModelBuilder::<Linear>::data(data_y.view(), data_x.view()).build()?;
 // L2 (ridge) regularization can be applied with l2_reg().
-let model = ModelBuilder::<Linear>::data(data_y.view(), data_x.view()).l2_reg(1e-5).build()?;
-let fit = model.fit()?;
+let fit = model.fit_options().l2_reg(1e-5).fit()?;
 // Currently the result is a simple array of the MLE estimators, including the intercept term.
 println!("Fit result: {}", fit.result);
 ```
@@ -75,44 +76,23 @@ interface is not particularly ergonomic. See `tests/custom_link.rs` for examples
 - [X] Logistic regression
 - [X] Generalized linear model IRLS
 - [X] Linear offsets
-- [X] Allow non-float domain types
+- [X] Generic over floating point type
+- [X] Non-float domain types
 - [X] L2 (ridge) Regularization
 - [ ] L1 (lasso) Regularization
-- [X] Generic over floating point type
+  - An experimental smoothed version with an epsilon tolerance is WIP
 - [ ] Other exponential family distributions
   - [X] Poisson
   - [X] Binomial (nightly only)
   - [ ] Exponential
-  - [ ] Gamma (which effectively reduces to exponential with an arbitrary
-        dispersion parameter)
+  - [ ] Gamma
   - [ ] Inverse Gaussian
-  - [ ] ...
 - [X] Option for data standardization/normalization
 - [ ] Weighted and correlated regressions
-  - [ ] Weight the covariance matrix with point-by-point error bars
-  - [ ] Allow for off-diagonal correlations between points
-  - [ ] Fix likelihood functions for weighted and/or correlated case
-  - [ ] Re-visit the tolerance conditions for termination in these instances.
 - [X] Non-canonical link functions
-- [ ] Goodness-of-fit tests
-  - [X] Likelihood ratio test
-  - [X] Score test
-  - [X] Wald test
-  - [X] Log-likelihood difference from saturated model (deviance analysis)
-  - [X] Akaike and Bayesian information criteria
-  - [ ] generalized R^2?
-
-### TODO
-
-- [ ] Generalize GLM interface to allow multi-parameter fits like a gamma
-      distribution or Gaussian with variable variance. This would demand other
-      sufficient statistics besides y (e.g. y^2 for Gaussian w/ variance, log(y)
-      for gamma). It might be worth putting off until const generics.
-- [ ] More rigorous convergence tests and options for termination
-- [ ] Logging system with configurable levels
+- [X] Goodness-of-fit tests
 
 ## Reference
 
-The author's [notes on generalized linear
-models](https://felix-clark.github.io/glm-math) summarize many of the relevant
-concepts and provide some additional references.
+These [notes on generalized linear models](https://felix-clark.github.io/glm-math)
+summarize many of the relevant concepts and provide some additional references.

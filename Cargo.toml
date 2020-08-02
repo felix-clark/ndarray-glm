@@ -1,6 +1,6 @@
 [package]
 name = "ndarray-glm"
-version = "0.0.6"
+version = "0.0.7"
 authors = ["Felix Clark <mfclark3690@gmail.com>"]
 description = "Performs regression for generalized linear models using IRLS on data stored in arrays."
 edition = "2018"
@@ -31,6 +31,7 @@ intel-mkl = ["ndarray-linalg/intel-mkl"]
 binomial = []
 
 [dependencies]
+itertools = "0.9"
 ndarray = { version = "0.13", features = ["blas"] }
 # The version with the latest openblas-src and blas-src versions doesn't have a
 # crate yet, so use the master branch for CI.
@@ -38,22 +39,24 @@ ndarray-linalg = { version = "0.12" }
 # ndarray-linalg = { git = "https://github.com/rust-ndarray/ndarray-linalg" }
 num-traits = "0.2"
 thiserror = "1.0"
-itertools = "0.9"
 
 [dev-dependencies]
-# Use the "approx" feature for unit tests
-ndarray = { version = "0.13", features = ["blas", "approx"] }
-# pick a backend to run tests
-blas-src = { version = "0.4", default-features = false, features = ["openblas"] }
-ndarray-linalg = { version = "0.12", default-features = false, features = ["openblas-static"]}
-# the updates to blas versions have not been released in ndarray-linalg yet.
-# blas-src = { version = "0.6", default-features = false, features = ["openblas"] }
-# ndarray-linalg = { git = "https://github.com/rust-ndarray/ndarray-linalg", branch = "master", default-features = false, features = ["openblas-static"] }
 anyhow = "1.0"
 approx = "0.3"
+# Use the "approx" feature for unit tests
+ndarray = { version = "0.13", features = ["blas", "approx"] }
+ndarray-linalg = { version = "0.12", default-features = false, features = ["openblas-static"]}
+# the updates to blas versions have not been released in ndarray-linalg yet.
+# TODO: Do we need to specify this here? It's a dep of ndarray-linalg
+# blas-src = { version = "0.6", default-features = false, features = ["openblas"] }
+# ndarray-linalg = { git = "https://github.com/rust-ndarray/ndarray-linalg", branch = "master", default-features = false, features = ["openblas-static"] }
 # including openblas-src causes linking errors with LAPACKE?
 # Include it as a feature to ndarray-linalg instead.
 # https://github.com/blas-lapack-rs/openblas-src/issues/30
 # openblas-src = { version = "0.7.0", default-features = false, features = ["cblas", "lapacke", "system"] }
 # This appears to work but isn't necessary:
 # openblas-src = "0.9"
+
+# [package.metadata.docs.rs]
+# TODO: use ndarray-linalg example for katex in docs
+# rustdoc-args = ["--no-deps"]

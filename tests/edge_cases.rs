@@ -1,8 +1,8 @@
 //! Handles edge cases that have caused trouble at times.
 use anyhow::Result;
 use ndarray::{array, Array2};
-use ndarray_glm::{logistic::Logistic, model::ModelBuilder};
-use num_traits::Float;
+use ndarray_glm::{Logistic, ModelBuilder};
+use num_traits::float::FloatCore;
 
 /// Ensure that a valid likelihood is returned when the initial guess is the
 /// best one.

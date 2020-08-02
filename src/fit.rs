@@ -1,29 +1,31 @@
 //! Stores the fit results of the IRLS regression and provides functions that
 //! depend on the MLE estimate. These include statistical tests for goodness-of-fit.
 
+pub mod options;
 use crate::{
     error::RegressionResult,
     glm::Glm,
     link::{Link, Transform},
     model::Model,
+    num::Float,
 };
 use ndarray::{array, Array1, Array2, ArrayView1, ArrayView2};
-use ndarray_linalg::{InverseHInto, Lapack, Scalar};
-use num_traits::Float;
+use ndarray_linalg::InverseHInto;
+use options::FitOptions;
 use std::cell::RefCell;
 
 /// the result of a successful GLM fit
-pub struct Fit<M, F>
+pub struct Fit<'a, M, F>
 where
     M: Glm,
     F: Float,
 {
     /// The data and model specification used in the fit.
-    // TODO: This field could likely be made private if Fit had a constructor
-    // for Glm::regression() to use.
-    data: Model<M, F>,
+    data: &'a Model<M, F>,
     /// The parameter values that maximize the likelihood as given by the IRLS regression.
     pub result: Array1<F>,
+    /// The options used in the fit
+    pub options: FitOptions<F>,
     /// The value of the likelihood function for the fit result.
     pub model_like: F,
     /// The number of overall iterations taken in the IRLS.
@@ -42,20 +44,23 @@ where
     null_model: RefCell<Option<(F, Array1<F>)>>,
 }
 
-impl<M, F> Fit<M, F>
+impl<'a, M, F> Fit<'a, M, F>
 where
     M: Glm,
-    F: 'static + Float + Lapack + Scalar,
-    F: std::fmt::Debug,
+    F: 'static + Float,
+    // F: std::fmt::Debug,
 {
     pub fn new(
-        data: Model<M, F>,
+        data: &'a Model<M, F>,
         result: Array1<F>,
+        options: FitOptions<F>,
         model_like: F,
         n_iter: usize,
         n_steps: usize,
     ) -> Self {
-        if model_like != M::log_like_reg(&data, &result) {
+        if !model_like.is_nan()
+            && model_like != M::log_like_reg(data, &result, options.reg.as_ref())
+        {
             eprintln!("Model likelihood does not match result! There is an error in the GLM fitting code.");
             dbg!(&result);
             dbg!(model_like);
@@ -68,6 +73,7 @@ where
         Self {
             data,
             result,
+            options,
             model_like,
             n_iter,
             n_steps,
@@ -125,13 +131,12 @@ where
     /// way that the regression resulting in this fit was. The degrees of
     /// freedom cannot be generally inferred.
     pub fn lr_test_against(&self, alternative: &Array1<F>) -> F {
-        let alt_like = M::log_like_reg(&self.data, &alternative);
+        let alt_like = M::log_like_reg(&self.data, &alternative, self.options.reg.as_ref());
         F::from(2.).unwrap() * (self.model_like - alt_like)
     }
 
     /// Return the likelihood and intercept for the null model. Since this can
     /// require an additional regression, the values are cached.
-    /// This function should not be public: perhaps a private trait can hide it?
     fn null_model_fit(&self) -> (F, Array1<F>) {
         // TODO: make a result instead of allowing a potential panic in the borrow.
         if self.null_model.borrow().is_none() {
@@ -189,19 +194,21 @@ where
                             y: self.data.y.clone(),
                             x: data_x_null,
                             linear_offset: Some(off.clone()),
-                            // There shouldn't be too much trouble fitting this
-                            // single-parameter fit, but there shouldn't be harm in
-                            // using the same maximum as in the original model.
-                            max_iter: self.data.max_iter,
-                            // the intercept should not be regularized.
-                            reg: Box::new(crate::regularization::Null {}),
                             // If we are here it is because an intercept is needed.
                             use_intercept: true,
                         };
                         // TODO: Make this function return an error, although it's
                         // difficult to imagine this case happening.
                         // TODO: Should the tolerance of this fit be stricter?
-                        let null_fit = null_model.fit().expect("Could not fit null model!");
+                        // The intercept should not be regularized
+                        let null_fit = null_model
+                            .fit_options()
+                            // There shouldn't be too much trouble fitting this
+                            // single-parameter fit, but there shouldn't be harm in
+                            // using the same maximum as in the original model.
+                            .max_iter(self.options.max_iter)
+                            .fit()
+                            .expect("Could not fit null model!");
                         let null_params: Array1<F> = {
                             let mut par = Array1::<F>::zeros(self.n_par);
                             // there is only one parameter in this fit.
@@ -302,7 +309,7 @@ where
         // calculate the fisher matrix
         let fisher: Array2<F> = (&self.data.x.t() * &adj_var).dot(&self.data.x);
         // Regularize the fisher matrix
-        (*self.data.reg).irls_mat(fisher, params)
+        self.options.reg.as_ref().irls_mat(fisher, params)
     }
 
     /// Returns the score function (the gradient of the likelihood) at the
@@ -316,7 +323,7 @@ where
         // adjust for non-canonical link functions.
         let eta_d = M::Link::d_nat_param(&lin_pred);
         let score_unreg = self.data.x.t().dot(&(eta_d * (&self.data.y - &mu)));
-        (*self.data.reg).gradient(score_unreg, &params)
+        self.options.reg.as_ref().gradient(score_unreg, &params)
     }
 
     /// Returns the score test statistic. This statistic is asymptotically
@@ -374,7 +381,7 @@ where
     pub fn wald_z(&self) -> RegressionResult<Array1<F>> {
         let par_cov = self.covariance()?;
         let par_variances: ArrayView1<F> = par_cov.diag();
-        Ok(&self.result / &par_variances.mapv(Float::sqrt))
+        Ok(&self.result / &par_variances.mapv(num_traits::Float::sqrt))
     }
 
     /// return the signed Z-score for each regression parameter. This is not a
@@ -387,16 +394,20 @@ where
         note = "This statistic is not a robust one. To get an analogous
         statistic use `wald_z()`."
     )]
-    pub fn z_scores(&self) -> Array1<F> {
+    pub fn z_scores(&self) -> Array1<F>
+    where
+        F: Float,
+    {
         // -2 likelihood deviation is asymptotically chi^2 with ndf degrees of freedom.
         let mut chi_sqs: Array1<F> = Array1::zeros(self.n_par);
         // TODO (style): move to (enumerated?) iterator
         for i_like in 0..self.n_par {
             let mut adjusted = self.result.clone();
             adjusted[i_like] = F::zero();
-            let null_like = M::log_like_reg(&self.data, &adjusted);
+            let null_like = M::log_like_reg(&self.data, &adjusted, self.options.reg.as_ref());
             if !self.data.use_intercept || i_like != 0 {
-                assert_eq!(null_like <= self.null_like() + F::from(0.001).unwrap(), true, "This fixed set should be less likely than the null where it is supposed to be the best fit.");
+                assert_eq!(null_like <= self.null_like() + F::from(0.001).unwrap(),
+                true, "This fixed set should be less likely than the null where it is supposed to be the best fit.");
             }
             let mut chi_sq = F::from(2.).unwrap() * (self.model_like - null_like);
             // This can happen due to FPE
@@ -420,7 +431,7 @@ where
             chi_sqs[i_like] = chi_sq;
         }
         let signs = self.result.mapv(F::signum);
-        let chis = chi_sqs.map(Scalar::sqrt);
+        let chis = chi_sqs.mapv(num_traits::Float::sqrt);
         // return the Z-scores
         signs * chis
     }
@@ -451,8 +462,7 @@ where
 mod tests {
     use super::*;
     use crate::{
-        linear::Linear, logistic::Logistic, model::ModelBuilder, standardize::standardize,
-        utility::one_pad,
+        model::ModelBuilder, standardize::standardize, utility::one_pad, Linear, Logistic,
     };
     use anyhow::Result;
     use approx::assert_abs_diff_eq;
@@ -525,14 +535,14 @@ mod tests {
         // Check that the assertions still hold if linear offsets are included.
         let lin_off: Array1<f64> = array![0.2, -0.1, 0.1, 0.0, 0.1];
         let model = ModelBuilder::<Logistic>::data(data_y.view(), data_x.view())
-            .linear_offset(lin_off.clone())
+            .linear_offset(lin_off)
             .build()?;
         let fit_off = model.fit()?;
         let empty_model_like_off = fit_off.model_like;
         let empty_null_like_off = fit_off.null_like();
         // these two assertions should be equivalent
-        assert_eq!(fit_off.lr_test(), 0.);
-        assert_eq!(empty_model_like_off, empty_null_like_off);
+        assert_abs_diff_eq!(fit_off.lr_test(), 0.);
+        assert_abs_diff_eq!(empty_model_like_off, empty_null_like_off);
 
         // check consistency with data provided
         let data_x_with = array![[0.5], [-0.2], [0.3], [0.4], [-0.1]];
@@ -595,7 +605,7 @@ mod tests {
         // let target_null_like = 0.;
         // dbg!(target_null_like);
         let fit_null_like = fit.null_like();
-        assert_eq!(2. * (&fit.model_like - fit_null_like), fit.lr_test());
+        assert_abs_diff_eq!(2. * (fit.model_like - fit_null_like), fit.lr_test());
         assert_eq!(fit.test_ndf(), 1);
         assert_abs_diff_eq!(
             fit_null_like,
