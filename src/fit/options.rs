@@ -84,10 +84,15 @@ pub struct FitOptions<F>
 where
     F: Float,
 {
+    /// The maximum number of IRLS iterations
     pub max_iter: usize,
+    /// The relative tolerance of the likelihood
     pub tol: F,
+    /// The regularization of the fit
     pub reg: Box<dyn IrlsReg<F>>,
+    /// An initial guess. A sensible default is selected if this is not provided.
     pub init_guess: Option<Array1<F>>,
+    /// The maximum number of step halves to try
     pub max_step_halves: usize,
 }
 
@@ -98,7 +103,8 @@ where
     fn default() -> Self {
         Self {
             max_iter: 50,
-            // This tolerance is rather small, but it is used as a fraction of the likelihood.
+            // This tolerance is rather small, but it is used in the context of a
+            // fraction of the total likelihood.
             tol: F::epsilon(),
             reg: Box::new(Null {}),
             init_guess: None,

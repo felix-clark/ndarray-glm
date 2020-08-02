@@ -42,7 +42,6 @@ To use in your crate, add the following to the `Cargo.toml`:
 
 ```
 ndarray = { version = "0.13", features = ["blas"]}
-blas-src = { version = "0.4", default-features = false, features = ["openblas"] }
 ndarray-glm = { version = "0.0.7", features = ["openblas-static"] }
 ```
 
@@ -57,12 +56,10 @@ let data_x = array![[0.1, 0.2], [-0.4, 0.1], [0.2, 0.4]];
 // The design matrix can optionally be standardized, where the mean of each independent
 // variable is subtracted and each is then divided by the standard deviation of that variable.
 let data_x = standardize(data_x);
-// The model is generic over floating point type for the independent data variables, and
-// the type will be inferred from the type of the arrays passed to data().
 // The interface takes `ArrayView`s to allow for efficient passing of slices.
+let model = ModelBuilder::<Linear>::data(data_y.view(), data_x.view()).build()?;
 // L2 (ridge) regularization can be applied with l2_reg().
-let model = ModelBuilder::<Linear>::data(data_y.view(), data_x.view()).l2_reg(1e-5).build()?;
-let fit = model.fit()?;
+let fit = model.fit_options().l2_reg(1e-5).fit()?;
 // Currently the result is a simple array of the MLE estimators, including the intercept term.
 println!("Fit result: {}", fit.result);
 ```

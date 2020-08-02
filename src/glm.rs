@@ -1,5 +1,5 @@
-//! trait defining a generalized linear model and providing common functionality
-//! Models are fit such that E[Y] = g^-1(X*B) where g is the link function.
+//! Trait defining a generalized linear model for common functionality.
+//! Models are fit such that <Y> = g^-1(X*B) where g is the link function.
 
 use crate::link::{Link, Transform};
 use crate::{

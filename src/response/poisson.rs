@@ -88,10 +88,8 @@ mod tests {
         let beta = array![0., ln2, -ln2];
         let data_x = array![[1., 0.], [1., 1.], [0., 1.], [0., 1.]];
         let data_y: Array1<u32> = array![2, 1, 0, 1];
-        let model = ModelBuilder::<Poisson>::data(data_y.view(), data_x.view())
-            .max_iter(10)
-            .build()?;
-        let fit = model.fit()?;
+        let model = ModelBuilder::<Poisson>::data(data_y.view(), data_x.view()).build()?;
+        let fit = model.fit_options().max_iter(10).fit()?;
         dbg!(fit.n_iter);
         assert_abs_diff_eq!(beta, fit.result, epsilon = f32::EPSILON as f64);
         Ok(())

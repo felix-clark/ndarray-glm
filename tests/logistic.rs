@@ -40,9 +40,8 @@ fn log_regularization() -> Result<()> {
     // let x = ndarray_glm::standardize::standardize(x);
     let model = ModelBuilder::<Logistic>::data(y.view(), x.view())
         .linear_offset(off)
-        .l2_reg(2e-6)
         .build()?;
-    let fit = model.fit()?;
+    let fit = model.fit_options().l2_reg(2e-6).fit()?;
     dbg!(fit.result);
     dbg!(fit.n_iter);
     Ok(())

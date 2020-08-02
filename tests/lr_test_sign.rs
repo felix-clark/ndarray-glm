@@ -11,9 +11,8 @@ fn lr_test_sign0() -> Result<()> {
     let (y, x, off) = y_x_off_from_csv::<bool, f32>("tests/data/lr_test_sign0.csv")?;
     let model = ModelBuilder::<Logistic>::data(y.view(), x.view())
         .linear_offset(off)
-        .l2_reg(2e-6)
         .build()?;
-    let fit = model.fit()?;
+    let fit = model.fit_options().l2_reg(2e-6).fit()?;
     dbg!(&fit.result);
     assert_eq!(fit.lr_test() >= 0., true);
     Ok(())

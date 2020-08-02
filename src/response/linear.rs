@@ -96,10 +96,8 @@ mod tests {
             beta[0] + beta[1] * data_x[[1, 0]] + beta[2] * data_x[[1, 1]],
             beta[0] + beta[1] * data_x[[2, 0]] + beta[2] * data_x[[2, 1]],
         ];
-        let model = ModelBuilder::<Linear>::data(data_y.view(), data_x.view())
-            .max_iter(10)
-            .build()?;
-        let fit = model.fit()?;
+        let model = ModelBuilder::<Linear>::data(data_y.view(), data_x.view()).build()?;
+        let fit = model.fit_options().max_iter(10).fit()?;
         dbg!(fit.n_iter);
         // This is failing within the default tolerance
         assert_abs_diff_eq!(beta, fit.result, epsilon = 64.0 * f64::EPSILON);

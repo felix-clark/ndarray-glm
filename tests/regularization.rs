@@ -16,11 +16,9 @@ fn same_lin_intercept() -> Result<()> {
 
     let lin_model = ModelBuilder::<Linear>::data(y_data.view(), x_data.view()).build()?;
     let lin_fit = lin_model.fit()?;
+    let lin_model_reg = ModelBuilder::<Linear>::data(y_data.view(), x_data.view()).build()?;
     // use a pretty large regularization term to make sure the effect is pronounced
-    let lin_model_reg = ModelBuilder::<Linear>::data(y_data.view(), x_data.view())
-        .l2_reg(1.0)
-        .build()?;
-    let lin_fit_reg = lin_model_reg.fit()?;
+    let lin_fit_reg = lin_model_reg.fit_options().l2_reg(1.0).fit()?;
     dbg!(&lin_fit.result);
     dbg!(&lin_fit_reg.result);
     // Ensure that the intercept terms are equal
@@ -38,11 +36,9 @@ fn same_lin_intercept() -> Result<()> {
 fn lasso_smooth_underconstrained() -> Result<()> {
     let y_data: Array1<bool> = array![true, false, true];
     let x_data: Array2<f64> = array![[0.1, 1.5, 8.0], [-0.1, 1.0, -12.0], [0.2, 0.5, 9.5]];
-    let model = ModelBuilder::<Logistic>::data(y_data.view(), x_data.view())
-        // The smoothing parameter needs to be relatively large in order to work
-        .l1_smooth_reg(1.0, 1e-2)
-        .build()?;
-    let fit = model.fit()?;
+    let model = ModelBuilder::<Logistic>::data(y_data.view(), x_data.view()).build()?;
+    // The smoothing parameter needs to be relatively large in order to work
+    let fit = model.fit_options().l1_smooth_reg(1.0, 1e-2).fit()?;
     dbg!(fit.result);
     let like = fit.model_like;
     // make sure the likelihood isn't NaN

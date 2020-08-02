@@ -49,6 +49,14 @@ where
         }
     }
 
+    /// An experimental interface that would allow fit options to be set externally.
+    pub fn with_options(&self, options: FitOptions<F>) -> FitConfig<M, F> {
+        FitConfig {
+            model: &self,
+            options,
+        }
+    }
+
     /// Returns the linear predictors, i.e. the design matrix multiplied by the
     /// regression parameters. Each entry in the resulting array is the linear
     /// predictor for a given observation. If linear offsets for each
