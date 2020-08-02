@@ -21,11 +21,6 @@ Much of the logic is done at the type/trait level to avoid compiling code a user
 not need and to allow general implementations that the compiler can optimize in trivial
 cases.
 
-At the moment the master branch of `ndarray-linalg` along with `blas-src = 0.6`
-is required to pass CI, but this precludes publishing new versions of this
-crate. For the time being you may see some version mismatches in the
-instructions below as a result.
-
 ## Prerequisites
 
 fortran and BLAS must be installed:

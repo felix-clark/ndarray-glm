@@ -58,5 +58,5 @@ ndarray-linalg = { version = "0.12", default-features = false, features = ["open
 # openblas-src = "0.9"
 
 # [package.metadata.docs.rs]
-# TODO: use ndarray-linalg example for katex in docs
-# rustdoc-args = ["--no-deps"]
+# TODO: use ndarray-linalg example for katex in docs. This HTML file needs to be added.
+# rustdoc-args = ["--html-in-header", "katex-header.html"]
