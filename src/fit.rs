@@ -401,7 +401,7 @@ where
     // not affect the difference between two models fit with the methodology in
     // this package.
     pub fn bic(&self) -> F {
-        let logn = F::from(self.data.y.len()).unwrap().ln();
+        let logn = num_traits::Float::ln(F::from(self.data.y.len()).unwrap());
         logn * F::from(self.n_par).unwrap() - F::from(2.).unwrap() * self.model_like
     }
 }

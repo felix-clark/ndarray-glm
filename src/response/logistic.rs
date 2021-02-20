@@ -22,7 +22,7 @@ impl<L> Response<Logistic<L>> for bool
 where
     L: Link<Logistic<L>>,
 {
-    fn to_float<F: Float>(self) -> RegressionResult<F> {
+    fn into_float<F: Float>(self) -> RegressionResult<F> {
         Ok(if self { F::one() } else { F::zero() })
     }
 }
@@ -33,8 +33,8 @@ impl<L> Response<Logistic<L>> for f32
 where
     L: Link<Logistic<L>>,
 {
-    fn to_float<F: Float>(self) -> RegressionResult<F> {
-        if self < 0.0 || self > 1.0 {
+    fn into_float<F: Float>(self) -> RegressionResult<F> {
+        if !(0.0..=1.0).contains(&self) {
             return Err(RegressionError::InvalidY(self.to_string()));
         }
         Ok(F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))?)
@@ -44,8 +44,8 @@ impl<L> Response<Logistic<L>> for f64
 where
     L: Link<Logistic<L>>,
 {
-    fn to_float<F: Float>(self) -> RegressionResult<F> {
-        if self < 0.0 || self > 1.0 {
+    fn into_float<F: Float>(self) -> RegressionResult<F> {
+        if !(0.0..=1.0).contains(&self) {
             return Err(RegressionError::InvalidY(self.to_string()));
         }
         Ok(F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))?)
@@ -62,7 +62,7 @@ where
     /// The log of the partition function for logistic regression. The natural
     /// parameter is the logit of p.
     fn log_partition<F: Float>(nat_par: &Array1<F>) -> F {
-        nat_par.mapv(|lp| lp.exp().ln_1p()).sum()
+        nat_par.mapv(|lp| num_traits::Float::exp(lp).ln_1p()).sum()
     }
 
     /// var = mu*(1-mu)
@@ -89,7 +89,7 @@ where
                 } else {
                     (F::one() - y, -wx)
                 };
-                *l = yt * xt - xt.exp().ln_1p()
+                *l = yt * xt - num_traits::Float::exp(xt).ln_1p()
             });
         log_like_terms.sum()
     }
@@ -106,7 +106,7 @@ pub mod link {
     //! Link functions for logistic regression
     use super::*;
     use crate::link::{Canonical, Link, Transform};
-    use num_traits::Float;
+    use crate::num::Float;
 
     /// The canonical link function for logistic regression is the logit function g(p) =
     /// log(p/(1-p)).
@@ -114,10 +114,10 @@ pub mod link {
     impl Canonical for Logit {}
     impl Link<Logistic<Logit>> for Logit {
         fn func<F: Float>(y: F) -> F {
-            F::ln(y / (F::one() - y))
+            num_traits::Float::ln(y / (F::one() - y))
         }
         fn func_inv<F: Float>(lin_pred: F) -> F {
-            (F::one() + (-lin_pred).exp()).recip()
+            (F::one() + num_traits::Float::exp(-lin_pred)).recip()
         }
     }
 
@@ -127,19 +127,19 @@ pub mod link {
     pub struct Cloglog {}
     impl Link<Logistic<Cloglog>> for Cloglog {
         fn func<F: Float>(y: F) -> F {
-            F::ln(-F::ln_1p(-y))
+            num_traits::Float::ln(-F::ln_1p(-y))
         }
         // This quickly underflows to zero for inputs greater than ~2.
         fn func_inv<F: Float>(lin_pred: F) -> F {
-            -F::exp_m1(-F::exp(lin_pred))
+            -F::exp_m1(-num_traits::Float::exp(lin_pred))
         }
     }
     impl Transform for Cloglog {
         fn nat_param<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
-            lin_pred.mapv(|x| x.exp().exp_m1().ln())
+            lin_pred.mapv(|x| num_traits::Float::ln(num_traits::Float::exp(x).exp_m1()))
         }
         fn d_nat_param<F: Float>(lin_pred: &Array1<F>) -> Array1<F> {
-            let neg_exp_lin = -lin_pred.mapv(F::exp);
+            let neg_exp_lin = -lin_pred.mapv(num_traits::Float::exp);
             &neg_exp_lin / &neg_exp_lin.mapv(F::exp_m1)
         }
     }

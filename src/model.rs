@@ -197,7 +197,7 @@ where
         let data_y: Array1<F> = self
             .data_y
             .iter()
-            .map(|&y| y.to_float())
+            .map(|&y| y.into_float())
             .collect::<Result<_, _>>()?;
 
         Ok(Model {

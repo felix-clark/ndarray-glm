@@ -11,7 +11,7 @@ where
     if x == F::zero() {
         return F::zero();
     }
-    x * x.ln()
+    x * num_traits::Float::ln(x)
 }
 
 /// Returns true iff the matrix is rank deficient with tolerance `eps` using QR
@@ -27,7 +27,7 @@ where
     let (_, r) = matrix.qr_square_into()?;
     let diag = r.into_diag();
     for e in diag.into_iter() {
-        if F::from(e.abs()).unwrap() < eps {
+        if F::from(num_traits::Float::abs(*e)).unwrap() < eps {
             return Ok(true);
         }
     }

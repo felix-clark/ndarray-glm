@@ -182,13 +182,14 @@ where
         // as stable. Some parameters might be at different scales.
         let mut next_like = M::log_like_reg(&self.data, &next_guess, self.options.reg.as_ref());
         // This should be positive for an improved guess
-        let mut rel = (next_like - self.last_like) / (F::epsilon() + next_like.abs());
+        let mut rel =
+            (next_like - self.last_like) / (F::epsilon() + num_traits::Float::abs(next_like));
         // If this guess is a strict improvement, return it immediately.
         if rel > F::zero() {
             return Some(self.step_with(next_guess, next_like, 0));
         }
         // Terminate if the difference is close to zero
-        if rel.abs() <= self.options.tol {
+        if num_traits::Float::abs(rel) <= self.options.tol {
             // If this guess is an improvement then go ahead and return it, but
             // quit early on the next iteration. The equivalence with zero is
             // necessary in order to return a value when the iteration starts at
@@ -213,7 +214,8 @@ where
                 + &self.guess.map(|&x| x * (F::one() - step_multiplier));
             let next_like_sh =
                 M::log_like_reg(&self.data, &next_guess_sh, self.options.reg.as_ref());
-            let next_rel = (next_like_sh - self.last_like) / (F::epsilon() + next_like_sh.abs());
+            let next_rel = (next_like_sh - self.last_like)
+                / (F::epsilon() + num_traits::Float::abs(next_like_sh));
             if next_rel >= rel {
                 next_guess = next_guess_sh;
                 next_like = next_like_sh;

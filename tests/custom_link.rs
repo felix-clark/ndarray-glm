@@ -71,7 +71,7 @@ fn linear_with_cubic() -> Result<()> {
             y.cbrt()
         }
         fn func_inv<F: Float>(lin_pred: F) -> F {
-            lin_pred.powi(3)
+            num_traits::Float::powi(lin_pred, 3)
         }
     }
     assert_abs_diff_eq!(
@@ -81,11 +81,11 @@ fn linear_with_cubic() -> Result<()> {
     );
     impl Transform for Cbrt {
         fn nat_param<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
-            lin_pred.mapv_into(|w| w.powi(3))
+            lin_pred.mapv_into(|w| num_traits::Float::powi(w, 3))
         }
         fn d_nat_param<F: Float>(lin_pred: &Array1<F>) -> Array1<F> {
             let three = F::from(3.).unwrap();
-            lin_pred.mapv(|w| three * w.powi(2))
+            lin_pred.mapv(|w| three * num_traits::Float::powi(w, 2))
         }
     }
 

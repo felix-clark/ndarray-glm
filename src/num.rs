@@ -1,5 +1,5 @@
 //! numerical trait constraints
-use ndarray_linalg::lapack::Lapack;
+use ndarray_linalg::Lapack;
 
 pub trait Float: Sized + num_traits::Float + Lapack {}
 

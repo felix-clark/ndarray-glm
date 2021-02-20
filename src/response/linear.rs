@@ -24,7 +24,7 @@ where
     Y: Float + ToPrimitive + ToString,
     L: Link<Linear<L>>,
 {
-    fn to_float<F: Float>(self) -> RegressionResult<F> {
+    fn into_float<F: Float>(self) -> RegressionResult<F> {
         // TODO: Can we avoid casting and use traits? We'd likely have to define
         // our own trait constraint.
         Ok(F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))?)
