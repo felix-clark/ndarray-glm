@@ -487,7 +487,11 @@ mod tests {
         let lr_std = fit_std.lr_test();
         assert_abs_diff_eq!(lr, lr_std);
         eprintln!("about to try score test");
-        assert_abs_diff_eq!(fit.score_test()?, fit_std.score_test()?);
+        assert_abs_diff_eq!(
+            fit.score_test()?,
+            fit_std.score_test()?,
+            epsilon = f32::EPSILON as f64
+        );
         eprintln!("about to try wald test");
         assert_abs_diff_eq!(
             fit.wald_test(),
