@@ -384,58 +384,6 @@ where
         Ok(&self.result / &par_variances.mapv(num_traits::Float::sqrt))
     }
 
-    /// return the signed Z-score for each regression parameter. This is not a
-    /// particularly robust statistic, as it is sensitive to scaling and offsets
-    /// of the covariates.
-    // TODO: we'll keep it around for now because it might be useful for
-    // debugging the real null likelihood.
-    #[deprecated(
-        since = "0.3.0",
-        note = "This statistic is not a robust one. To get an analogous
-        statistic use `wald_z()`."
-    )]
-    pub fn z_scores(&self) -> Array1<F>
-    where
-        F: Float,
-    {
-        // -2 likelihood deviation is asymptotically chi^2 with ndf degrees of freedom.
-        let mut chi_sqs: Array1<F> = Array1::zeros(self.n_par);
-        // TODO (style): move to (enumerated?) iterator
-        for i_like in 0..self.n_par {
-            let mut adjusted = self.result.clone();
-            adjusted[i_like] = F::zero();
-            let null_like = M::log_like_reg(&self.data, &adjusted, self.options.reg.as_ref());
-            if !self.data.use_intercept || i_like != 0 {
-                assert_eq!(null_like <= self.null_like() + F::from(0.001).unwrap(),
-                true, "This fixed set should be less likely than the null where it is supposed to be the best fit.");
-            }
-            let mut chi_sq = F::from(2.).unwrap() * (self.model_like - null_like);
-            // This can happen due to FPE
-            if chi_sq < F::zero() {
-                // this tolerance could need adjusting.
-                let tol = F::from(8.).unwrap()
-                    * (if self.model_like.abs() > F::one() {
-                        self.model_like.abs()
-                    } else {
-                        F::one()
-                    })
-                    * F::epsilon();
-                if chi_sq.abs() > tol {
-                    eprintln!(
-                        "negative chi-squared ({:?}) outside of tolerance ({:?}) for element {}",
-                        chi_sq, tol, i_like
-                    );
-                }
-                chi_sq = F::zero();
-            }
-            chi_sqs[i_like] = chi_sq;
-        }
-        let signs = self.result.mapv(F::signum);
-        let chis = chi_sqs.mapv(num_traits::Float::sqrt);
-        // return the Z-scores
-        signs * chis
-    }
-
     // TODO: score test using Fisher score and information matrix.
 
     /// Returns the Akaike information criterion for the model fit.
