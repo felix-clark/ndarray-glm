@@ -25,7 +25,7 @@ where
     U: Unsigned + ToPrimitive + ToString + Copy,
     L: Link<Poisson<L>>,
 {
-    fn to_float<F: Float>(self) -> RegressionResult<F> {
+    fn into_float<F: Float>(self) -> RegressionResult<F> {
         Ok(F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))?)
     }
 }
@@ -67,10 +67,10 @@ pub mod link {
     impl Canonical for Log {}
     impl Link<Poisson<Log>> for Log {
         fn func<F: Float>(y: F) -> F {
-            y.ln()
+            num_traits::Float::ln(y)
         }
         fn func_inv<F: Float>(lin_pred: F) -> F {
-            lin_pred.exp()
+            num_traits::Float::exp(lin_pred)
         }
     }
 }

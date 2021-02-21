@@ -160,5 +160,5 @@ pub trait Glm: Sized {
 /// be used as a response variable.
 pub trait Response<M: Glm> {
     /// Converts the domain to a floating-point value for IRLS.
-    fn to_float<F: Float>(self) -> RegressionResult<F>;
+    fn into_float<F: Float>(self) -> RegressionResult<F>;
 }

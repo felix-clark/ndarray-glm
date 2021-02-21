@@ -115,7 +115,7 @@ impl<F: Float> LassoSmooth<F> {
 
     // helper function for the sech^2 terms
     fn sech_sq(&self, beta: F) -> F {
-        let sech = (beta / self.s).cosh().recip();
+        let sech = num_traits::Float::cosh(beta / self.s).recip();
         sech * sech
     }
 }
@@ -123,15 +123,18 @@ impl<F: Float> LassoSmooth<F> {
 impl<F: Float> IrlsReg<F> for LassoSmooth<F> {
     /// The likelihood is penalized by lambda_1 * s * log(cosh(beta/s))
     fn likelihood(&self, l: F, beta: &Array1<F>) -> F {
-        l - (&self.l1_vec * &beta.mapv(|b| self.s * (b / self.s).cosh().ln())).sum()
+        l - (&self.l1_vec
+            * &beta.mapv(|b| self.s * num_traits::Float::ln(num_traits::Float::cosh(b / self.s))))
+            .sum()
     }
     /// The gradient is penalized by lambda_1 * tanh(beta/s)
     fn gradient(&self, jac: Array1<F>, beta: &Array1<F>) -> Array1<F> {
-        jac - (&self.l1_vec * &beta.mapv(|b| (b / self.s).tanh()))
+        jac - (&self.l1_vec * &beta.mapv(|b| num_traits::Float::tanh(b / self.s)))
     }
     /// The gradient and hessian terms of the penalty don't cancel here.
     fn irls_vec(&self, vec: Array1<F>, beta: &Array1<F>) -> Array1<F> {
-        vec - &self.l1_vec * &beta.mapv(|b| (b / self.s).tanh() - (b / self.s) * self.sech_sq(b))
+        vec - &self.l1_vec
+            * &beta.mapv(|b| num_traits::Float::tanh(b / self.s) - (b / self.s) * self.sech_sq(b))
     }
     /// Add sech^2 term to diagonals of Hessian.
     fn irls_mat(&self, mut mat: Array2<F>, beta: &Array1<F>) -> Array2<F> {

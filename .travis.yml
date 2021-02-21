@@ -7,7 +7,6 @@ addons:
   apt:
     packages:
       - libopenblas-dev
-      - gfortran
 jobs:
   allow_failures:
     - rust: nightly

@@ -23,21 +23,26 @@ cases.
 
 ## Prerequisites
 
-fortran and BLAS must be installed:
+The recommended approach is to use a system BLAS implementation. For instance, to install
+OpenBLAS on Debian/Ubuntu:
 ```
-sudo apt update && sudo apt install gfortran libblas-dev
+sudo apt update && sudo apt install -y libopenblas-dev
 ```
+Then use this crate with the `openblas-system` feature.
 
-To use the OpenBLAS backend, install also `libopenblas-dev` and use this crate with the
-"openblas-static" feature.
+To use an alternative backend or to build a static BLAS implementation, refer to the
+`ndarray-linalg`
+[documentation](https://github.com/rust-ndarray/ndarray-linalg#backend-features). Use
+this crate with the appropriate feature flag and it will be forwarded to
+`ndarray-linalg`.
 
 ## Example
 
 To use in your crate, add the following to the `Cargo.toml`:
 
 ```
-ndarray = { version = "0.13", features = ["blas"]}
-ndarray-glm = { version = "0.0.7", features = ["openblas-static"] }
+ndarray = { version = "0.14", features = ["blas"]}
+ndarray-glm = { version = "0.0.8", features = ["openblas-system"] }
 ```
 
 An example for linear regression is shown below.
