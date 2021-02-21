@@ -1,6 +1,6 @@
 [package]
 name = "ndarray-glm"
-version = "0.0.7"
+version = "0.0.8"
 authors = ["Felix Clark <mfclark3690@gmail.com>"]
 description = "Performs regression for generalized linear models using IRLS on data stored in arrays."
 edition = "2018"
@@ -18,13 +18,13 @@ travis-ci = { repository = "felix-clark/ndarray-glm" }
 # enable all nightly features
 nightly = ["binomial"]
 
-# Feature flags to pass to ndarray-linalg
-openblas = ["ndarray-linalg/openblas"]
-openblas-src = ["ndarray-linalg/openblas-src"]
-# The previous two are implied by openblas-static
+# Feature flags to forward to ndarray-linalg
 openblas-static = ["ndarray-linalg/openblas-static"]
-netlib = ["ndarray-linalg/netlib"]
-intel-mkl = ["ndarray-linalg/intel-mkl"]
+openblas-system = ["ndarray-linalg/openblas-system"]
+netlib-static = ["ndarray-linalg/netlib-static"]
+netlib-system = ["ndarray-linalg/netlib-system"]
+intel-mkl-static = ["ndarray-linalg/intel-mkl-static"]
+intel-mkl-system = ["ndarray-linalg/intel-mkl-system"]
 
 # flag to compile binomial regression, which uses const_generics only available
 # in nightly rust.
@@ -32,30 +32,16 @@ binomial = []
 
 [dependencies]
 itertools = "0.9"
-ndarray = { version = "0.13", features = ["blas"] }
-# The version with the latest openblas-src and blas-src versions doesn't have a
-# crate yet, so use the master branch for CI.
-ndarray-linalg = { version = "0.12" }
-# ndarray-linalg = { git = "https://github.com/rust-ndarray/ndarray-linalg" }
+ndarray = { version = "0.14", features = ["blas"] }
+ndarray-linalg = { version = "0.13" }
 num-traits = "0.2"
 thiserror = "1.0"
 
 [dev-dependencies]
 anyhow = "1.0"
-approx = "0.3"
-# Use the "approx" feature for unit tests
-ndarray = { version = "0.13", features = ["blas", "approx"] }
-ndarray-linalg = { version = "0.12", default-features = false, features = ["openblas-static"]}
-# the updates to blas versions have not been released in ndarray-linalg yet.
-# TODO: Do we need to specify this here? It's a dep of ndarray-linalg
-# blas-src = { version = "0.6", default-features = false, features = ["openblas"] }
-# ndarray-linalg = { git = "https://github.com/rust-ndarray/ndarray-linalg", branch = "master", default-features = false, features = ["openblas-static"] }
-# including openblas-src causes linking errors with LAPACKE?
-# Include it as a feature to ndarray-linalg instead.
-# https://github.com/blas-lapack-rs/openblas-src/issues/30
-# openblas-src = { version = "0.7.0", default-features = false, features = ["cblas", "lapacke", "system"] }
-# This appears to work but isn't necessary:
-# openblas-src = "0.9"
+approx = "0.4"
+ndarray = { version = "0.14", features = ["blas", "approx"] }
+ndarray-linalg = { version = "0.13", default-features = false, features = ["openblas-system"]}
 
 # [package.metadata.docs.rs]
 # TODO: use ndarray-linalg example for katex in docs
