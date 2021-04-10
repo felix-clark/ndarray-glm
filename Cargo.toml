@@ -15,9 +15,6 @@ maintenance = { status = "experimental" }
 travis-ci = { repository = "felix-clark/ndarray-glm" }
 
 [features]
-# enable all nightly features
-nightly = ["binomial"]
-
 # Feature flags to forward to ndarray-linalg
 openblas-static = ["ndarray-linalg/openblas-static"]
 openblas-system = ["ndarray-linalg/openblas-system"]
@@ -25,10 +22,6 @@ netlib-static = ["ndarray-linalg/netlib-static"]
 netlib-system = ["ndarray-linalg/netlib-system"]
 intel-mkl-static = ["ndarray-linalg/intel-mkl-static"]
 intel-mkl-system = ["ndarray-linalg/intel-mkl-system"]
-
-# flag to compile binomial regression, which uses const_generics only available
-# in nightly rust.
-binomial = []
 
 [dependencies]
 itertools = "0.9"

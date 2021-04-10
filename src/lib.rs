@@ -47,9 +47,6 @@
 //! Requirements:
 //!   See the README for dependency requirements.
 
-// enable const_generics if the binomial feature is used. This may be changed as the
-// benefits of const generic here are not large.
-#![cfg_attr(feature = "binomial", feature(const_generics))]
 #[doc(html_root_url = "https://docs.rs/crate/ndarray-glm")]
 pub mod error;
 mod fit;
@@ -65,13 +62,11 @@ mod standardize;
 mod utility;
 
 // Import some common names into the top-level namespace
-#[cfg(feature = "binomial")]
-pub use response::binomial::Binomial;
 pub use {
     model::ModelBuilder,
     // re-export common structs from ndarray
     ndarray::{array, Array1, Array2, ArrayView1, ArrayView2},
     response::logistic::link as logistic_link,
-    response::{linear::Linear, logistic::Logistic, poisson::Poisson},
+    response::{binomial::Binomial, linear::Linear, logistic::Logistic, poisson::Poisson},
     standardize::standardize,
 };
