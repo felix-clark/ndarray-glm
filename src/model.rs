@@ -9,7 +9,7 @@ use crate::{
     utility::one_pad,
 };
 use fit::options::{FitConfig, FitOptions};
-use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
+use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, Data, Ix1, Ix2};
 use std::marker::PhantomData;
 
 /// Holds the data and configuration settings for a regression.
@@ -82,18 +82,20 @@ impl<M: Glm> ModelBuilder<M> {
     /// Borrow the Y and X data where each row in the arrays is a new
     /// observation, and create the full model builder with the data to allow
     /// for adjusting additional options.
-    pub fn data<'a, Y, F>(
-        data_y: ArrayView1<'a, Y>,
-        data_x: ArrayView2<'a, F>,
+    pub fn data<'a, Y, F, YD, XD>(
+        data_y: &'a ArrayBase<YD, Ix1>,
+        data_x: &'a ArrayBase<XD, Ix2>,
     ) -> ModelBuilderData<'a, M, Y, F>
     where
         Y: Response<M>,
         F: Float,
+        YD: Data<Elem = Y>,
+        XD: Data<Elem = F>,
     {
         ModelBuilderData {
             model: PhantomData,
-            data_y,
-            data_x,
+            data_y: data_y.view(),
+            data_x: data_x.view(),
             linear_offset: None,
             use_intercept_term: true,
             colin_tol: F::epsilon(),

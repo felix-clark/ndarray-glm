@@ -17,8 +17,7 @@
 //! // The design matrix can optionally be standardized, where the mean of each independent
 //! // variable is subtracted and each is then divided by the standard deviation of that variable.
 //! let data_x = standardize(data_x);
-//! // The interface takes `ArrayView`s to allow for efficient passing of slices.
-//! let model = ModelBuilder::<Linear>::data(data_y.view(), data_x.view()).build().unwrap();
+//! let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build().unwrap();
 //! // L2 (ridge) regularization can be applied with l2_reg().
 //! let fit = model.fit_options().l2_reg(1e-5).fit().unwrap();
 //! // The result is a flat array with the first term as the intercept.
@@ -32,7 +31,7 @@
 //!
 //! let data_y = array![true, false, false, true, true];
 //! let data_x = array![[0.5, 0.2], [0.1, 0.3], [0.2, 0.6], [0.6, 0.3], [0.4, 0.4]];
-//! let model = ModelBuilder::<Logistic<Cloglog>>::data(data_y.view(), data_x.view()).build().unwrap();
+//! let model = ModelBuilder::<Logistic<Cloglog>>::data(&data_y, &data_x).build().unwrap();
 //! let fit = model.fit_options().l2_reg(1e-5).fit().unwrap();
 //! println!("Fit result: {}", fit.result);
 //! ```

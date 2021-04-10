@@ -9,7 +9,7 @@ use crate::{
     model::Model,
     num::Float,
 };
-use ndarray::{array, Array1, Array2, ArrayView1, ArrayView2};
+use ndarray::{array, Array1, Array2, ArrayBase, ArrayView1, Data, Ix2};
 use ndarray_linalg::InverseHInto;
 use options::FitOptions;
 use std::cell::RefCell;
@@ -98,7 +98,14 @@ where
     /// with the training set. The data matrix may need to be padded by ones if
     /// it is not part of a Model. The `utility::one_pad()` function facilitates
     /// this.
-    pub fn expectation(&self, data_x: ArrayView2<F>, lin_off: Option<&Array1<F>>) -> Array1<F> {
+    pub fn expectation<S>(
+        &self,
+        data_x: &ArrayBase<S, Ix2>,
+        lin_off: Option<&Array1<F>>,
+    ) -> Array1<F>
+    where
+        S: Data<Elem = F>,
+    {
         let lin_pred: Array1<F> = data_x.dot(&self.result);
         let lin_pred: Array1<F> = if let Some(off) = &lin_off {
             lin_pred + *off
@@ -285,7 +292,7 @@ where
     // the weights in the covariance matrix.
     pub fn dispersion(&self) -> F {
         let ndf: F = F::from(self.ndf()).unwrap();
-        let mu: Array1<F> = self.expectation(self.data.x.view(), self.data.linear_offset.as_ref());
+        let mu: Array1<F> = self.expectation(&self.data.x, self.data.linear_offset.as_ref());
         let errors: Array1<F> = &self.data.y - &mu;
         let var_diag: Array1<F> = mu.mapv(M::variance);
         (&errors * &var_diag.mapv_into(|v| (v + F::epsilon()).recip()) * errors).sum() / ndf
@@ -294,7 +301,7 @@ where
     /// Returns the errors in the response variables for the data passed as an
     /// argument given the current model fit.
     pub fn errors(&self, data: &Model<M, F>) -> Array1<F> {
-        &data.y - &self.expectation(data.x.view(), data.linear_offset.as_ref())
+        &data.y - &self.expectation(&data.x, data.linear_offset.as_ref())
     }
 
     /// Returns the fisher information (the negative hessian of the likelihood)
@@ -423,11 +430,11 @@ mod tests {
         let data_x = array![-0.5, 0.3, -0.6, 0.2, 0.3, 1.2, 0.8, 0.6, -0.2].insert_axis(Axis(1));
         let lin_off = array![0.1, 0.0, -0.1, 0.2, 0.1, 0.3, 0.4, -0.1, 0.1];
         let data_x_std = standardize(data_x.clone());
-        let model = ModelBuilder::<Logistic>::data(data_y.view(), data_x.view())
+        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x)
             .linear_offset(lin_off.clone())
             .build()?;
         let fit = model.fit()?;
-        let model_std = ModelBuilder::<Logistic>::data(data_y.view(), data_x_std.view())
+        let model_std = ModelBuilder::<Logistic>::data(&data_y, &data_x_std)
             .linear_offset(lin_off)
             .build()?;
         let fit_std = model_std.fit()?;
@@ -466,7 +473,7 @@ mod tests {
     fn null_model() -> Result<()> {
         let data_y = array![true, false, false, true, true];
         let data_x: Array2<f64> = array![[], [], [], [], []];
-        let model = ModelBuilder::<Logistic>::data(data_y.view(), data_x.view()).build()?;
+        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x).build()?;
         let fit = model.fit()?;
         dbg!(fit.n_iter);
         dbg!(&fit.result);
@@ -486,7 +493,7 @@ mod tests {
 
         // Check that the assertions still hold if linear offsets are included.
         let lin_off: Array1<f64> = array![0.2, -0.1, 0.1, 0.0, 0.1];
-        let model = ModelBuilder::<Logistic>::data(data_y.view(), data_x.view())
+        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x)
             .linear_offset(lin_off)
             .build()?;
         let fit_off = model.fit()?;
@@ -498,7 +505,7 @@ mod tests {
 
         // check consistency with data provided
         let data_x_with = array![[0.5], [-0.2], [0.3], [0.4], [-0.1]];
-        let model = ModelBuilder::<Logistic>::data(data_y.view(), data_x_with.view()).build()?;
+        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x_with).build()?;
         let fit_with = model.fit()?;
         dbg!(&fit_with.result);
         // The null likelihood of the model with parameters should be the same
@@ -514,7 +521,7 @@ mod tests {
         let data_y = array![true, true, true, true, true, true, false, false, false, false];
         let ybar: f64 = 0.6;
         let data_x = array![0.4, 0.2, 0.5, 0.1, 0.6, 0.7, 0.3, 0.8, -0.1, 0.1].insert_axis(Axis(1));
-        let model = ModelBuilder::<Logistic>::data(data_y.view(), data_x.view()).build()?;
+        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x).build()?;
         let fit = model.fit()?;
         let target_null_like = fit
             .data
@@ -533,10 +540,10 @@ mod tests {
     fn deviance_linear() -> Result<()> {
         let data_y = array![0.3, -0.2, 0.5, 0.7, 0.2, 1.4, 1.1, 0.2];
         let data_x = array![0.6, 2.1, 0.4, -3.2, 0.7, 0.1, -0.3, 0.5].insert_axis(Axis(1));
-        let model = ModelBuilder::<Linear>::data(data_y.view(), data_x.view()).build()?;
+        let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
         let fit = model.fit()?;
         // The predicted values of Y given the model.
-        let pred_y = fit.expectation(one_pad(data_x.view()).view(), None);
+        let pred_y = fit.expectation(&one_pad(data_x.view()), None);
         let target_dev = (data_y - pred_y).mapv(|dy| dy * dy).sum();
         assert_abs_diff_eq!(fit.deviance(), target_dev,);
         Ok(())
@@ -548,7 +555,7 @@ mod tests {
         let data_y = array![0.3, -0.2, 0.5, 0.7, 0.2, 1.4, 1.1, 0.2];
         let data_x = array![0.6, 2.1, 0.4, -3.2, 0.7, 0.1, -0.3, 0.5].insert_axis(Axis(1));
         let ybar: f64 = data_y.mean().unwrap();
-        let model = ModelBuilder::<Linear>::data(data_y.view(), data_x.view()).build()?;
+        let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
         let fit = model.fit()?;
         // let target_null_like = data_y.mapv(|y| -0.5 * (y - ybar) * (y - ybar)).sum();
         let target_null_like = data_y.mapv(|y| y * ybar - 0.5 * ybar * ybar).sum();
@@ -572,7 +579,7 @@ mod tests {
     fn null_like_logistic_nodep() -> Result<()> {
         let data_y = array![true, true, false, false, true, false, false, true];
         let data_x = array![0.4, 0.2, 0.4, 0.2, 0.7, 0.7, -0.1, -0.1].insert_axis(Axis(1));
-        let model = ModelBuilder::<Logistic>::data(data_y.view(), data_x.view()).build()?;
+        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x).build()?;
         let fit = model.fit()?;
         let lr = fit.lr_test();
         assert_abs_diff_eq!(lr, 0.);
@@ -586,7 +593,7 @@ mod tests {
     fn cached_computations() -> Result<()> {
         let data_y = array![true, true, false, true, true, false, false, false, true];
         let data_x = array![0.4, 0.1, -0.3, 0.7, -0.5, -0.1, 0.8, 1.0, 0.4].insert_axis(Axis(1));
-        let model = ModelBuilder::<Logistic>::data(data_y.view(), data_x.view()).build()?;
+        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x).build()?;
         let fit = model.fit()?;
         let _null_like = fit.null_like();
         let _null_like = fit.null_like();
@@ -601,7 +608,7 @@ mod tests {
     fn linear_stat_tests() -> Result<()> {
         let data_y = array![-0.3, -0.1, 0.0, 0.2, 0.4, 0.5, 0.8, 0.8, 1.1];
         let data_x = array![-0.5, -0.2, 0.1, 0.2, 0.5, 0.6, 0.7, 0.9, 1.3].insert_axis(Axis(1));
-        let model = ModelBuilder::<Linear>::data(data_y.view(), data_x.view()).build()?;
+        let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
         let fit = model.fit()?;
         let lr = fit.lr_test();
         let wald = fit.wald_test();
