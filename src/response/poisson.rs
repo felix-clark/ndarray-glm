@@ -26,7 +26,7 @@ where
     L: Link<Poisson<L>>,
 {
     fn into_float<F: Float>(self) -> RegressionResult<F> {
-        Ok(F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))?)
+        F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))
     }
 }
 // TODO: A floating point response for Poisson might also be do-able.

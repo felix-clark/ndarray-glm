@@ -37,7 +37,7 @@ where
         if !(0.0..=1.0).contains(&self) {
             return Err(RegressionError::InvalidY(self.to_string()));
         }
-        Ok(F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))?)
+        F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))
     }
 }
 impl<L> Response<Logistic<L>> for f64
@@ -48,7 +48,7 @@ where
         if !(0.0..=1.0).contains(&self) {
             return Err(RegressionError::InvalidY(self.to_string()));
         }
-        Ok(F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))?)
+        F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))
     }
 }
 
