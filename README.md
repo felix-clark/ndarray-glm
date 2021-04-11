@@ -42,7 +42,7 @@ To use in your crate, add the following to the `Cargo.toml`:
 
 ```
 ndarray = { version = "0.14", features = ["blas"]}
-ndarray-glm = { version = "0.0.8", features = ["openblas-system"] }
+ndarray-glm = { version = "0.0.9", features = ["openblas-system"] }
 ```
 
 An example for linear regression is shown below.
@@ -56,8 +56,7 @@ let data_x = array![[0.1, 0.2], [-0.4, 0.1], [0.2, 0.4]];
 // The design matrix can optionally be standardized, where the mean of each independent
 // variable is subtracted and each is then divided by the standard deviation of that variable.
 let data_x = standardize(data_x);
-// The interface takes `ArrayView`s to allow for efficient passing of slices.
-let model = ModelBuilder::<Linear>::data(data_y.view(), data_x.view()).build()?;
+let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
 // L2 (ridge) regularization can be applied with l2_reg().
 let fit = model.fit_options().l2_reg(1e-5).fit()?;
 // Currently the result is a simple array of the MLE estimators, including the intercept term.
@@ -83,7 +82,7 @@ interface is not particularly ergonomic. See `tests/custom_link.rs` for examples
   - An experimental smoothed version with an epsilon tolerance is WIP
 - [ ] Other exponential family distributions
   - [X] Poisson
-  - [X] Binomial (nightly only)
+  - [X] Binomial
   - [ ] Exponential
   - [ ] Gamma
   - [ ] Inverse Gaussian
