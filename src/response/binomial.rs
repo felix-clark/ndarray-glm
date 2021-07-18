@@ -1,6 +1,4 @@
 //! Regression with a binomial response function. The N parameter must be known ahead of time.
-//! This submodule uses const_generics, available only in nightly rust, and must
-//! be activated with the "binomial" feature option.
 use crate::{
     error::{RegressionError, RegressionResult},
     glm::{Glm, Response},
@@ -18,8 +16,8 @@ type BinDom = u16;
 pub struct Binomial<const N: BinDom>;
 
 impl<const N: BinDom> Response<Binomial<N>> for BinDom {
-    fn to_float<F: Float>(self) -> RegressionResult<F> {
-        Ok(F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))?)
+    fn into_float<F: Float>(self) -> RegressionResult<F> {
+        F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))
     }
 }
 
@@ -31,7 +29,10 @@ impl<const N: BinDom> Glm for Binomial<N> {
     /// that for logistic regression, but it is adjusted for the maximum value.
     fn log_partition<F: Float>(nat_par: &Array1<F>) -> F {
         let n: F = F::from(N).unwrap();
-        n * nat_par.mapv(num_traits::Float::exp).mapv_into(F::ln_1p).sum()
+        n * nat_par
+            .mapv(num_traits::Float::exp)
+            .mapv_into(F::ln_1p)
+            .sum()
     }
 
     fn variance<F: Float>(mean: F) -> F {
@@ -80,7 +81,7 @@ mod tests {
         let data_x = array![[0.], [0.], [ln2], [ln2], [ln2]];
         // the first two data points should average to 6 and the last 3 should average to 8.
         let data_y = array![5, 7, 9, 6, 9];
-        let model = ModelBuilder::<Binomial<N>>::data(data_y.view(), data_x.view()).build()?;
+        let model = ModelBuilder::<Binomial<N>>::data(&data_y, &data_x).build()?;
         let fit = model.fit()?;
         dbg!(&fit.result);
         dbg!(&fit.n_iter);

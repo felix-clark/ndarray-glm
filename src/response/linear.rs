@@ -27,7 +27,7 @@ where
     fn into_float<F: Float>(self) -> RegressionResult<F> {
         // TODO: Can we avoid casting and use traits? We'd likely have to define
         // our own trait constraint.
-        Ok(F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))?)
+        F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))
     }
 }
 
@@ -96,7 +96,7 @@ mod tests {
             beta[0] + beta[1] * data_x[[1, 0]] + beta[2] * data_x[[1, 1]],
             beta[0] + beta[1] * data_x[[2, 0]] + beta[2] * data_x[[2, 1]],
         ];
-        let model = ModelBuilder::<Linear>::data(data_y.view(), data_x.view()).build()?;
+        let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
         let fit = model.fit_options().max_iter(10).fit()?;
         dbg!(fit.n_iter);
         // This is failing within the default tolerance

@@ -1,6 +1,6 @@
 [package]
 name = "ndarray-glm"
-version = "0.0.8"
+version = "0.0.9"
 authors = ["Felix Clark <mfclark3690@gmail.com>"]
 description = "Performs regression for generalized linear models using IRLS on data stored in arrays."
 edition = "2018"
@@ -15,9 +15,6 @@ maintenance = { status = "experimental" }
 travis-ci = { repository = "felix-clark/ndarray-glm" }
 
 [features]
-# enable all nightly features
-nightly = ["binomial"]
-
 # Feature flags to forward to ndarray-linalg
 openblas-static = ["ndarray-linalg/openblas-static"]
 openblas-system = ["ndarray-linalg/openblas-system"]
@@ -26,23 +23,19 @@ netlib-system = ["ndarray-linalg/netlib-system"]
 intel-mkl-static = ["ndarray-linalg/intel-mkl-static"]
 intel-mkl-system = ["ndarray-linalg/intel-mkl-system"]
 
-# flag to compile binomial regression, which uses const_generics only available
-# in nightly rust.
-binomial = []
-
 [dependencies]
-itertools = "0.9"
-ndarray = { version = "0.14", features = ["blas"] }
-ndarray-linalg = { version = "0.13" }
+itertools = "0.10"
+ndarray = { version = "0.15", features = ["blas"] }
+ndarray-linalg = { version = "0.14" }
 num-traits = "0.2"
 thiserror = "1.0"
 
 [dev-dependencies]
 anyhow = "1.0"
 approx = "0.4"
-ndarray = { version = "0.14", features = ["blas", "approx"] }
-ndarray-linalg = { version = "0.13", default-features = false, features = ["openblas-system"]}
+ndarray = { version = "0.15", features = ["blas", "approx"] }
+ndarray-linalg = { version = "0.14", default-features = false, features = ["openblas-system"]}
 
 # [package.metadata.docs.rs]
-# TODO: use ndarray-linalg example for katex in docs
-# rustdoc-args = ["--no-deps"]
+# TODO: use ndarray-linalg example for katex in docs. This HTML file needs to be added.
+# rustdoc-args = ["--html-in-header", "katex-header.html"]

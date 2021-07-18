@@ -37,7 +37,7 @@ where
         if !(0.0..=1.0).contains(&self) {
             return Err(RegressionError::InvalidY(self.to_string()));
         }
-        Ok(F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))?)
+        F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))
     }
 }
 impl<L> Response<Logistic<L>> for f64
@@ -48,7 +48,7 @@ where
         if !(0.0..=1.0).contains(&self) {
             return Err(RegressionError::InvalidY(self.to_string()));
         }
-        Ok(F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))?)
+        F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))
     }
 }
 
@@ -81,7 +81,7 @@ where
         Zip::from(&mut log_like_terms)
             .and(y)
             .and(logit_p)
-            .apply(|l, &y, &wx| {
+            .for_each(|l, &y, &wx| {
                 // Both of these expressions are mathematically identical.
                 // The distinction is made to avoid under/overflow.
                 let (yt, xt) = if wx < F::zero() {
@@ -159,7 +159,7 @@ mod tests {
         let ln2 = f64::ln(2.);
         let data_x = array![[0.], [0.], [ln2], [ln2], [ln2]];
         let data_y = array![true, false, true, true, false];
-        let model = ModelBuilder::<Logistic>::data(data_y.view(), data_x.view()).build()?;
+        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x).build()?;
         let fit = model.fit()?;
         // dbg!(fit.n_iter);
         assert_abs_diff_eq!(beta, fit.result, epsilon = 0.05 * f32::EPSILON as f64);
