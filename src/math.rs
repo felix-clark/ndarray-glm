@@ -27,7 +27,7 @@ where
     let (_, r) = matrix.qr_square_into()?;
     let diag = r.into_diag();
     for e in diag.into_iter() {
-        if F::from(num_traits::Float::abs(*e)).unwrap() < eps {
+        if num_traits::Float::abs(e) < eps {
             return Ok(true);
         }
     }

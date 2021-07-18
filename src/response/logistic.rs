@@ -81,7 +81,7 @@ where
         Zip::from(&mut log_like_terms)
             .and(y)
             .and(logit_p)
-            .apply(|l, &y, &wx| {
+            .for_each(|l, &y, &wx| {
                 // Both of these expressions are mathematically identical.
                 // The distinction is made to avoid under/overflow.
                 let (yt, xt) = if wx < F::zero() {

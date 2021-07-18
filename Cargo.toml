@@ -24,17 +24,17 @@ intel-mkl-static = ["ndarray-linalg/intel-mkl-static"]
 intel-mkl-system = ["ndarray-linalg/intel-mkl-system"]
 
 [dependencies]
-itertools = "0.9"
-ndarray = { version = "0.14", features = ["blas"] }
-ndarray-linalg = { version = "0.13" }
+itertools = "0.10"
+ndarray = { version = "0.15", features = ["blas"] }
+ndarray-linalg = { version = "0.14" }
 num-traits = "0.2"
 thiserror = "1.0"
 
 [dev-dependencies]
 anyhow = "1.0"
 approx = "0.4"
-ndarray = { version = "0.14", features = ["blas", "approx"] }
-ndarray-linalg = { version = "0.13", default-features = false, features = ["openblas-system"]}
+ndarray = { version = "0.15", features = ["blas", "approx"] }
+ndarray-linalg = { version = "0.14", default-features = false, features = ["openblas-system"]}
 
 # [package.metadata.docs.rs]
 # TODO: use ndarray-linalg example for katex in docs

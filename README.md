@@ -41,7 +41,7 @@ this crate with the appropriate feature flag and it will be forwarded to
 To use in your crate, add the following to the `Cargo.toml`:
 
 ```
-ndarray = { version = "0.14", features = ["blas"]}
+ndarray = { version = "0.15", features = ["blas"]}
 ndarray-glm = { version = "0.0.9", features = ["openblas-system"] }
 ```
 

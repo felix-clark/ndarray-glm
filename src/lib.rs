@@ -32,7 +32,7 @@
 //! Debian/Ubuntu, for instance, this means installing `libopenblas-dev`. Then, put the
 //! following into your crate's `Cargo.toml`:
 //! ```text
-//! ndarray = { version = "0.14", features = ["blas"]}
+//! ndarray = { version = "0.15", features = ["blas"]}
 //! ndarray-glm = { version = "0.0.9", features = ["openblas-system"] }
 //! ```
 //!
@@ -42,7 +42,7 @@
 //! initial compile time will be very long. Use the folling lines in your crate's
 //! `Cargo.toml`.
 //! ```text
-//! ndarray = { version = "0.14", features = ["blas"]}
+//! ndarray = { version = "0.15", features = ["blas"]}
 //! ndarray-glm = { version = "0.0.9", features = ["openblas-static"] }
 //! ```
 //!
