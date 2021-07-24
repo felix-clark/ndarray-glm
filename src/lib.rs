@@ -33,7 +33,7 @@
 //! following into your crate's `Cargo.toml`:
 //! ```text
 //! ndarray = { version = "0.15", features = ["blas"]}
-//! ndarray-glm = { version = "0.0.9", features = ["openblas-system"] }
+//! ndarray-glm = { version = "0.0.10", features = ["openblas-system"] }
 //! ```
 //!
 //! ## Compile OpenBLAS from source
@@ -43,7 +43,7 @@
 //! `Cargo.toml`.
 //! ```text
 //! ndarray = { version = "0.15", features = ["blas"]}
-//! ndarray-glm = { version = "0.0.9", features = ["openblas-static"] }
+//! ndarray-glm = { version = "0.0.10", features = ["openblas-static"] }
 //! ```
 //!
 //! # Examples:
@@ -102,6 +102,7 @@ mod utility;
 
 // Import some common names into the top-level namespace
 pub use {
+    fit::Fit,
     model::ModelBuilder,
     response::logistic::link as logistic_link,
     response::{binomial::Binomial, linear::Linear, logistic::Logistic, poisson::Poisson},

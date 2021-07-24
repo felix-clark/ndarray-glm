@@ -50,7 +50,7 @@ where
     F: 'static + Float,
     // F: std::fmt::Debug,
 {
-    pub fn new(
+    pub(crate) fn new(
         data: &'a Model<M, F>,
         result: Array1<F>,
         options: FitOptions<F>,
