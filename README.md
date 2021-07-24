@@ -21,6 +21,8 @@ Much of the logic is done at the type/trait level to avoid compiling code a user
 not need and to allow general implementations that the compiler can optimize in trivial
 cases.
 
+Suggestions (via issues) and pull requests are welcome.
+
 ## Prerequisites
 
 The recommended approach is to use a system BLAS implementation. For instance, to install
@@ -91,7 +93,7 @@ interface is not particularly ergonomic. See `tests/custom_link.rs` for examples
 - [X] Non-canonical link functions
 - [X] Goodness-of-fit tests
 
-## Reference
+## References
 
-These [notes on generalized linear models](https://felix-clark.github.io/glm-math)
-summarize many of the relevant concepts and provide some additional references.
+* [notes on generalized linear models](https://felix-clark.github.io/glm-math)
+* Generalized Linear Models and Extensions by Hardin & Hilbe
