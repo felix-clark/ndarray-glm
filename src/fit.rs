@@ -8,6 +8,7 @@ use crate::{
     link::{Link, Transform},
     model::Model,
     num::Float,
+    Linear,
 };
 use ndarray::{array, Array1, Array2, ArrayBase, ArrayView1, Data, Ix2};
 use ndarray_linalg::InverseHInto;
@@ -24,7 +25,7 @@ where
     data: &'a Model<M, F>,
     /// The parameter values that maximize the likelihood as given by the IRLS regression.
     pub result: Array1<F>,
-    /// The options used in the fit
+    /// The options used for this fit.
     pub options: FitOptions<F>,
     /// The value of the likelihood function for the fit result.
     pub model_like: F,
@@ -320,7 +321,7 @@ where
     }
 
     /// Returns the deviance residuals for each point in the training data.
-    /// Equal to sign(y-E[y|x])*sqrt(-2*(L[y|x] - L_sat[y])).
+    /// Equal to `sign(y-E[y|x])*sqrt(-2*(L[y|x] - L_sat[y]))`.
     /// This is usually a better choice for non-linear models.
     /// Not yet implemented.
     pub fn residuals_deviance(&self) -> Array1<F> {
@@ -331,7 +332,7 @@ where
     }
 
     /// Returns the Pearson or standardized residuals for each point in the training data.
-    /// This is equal to (y - E[y|x])/sqrt(Var[y|x]), given the fitted model.
+    /// This is equal to `(y - E[y|x])/sqrt(Var[y|x])`, given the fitted model.
     pub fn residuals_pearson(&self) -> Array1<F> {
         let mu: Array1<F> = self.expectation(&self.data.x, self.data.linear_offset.as_ref());
         let residuals = &self.data.y - &mu;
@@ -436,6 +437,23 @@ where
     pub fn bic(&self) -> F {
         let logn = num_traits::Float::ln(F::from(self.data.y.len()).unwrap());
         logn * F::from(self.n_par).unwrap() - F::from(2.).unwrap() * self.model_like
+    }
+}
+
+impl<'a, F> Fit<'a, Linear, F>
+where
+    F: 'static + Float,
+{
+    /// Returns the coefficient of multiple correlation, R^2.
+    pub fn r_sq(&self) -> F {
+        let y_avg: F = self.data.y.mean().expect("Data should be non-empty");
+        let total_sum_sq: F = self.data.y.mapv(|y| y - y_avg).mapv(|dy| dy * dy).sum();
+        (total_sum_sq - self.residual_sum_sq()) / total_sum_sq
+    }
+
+    /// Returns the residual sum of squares, i.e. the sum of the squared residuals.
+    pub fn residual_sum_sq(&self) -> F {
+        self.residuals_response().mapv_into(|r| r * r).sum()
     }
 }
 
