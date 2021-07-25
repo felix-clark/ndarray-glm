@@ -301,7 +301,7 @@ where
 
     /// Returns the errors in the response variables for the data passed as an
     /// argument given the current model fit.
-    pub fn errors(&self, data: &Model<M, F>) -> Array1<F> {
+    fn errors(&self, data: &Model<M, F>) -> Array1<F> {
         &data.y - &self.expectation(&data.x, data.linear_offset.as_ref())
     }
 
@@ -440,6 +440,7 @@ where
     }
 }
 
+/// Specialized functions for OLS.
 impl<'a, F> Fit<'a, Linear, F>
 where
     F: 'static + Float,
