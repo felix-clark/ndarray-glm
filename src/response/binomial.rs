@@ -5,7 +5,6 @@ use crate::{
     math::prod_log,
     num::Float,
 };
-use ndarray::Array1;
 
 /// Use a fixed type of u16 for the domain of the binomial distribution.
 type BinDom = u16;
@@ -27,12 +26,9 @@ impl<const N: BinDom> Glm for Binomial<N> {
 
     /// The log-partition function for the binomial distribution is similar to
     /// that for logistic regression, but it is adjusted for the maximum value.
-    fn log_partition<F: Float>(nat_par: &Array1<F>) -> F {
+    fn log_partition<F: Float>(nat_par: F) -> F {
         let n: F = F::from(N).unwrap();
-        n * nat_par
-            .mapv(num_traits::Float::exp)
-            .mapv_into(F::ln_1p)
-            .sum()
+        n * num_traits::Float::exp(nat_par).ln_1p()
     }
 
     fn variance<F: Float>(mean: F) -> F {
@@ -40,10 +36,9 @@ impl<const N: BinDom> Glm for Binomial<N> {
         mean * (n_float - mean) / n_float
     }
 
-    fn log_like_sat<F: Float>(y: &Array1<F>) -> F {
+    fn log_like_sat<F: Float>(y: F) -> F {
         let n: F = F::from(N).unwrap();
-        y.mapv(|y| prod_log(y) + prod_log(n - y) - prod_log(n))
-            .sum()
+        prod_log(y) + prod_log(n - y) - prod_log(n)
     }
 }
 

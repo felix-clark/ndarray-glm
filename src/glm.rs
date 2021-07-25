@@ -36,7 +36,7 @@ pub trait Glm: Sized {
     /// The logarithm of the partition function in terms of the natural parameter.
     /// This can be used to calculate the likelihood generally. All input terms
     /// are summed over in the result.
-    fn log_partition<F: Float>(nat_par: &Array1<F>) -> F;
+    fn log_partition<F: Float>(nat_par: F) -> F;
 
     /// The variance as a function of the mean. This should be related to the
     /// Laplacian of the log-partition function, or in other words, the
@@ -59,12 +59,12 @@ pub trait Glm: Sized {
         // zero, but this can complicate some fit statistics. In addition to
         // causing some null likelihood tests to fail as written, it would make
         // the current deviance calculation incorrect.
-        (y * nat).sum() - Self::log_partition(nat)
+        (y * nat).sum() - nat.mapv(Self::log_partition).sum()
     }
 
     /// Returns the likelihood of a saturated model where every observation can
     /// be fit exactly.
-    fn log_like_sat<F>(y: &Array1<F>) -> F
+    fn log_like_sat<F>(y: F)-> F
     where
         F: Float;
 

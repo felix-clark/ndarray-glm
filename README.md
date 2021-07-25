@@ -11,7 +11,8 @@ iteratively reweighted least squares, using the
 ## Status
 
 This package is in early alpha and the interface is likely to undergo many
-changes. Functionality may change from one release to the next.
+changes. Even the return value of certain functions may change from one release
+to the next.
 
 The regression algorithm uses iteratively re-weighted least squares (IRLS) with
 a step-halving procedure applied when the next iteration of guesses does not

@@ -61,8 +61,8 @@ where
 
     /// The log of the partition function for logistic regression. The natural
     /// parameter is the logit of p.
-    fn log_partition<F: Float>(nat_par: &Array1<F>) -> F {
-        nat_par.mapv(|lp| num_traits::Float::exp(lp).ln_1p()).sum()
+    fn log_partition<F: Float>(nat_par: F) -> F {
+        num_traits::Float::exp(nat_par).ln_1p()
     }
 
     /// var = mu*(1-mu)
@@ -97,7 +97,7 @@ where
     /// The saturated likelihood is zero for logistic regression.
     // Trying to solve directly for logit(p) results in logarithmic divergences,
     // but the total likelihood vanishes as a limit is taken of y -> 0 or 1.
-    fn log_like_sat<F: Float>(_y: &Array1<F>) -> F {
+    fn log_like_sat<F: Float>(_y: F) -> F {
         F::zero()
     }
 }

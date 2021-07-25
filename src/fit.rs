@@ -274,8 +274,7 @@ where
     /// Returns the deviance of the fit: twice the difference between the
     /// saturated likelihood and the model likelihood. Asymptotically this fits
     /// a chi-squared distribution with `self.ndf()` degrees of freedom.
-    // This could potentially return an array with the contribution to the
-    // deviance at every point.
+    /// Note that the regularized likelihood is used here.
     // TODO: This is likely sensitive to regularization because the saturated
     // model is not regularized but the model likelihood is. Perhaps this can be
     // accounted for with an effective number of degrees of freedom.
@@ -284,7 +283,7 @@ where
     pub fn deviance(&self) -> F {
         // Note that this must change if the GLM likelihood subtracts the
         // saturated one already.
-        F::from(2.).unwrap() * (M::log_like_sat(&self.data.y) - self.model_like)
+        F::from(2.).unwrap() * (self.data.y.mapv(M::log_like_sat).sum() - self.model_like)
     }
 
     /// Estimate the dispersion parameter through the method of moments.
