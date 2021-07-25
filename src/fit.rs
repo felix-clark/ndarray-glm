@@ -253,8 +253,8 @@ where
     }
 
     /// The covariance matrix estimated by the Fisher information and the
-    /// dispersion parameter. The value will be cached to avoid repeating the
-    /// potentially expensive matrix inversion, but this is not yet implemented.
+    /// dispersion parameter. The matrix is cached to avoid repeating the
+    /// potentially expensive matrix inversion.
     // TODO: This will also need to be fixed up for the weighted case.
     pub fn covariance(&self) -> RegressionResult<Array2<F>> {
         if self.cov.borrow().is_none() {
@@ -319,6 +319,34 @@ where
         self.options.reg.as_ref().irls_mat(fisher, params)
     }
 
+    /// Returns the deviance residuals for each point in the training data.
+    /// Equal to sign(y-E[y|x])*sqrt(-2*(L[y|x] - L_sat[y])).
+    /// This is usually a better choice for non-linear models.
+    /// Not yet implemented.
+    pub fn residuals_deviance(&self) -> Array1<F> {
+        // The likelihood contributions from individual observations need to be evaluated.
+        // This may require a change to the likelihood function interfaces to make them scalar
+        // functions.
+        unimplemented!("Deviance per observation will require a refactoring.")
+    }
+
+    /// Returns the Pearson or standardized residuals for each point in the training data.
+    /// This is equal to (y - E[y|x])/sqrt(Var[y|x]), given the fitted model.
+    pub fn residuals_pearson(&self) -> Array1<F> {
+        let mu: Array1<F> = self.expectation(&self.data.x, self.data.linear_offset.as_ref());
+        let residuals = &self.data.y - &mu;
+        let var_diag: Array1<F> = mu.mapv_into(M::variance);
+        let std: Array1<F> = var_diag.mapv_into(num_traits::Float::sqrt);
+        residuals / std
+    }
+
+    /// Returns the raw residuals, or fitting deviation, for each data point in the fit; that is,
+    /// the difference y - E[y|x] where the expectation value is the y value predicted by the model
+    /// given x.
+    pub fn residuals_response(&self) -> Array1<F> {
+        self.errors(&self.data)
+    }
+
     /// Returns the score function (the gradient of the likelihood) at the
     /// parameter values given. It should be zero within FPE at the minimized
     /// result.
@@ -334,7 +362,7 @@ where
     }
 
     /// Returns the score test statistic. This statistic is asymptotically
-    /// chi-squared distributioned with `test_ndf()` degrees of freedom.
+    /// chi-squared distributed with `test_ndf()` degrees of freedom.
     pub fn score_test(&self) -> RegressionResult<F> {
         let (_, null_params) = self.null_model_fit();
         self.score_test_against(null_params)
@@ -390,8 +418,6 @@ where
         let par_variances: ArrayView1<F> = par_cov.diag();
         Ok(&self.result / &par_variances.mapv(num_traits::Float::sqrt))
     }
-
-    // TODO: score test using Fisher score and information matrix.
 
     /// Returns the Akaike information criterion for the model fit.
     // TODO: Should an effective number of parameters that takes regularization
