@@ -6,7 +6,7 @@ use crate::{
     link::Link,
     num::Float,
 };
-use ndarray::{Array1, Zip};
+use ndarray::Array1;
 use std::marker::PhantomData;
 
 /// Logistic regression
@@ -72,26 +72,16 @@ where
 
     /// This function is specialized over the default provided by Glm in order
     /// to handle over/underflow issues more precisely.
-    fn log_like_natural<F>(y: &Array1<F>, logit_p: &Array1<F>) -> F
+    fn log_like_natural<F>(y: F, logit_p: F) -> F
     where
         F: Float,
     {
-        // initialize the log likelihood terms
-        let mut log_like_terms: Array1<F> = Array1::zeros(y.len());
-        Zip::from(&mut log_like_terms)
-            .and(y)
-            .and(logit_p)
-            .for_each(|l, &y, &wx| {
-                // Both of these expressions are mathematically identical.
-                // The distinction is made to avoid under/overflow.
-                let (yt, xt) = if wx < F::zero() {
-                    (y, wx)
-                } else {
-                    (F::one() - y, -wx)
-                };
-                *l = yt * xt - num_traits::Float::exp(xt).ln_1p()
-            });
-        log_like_terms.sum()
+        let (yt, xt) = if logit_p < F::zero() {
+            (y, logit_p)
+        } else {
+            (F::one() - y, -logit_p)
+        };
+        yt * xt - num_traits::Float::exp(xt).ln_1p()
     }
 
     /// The saturated likelihood is zero for logistic regression.

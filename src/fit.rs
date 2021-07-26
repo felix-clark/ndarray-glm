@@ -178,7 +178,7 @@ where
                     // likelihood contribution is the same for all observations.
                     let nat_par = M::Link::nat_param(array![intercept]);
                     // The null likelihood per observation
-                    let null_like_one: F = M::log_like_natural(&array![y_bar], &nat_par);
+                    let null_like_one: F = M::log_like_natural(y_bar, nat_par[0]);
                     // just multiply the average likelihood by the number of data points, since every term is the same.
                     let null_like_total = F::from(self.n_data).unwrap() * null_like_one;
                     let null_params: Array1<F> = {
@@ -230,7 +230,10 @@ where
                         // of the linear offset. The likelihood must still be summed
                         // over all observations, since they have different offsets.
                         let nat_par = M::Link::nat_param(off.clone());
-                        let null_like = M::log_like_natural(&self.data.y, &nat_par);
+                        let null_like = ndarray::Zip::from(&self.data.y)
+                            .and(&nat_par)
+                            .map_collect(|&y, &eta| M::log_like_natural(y, eta))
+                            .sum();
                         let null_params = Array1::<F>::zeros(self.n_par);
                         (null_like, null_params)
                     }

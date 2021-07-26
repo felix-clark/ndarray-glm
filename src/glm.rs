@@ -51,7 +51,7 @@ pub trait Glm: Sized {
     /// affect the IRLS steps.
     /// The default implementation can be overwritten for performance or numerical
     /// accuracy, but should be mathematically equivalent to the default implementation.
-    fn log_like_natural<F>(y: &Array1<F>, nat: &Array1<F>) -> F
+    fn log_like_natural<F>(y: F, nat: F) -> F
     where
         F: Float,
     {
@@ -59,12 +59,12 @@ pub trait Glm: Sized {
         // zero, but this can complicate some fit statistics. In addition to
         // causing some null likelihood tests to fail as written, it would make
         // the current deviance calculation incorrect.
-        (y * nat).sum() - nat.mapv(Self::log_partition).sum()
+        y * nat - Self::log_partition(nat)
     }
 
     /// Returns the likelihood of a saturated model where every observation can
     /// be fit exactly.
-    fn log_like_sat<F>(y: F)-> F
+    fn log_like_sat<F>(y: F) -> F
     where
         F: Float;
 
@@ -78,8 +78,12 @@ pub trait Glm: Sized {
         F: Float,
     {
         let lin_pred = data.linear_predictor(&regressors);
+        let nat_par = Self::Link::nat_param(lin_pred);
         // the likelihood prior to regularization
-        let l_unreg = Self::log_like_natural(&data.y, &Self::Link::nat_param(lin_pred));
+        let l_unreg: F = ndarray::Zip::from(&data.y)
+            .and(&nat_par)
+            .map_collect(|&y, &eta| Self::log_like_natural(y, eta))
+            .sum();
         (*regularization).likelihood(l_unreg, regressors)
     }
 
