@@ -464,7 +464,7 @@ where
 mod tests {
     use super::*;
     use crate::{
-        model::ModelBuilder, standardize::standardize, utility::one_pad, Linear, Logistic,
+        model::ModelBuilder, utility::{one_pad, standardize}, Linear, Logistic,
     };
     use anyhow::Result;
     use approx::assert_abs_diff_eq;

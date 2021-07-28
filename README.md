@@ -51,7 +51,7 @@ ndarray-glm = { version = "0.0.10", features = ["openblas-system"] }
 An example for linear regression is shown below.
 
 ``` rust
-use ndarray_glm::{array, Linear, ModelBuilder, standardize};
+use ndarray_glm::{array, Linear, ModelBuilder, utility::standardize};
 
 // define some test data
 let data_y = array![0.3, 1.3, 0.7];
@@ -89,7 +89,7 @@ interface is not particularly ergonomic. See `tests/custom_link.rs` for examples
   - [ ] Exponential
   - [ ] Gamma
   - [ ] Inverse Gaussian
-- [X] Option for data standardization/normalization
+- [X] Utility function for data standardization/normalization
 - [ ] Weighted and correlated regressions
 - [X] Non-canonical link functions
 - [X] Goodness-of-fit tests

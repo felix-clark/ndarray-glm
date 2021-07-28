@@ -62,7 +62,7 @@
 //!
 //! Data standardization and L2 regularization:
 //! ```
-//! use ndarray_glm::{array, Linear, ModelBuilder, standardize};
+//! use ndarray_glm::{array, Linear, ModelBuilder, utility::standardize};
 //!
 //! let data_y = array![0.3, 1.3, 0.7];
 //! let data_x = array![[0.1, 0.2], [-0.4, 0.1], [0.2, 0.4]];
@@ -97,7 +97,6 @@ pub mod model;
 pub mod num;
 mod regularization;
 mod response;
-mod standardize;
 pub mod utility;
 
 // Import some common names into the top-level namespace
@@ -106,7 +105,6 @@ pub use {
     model::ModelBuilder,
     response::logistic::link as logistic_link,
     response::{binomial::Binomial, linear::Linear, logistic::Logistic, poisson::Poisson},
-    standardize::standardize,
 };
 
 // re-export common structs from ndarray
