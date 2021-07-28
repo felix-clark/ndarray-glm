@@ -3,8 +3,8 @@
 use ndarray::{concatenate, Array2, ArrayView2, Axis};
 use num_traits::identities::One;
 
-/// prepend the input with a column of ones.
-/// useful to describe a constant term in a regression in a general way with the data.
+/// Prepend the input with a column of ones.
+/// Used to incorporate a constant intercept term in a regression.
 pub fn one_pad<T>(data: ArrayView2<T>) -> Array2<T>
 where
     T: Copy + One,

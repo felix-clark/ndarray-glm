@@ -68,7 +68,8 @@ pub trait Glm: Sized {
     where
         F: Float;
 
-    /// Returns the likelihood function including regularization terms.
+    /// Returns the likelihood function summed over all observations including regularization
+/// terms.
     fn log_like_reg<F>(
         data: &Model<Self, F>,
         regressors: &Array1<F>,

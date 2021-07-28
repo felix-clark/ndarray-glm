@@ -98,7 +98,7 @@ pub mod num;
 mod regularization;
 mod response;
 mod standardize;
-mod utility;
+pub mod utility;
 
 // Import some common names into the top-level namespace
 pub use {
