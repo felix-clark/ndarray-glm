@@ -34,8 +34,7 @@ pub trait Glm: Sized {
     }
 
     /// The logarithm of the partition function in terms of the natural parameter.
-    /// This can be used to calculate the likelihood generally. All input terms
-    /// are summed over in the result.
+    /// This can be used to calculate the normalized likelihood.
     fn log_partition<F: Float>(nat_par: F) -> F;
 
     /// The variance as a function of the mean. This should be related to the
@@ -68,8 +67,21 @@ pub trait Glm: Sized {
     where
         F: Float;
 
+    /// Returns the log-likelihood contributions for each observable given the regressor values.
+    fn log_like_terms<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> Array1<F>
+    where
+        F: Float,
+    {
+        let lin_pred = data.linear_predictor(&regressors);
+        let nat_par = Self::Link::nat_param(lin_pred);
+        // the likelihood prior to regularization
+        ndarray::Zip::from(&data.y)
+            .and(&nat_par)
+            .map_collect(|&y, &eta| Self::log_like_natural(y, eta))
+    }
+
     /// Returns the likelihood function summed over all observations including regularization
-/// terms.
+    /// terms.
     fn log_like_reg<F>(
         data: &Model<Self, F>,
         regressors: &Array1<F>,
@@ -78,13 +90,8 @@ pub trait Glm: Sized {
     where
         F: Float,
     {
-        let lin_pred = data.linear_predictor(&regressors);
-        let nat_par = Self::Link::nat_param(lin_pred);
-        // the likelihood prior to regularization
-        let l_unreg: F = ndarray::Zip::from(&data.y)
-            .and(&nat_par)
-            .map_collect(|&y, &eta| Self::log_like_natural(y, eta))
-            .sum();
+        // the total likelihood prior to regularization
+        let l_unreg: F = Self::log_like_terms(&data, &regressors).sum();
         (*regularization).likelihood(l_unreg, regressors)
     }
 

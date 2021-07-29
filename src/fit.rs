@@ -325,12 +325,15 @@ where
     /// Returns the deviance residuals for each point in the training data.
     /// Equal to `sign(y-E[y|x])*sqrt(-2*(L[y|x] - L_sat[y]))`.
     /// This is usually a better choice for non-linear models.
-    /// Not yet implemented.
+    /// NaNs might be possible if L[y|x] > L_sat[y] due to floating-point operations. These are
+    /// not checked or clipped right now.
     pub fn residuals_deviance(&self) -> Array1<F> {
-        // The likelihood contributions from individual observations need to be evaluated.
-        // This may require a change to the likelihood function interfaces to make them scalar
-        // functions.
-        unimplemented!("Deviance per observation will require a refactoring.")
+        let signs = self.residuals_response().mapv_into(F::signum);
+        let ll_terms: Array1<F> = M::log_like_terms(&self.data, &self.result);
+        let ll_sat: Array1<F> = self.data.y.mapv(M::log_like_sat);
+        let neg_two = F::from(-2.).unwrap();
+        let dev: Array1<F> = (ll_terms - ll_sat).mapv_into(|l| num_traits::Float::sqrt(neg_two * l));
+        signs * dev
     }
 
     /// Returns the Pearson or standardized residuals for each point in the training data.
@@ -464,7 +467,9 @@ where
 mod tests {
     use super::*;
     use crate::{
-        model::ModelBuilder, utility::{one_pad, standardize}, Linear, Logistic,
+        model::ModelBuilder,
+        utility::{one_pad, standardize},
+        Linear, Logistic,
     };
     use anyhow::Result;
     use approx::assert_abs_diff_eq;
@@ -593,6 +598,21 @@ mod tests {
         let pred_y = fit.expectation(&one_pad(data_x.view()), None);
         let target_dev = (data_y - pred_y).mapv(|dy| dy * dy).sum();
         assert_abs_diff_eq!(fit.deviance(), target_dev,);
+        Ok(())
+    }
+
+    // Check that the residuals for a linear model are all consistent.
+    #[test]
+    fn residuals_linear() -> Result<()> {
+        let data_y = array![0.1, -0.3, 0.7, 0.2, 1.2, -0.4];
+        let data_x = array![0.4, 0.1, 0.3, -0.1, 0.5, 0.6].insert_axis(Axis(1));
+        let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
+        let fit = model.fit()?;
+        let response = fit.residuals_response();
+        let pearson = fit.residuals_pearson();
+        let deviance = fit.residuals_deviance();
+        assert_abs_diff_eq!(response, pearson);
+        assert_abs_diff_eq!(response, deviance);
         Ok(())
     }
 
