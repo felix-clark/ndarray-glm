@@ -289,7 +289,16 @@ where
         F::from(2.).unwrap() * (self.data.y.mapv(M::log_like_sat).sum() - self.model_like)
     }
 
-    /// Estimate the dispersion parameter through the method of moments.
+    /// Estimate the dispersion parameter (typically denoted `phi`)  which relates the variance
+    /// of the `y` values with the variance of the response distribution: `Var[y] = phi *
+    /// Var[mu]`.
+    /// The method of moments is used to approximate phi, which is exact in the linear OLS case
+    /// but only an approximation in general.
+    /// Equal to the sum of `(y_i - mu_i)^2 / V(mu_i)` divided by the degrees of freedom (`n - p`).
+    /// For OLS linear regression, this provides an estimate of `sigma^2`; with no covariates
+    /// it is equal to the sample variance.
+    /// In logistic and Poisson regression `phi > 1` indicates overdispersion; that is, a larger
+    /// variance in the `y` data than is accouned for in the response distribution.
     // NOTE: This appears to be quite similar to the score test.
     // TODO: This will need to be fixed up for weighted regression, including
     // the weights in the covariance matrix.
