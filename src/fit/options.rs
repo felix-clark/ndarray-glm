@@ -45,7 +45,7 @@ where
         self.options.reg = {
             // make the vector of L2 coefficients
             let l2_diag: Array1<F> = {
-                let mut l2_diag: Array1<F> = Array1::<F>::from_elem(self.model.x.ncols(), l2);
+                let mut l2_diag: Array1<F> = Array1::<F>::from_elem(self.model.data.x.ncols(), l2);
                 // if an intercept term is included it should not be subject to
                 // regularization.
                 if self.model.use_intercept {
@@ -65,7 +65,7 @@ where
         }
         self.options.reg = {
             let l1_diag: Array1<F> = {
-                let mut l1_diag: Array1<F> = Array1::<F>::from_elem(self.model.x.ncols(), l1);
+                let mut l1_diag: Array1<F> = Array1::<F>::from_elem(self.model.data.x.ncols(), l1);
                 // if an intercept term is included it should not be subject to
                 // regularization.
                 if self.model.use_intercept {

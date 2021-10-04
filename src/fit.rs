@@ -6,14 +6,14 @@ use crate::{
     error::RegressionResult,
     glm::Glm,
     link::{Link, Transform},
-    model::Model,
+    model::{Dataset, Model},
     num::Float,
     Linear,
 };
 use ndarray::{array, Array1, Array2, ArrayBase, ArrayView1, Data, Ix2};
 use ndarray_linalg::InverseHInto;
 use options::FitOptions;
-use std::cell::RefCell;
+use std::{cell::RefCell, marker::PhantomData};
 
 /// the result of a successful GLM fit
 pub struct Fit<'a, M, F>
@@ -21,8 +21,11 @@ where
     M: Glm,
     F: Float,
 {
+    model: PhantomData<M>,
     /// The data and model specification used in the fit.
-    data: &'a Model<M, F>,
+    data: &'a Dataset<F>,
+    /// Whether the intercept covariate is used
+    use_intercept: bool,
     /// The parameter values that maximize the likelihood as given by the IRLS regression.
     pub result: Array1<F>,
     /// The options used for this fit.
@@ -49,10 +52,10 @@ impl<'a, M, F> Fit<'a, M, F>
 where
     M: Glm,
     F: 'static + Float,
-    // F: std::fmt::Debug,
 {
     pub(crate) fn new(
-        data: &'a Model<M, F>,
+        data: &'a Dataset<F>,
+        use_intercept: bool,
         result: Array1<F>,
         options: FitOptions<F>,
         model_like: F,
@@ -72,7 +75,9 @@ where
         let n_par = result.len();
         let n_data = data.y.len();
         Self {
+            model: PhantomData,
             data,
+            use_intercept,
             result,
             options,
             model_like,
@@ -169,7 +174,7 @@ where
                     // If the intercept is allowed to maximize the likelihood, the natural
                     // parameter is equal to the link of the expectation. Otherwise it is
                     // the transformation function of zero.
-                    let intercept: F = if self.data.use_intercept {
+                    let intercept: F = if self.use_intercept {
                         M::Link::func(y_bar)
                     } else {
                         F::zero()
@@ -189,7 +194,7 @@ where
                     (null_like_total, null_params)
                 }
                 Some(off) => {
-                    if self.data.use_intercept {
+                    if self.use_intercept {
                         // If there are linear offsets and the intercept is allowed
                         // to be free, there is not a major simplification and the
                         // model needs to be re-fit.
@@ -199,10 +204,14 @@ where
                         let data_x_null = Array2::<F>::ones((self.n_data, 1));
                         let null_model = Model {
                             model: std::marker::PhantomData::<M>,
-                            y: self.data.y.clone(),
-                            x: data_x_null,
-                            linear_offset: Some(off.clone()),
-                            // If we are here it is because an intercept is needed.
+                            data: Dataset::<F> {
+                                y: self.data.y.clone(),
+                                x: data_x_null,
+                                linear_offset: Some(off.clone()),
+                                weights: self.data.weights.clone(),
+                                // If we are here it is because an intercept is needed.
+                                hat: RefCell::new(None),
+                            },
                             use_intercept: true,
                         };
                         // TODO: Make this function return an error, although it's
@@ -312,7 +321,7 @@ where
 
     /// Returns the errors in the response variables for the data passed as an
     /// argument given the current model fit.
-    fn errors(&self, data: &Model<M, F>) -> Array1<F> {
+    fn errors(&self, data: &Dataset<F>) -> Array1<F> {
         &data.y - &self.expectation(&data.x, data.linear_offset.as_ref())
     }
 
@@ -341,7 +350,8 @@ where
         let ll_terms: Array1<F> = M::log_like_terms(&self.data, &self.result);
         let ll_sat: Array1<F> = self.data.y.mapv(M::log_like_sat);
         let neg_two = F::from(-2.).unwrap();
-        let dev: Array1<F> = (ll_terms - ll_sat).mapv_into(|l| num_traits::Float::sqrt(neg_two * l));
+        let dev: Array1<F> =
+            (ll_terms - ll_sat).mapv_into(|l| num_traits::Float::sqrt(neg_two * l));
         signs * dev
     }
 
@@ -399,7 +409,7 @@ where
     /// and the Wald test. Not to be confused with `ndf()`, the degrees of
     /// freedom in the model fit.
     pub fn test_ndf(&self) -> usize {
-        if self.data.use_intercept {
+        if self.use_intercept {
             self.n_par - 1
         } else {
             self.n_par

@@ -10,15 +10,16 @@ use crate::{
 };
 use fit::options::{FitConfig, FitOptions};
 use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, Data, Ix1, Ix2};
-use std::marker::PhantomData;
+use ndarray_linalg::InverseHInto;
+use std::{
+    cell::{Ref, RefCell},
+    marker::PhantomData,
+};
 
-/// Holds the data and configuration settings for a regression.
-pub struct Model<M, F>
+pub struct Dataset<F>
 where
-    M: Glm,
     F: Float,
 {
-    pub model: PhantomData<M>,
     /// the observation of response data by event
     pub y: Array1<F>,
     /// the design matrix with events in rows and instances in columns
@@ -27,6 +28,56 @@ where
     /// to fix the effect of control variables.
     // TODO: Consider making this an option of a reference.
     pub linear_offset: Option<Array1<F>>,
+    /// The weight of each observation
+    pub weights: Option<Array1<F>>,
+    /// The cached projection matrix
+    pub(crate) hat: RefCell<Option<Array2<F>>>,
+}
+
+impl<F> Dataset<F>
+where
+    F: Float,
+{
+    /// Returns the linear predictors, i.e. the design matrix multiplied by the
+    /// regression parameters. Each entry in the resulting array is the linear
+    /// predictor for a given observation. If linear offsets for each
+    /// observation are provided, these are added to the linear predictors
+    pub fn linear_predictor(&self, regressors: &Array1<F>) -> Array1<F> {
+        let linear_predictor: Array1<F> = self.x.dot(regressors);
+        // Add linear offsets to the predictors if they are set
+        if let Some(lin_offset) = &self.linear_offset {
+            linear_predictor + lin_offset
+        } else {
+            linear_predictor
+        }
+    }
+
+    /// Returns the hat matrix of the dataset of covariate data, also known as the "projection" or
+    /// "influence" matrix.
+    pub fn hat(&self) -> RegressionResult<Ref<Array2<F>>> {
+        if self.hat.borrow().is_none() {
+            if self.weights.is_some() {
+                unimplemented!("Weights must be accounted for in the hat matrix")
+            }
+            let xt = self.x.t();
+            let xtx: Array2<F> = xt.dot(&self.x);
+            let xtx_inv = xtx.invh_into().map_err(|_| RegressionError::ColinearData)?;
+            *self.hat.borrow_mut() = Some(self.x.dot(&xtx_inv).dot(&xt));
+        }
+        let borrowed: Ref<Option<Array2<F>>> = self.hat.borrow();
+        Ok(Ref::map(borrowed, |x| x.as_ref().unwrap()))
+    }
+}
+
+/// Holds the data and configuration settings for a regression.
+pub struct Model<M, F>
+where
+    M: Glm,
+    F: Float,
+{
+    pub(crate) model: PhantomData<M>,
+    /// The dataset
+    pub data: Dataset<F>,
     /// Whether the intercept term is used (commonly true)
     pub use_intercept: bool,
 }
@@ -56,20 +107,6 @@ where
             options,
         }
     }
-
-    /// Returns the linear predictors, i.e. the design matrix multiplied by the
-    /// regression parameters. Each entry in the resulting array is the linear
-    /// predictor for a given observation. If linear offsets for each
-    /// observation are provided, these are added to the linear predictors
-    pub fn linear_predictor(&self, regressors: &Array1<F>) -> Array1<F> {
-        let linear_predictor: Array1<F> = self.x.dot(regressors);
-        // Add linear offsets to the predictors if they are set
-        if let Some(lin_offset) = &self.linear_offset {
-            linear_predictor + lin_offset
-        } else {
-            linear_predictor
-        }
-    }
 }
 
 /// Provides an interface to create the full model option struct with convenient
@@ -97,6 +134,7 @@ impl<M: Glm> ModelBuilder<M> {
             data_y: data_y.view(),
             data_x: data_x.view(),
             linear_offset: None,
+            weights: None,
             use_intercept_term: true,
             colin_tol: F::epsilon(),
         }
@@ -122,6 +160,8 @@ where
     // TODO: consider making this a reference/ArrayView. Y and X are effectively
     // cloned so perhaps this isn't a big deal.
     linear_offset: Option<Array1<F>>,
+    /// The weights for each observation.
+    weights: Option<Array1<F>>,
     /// Whether to use an intercept term. Defaults to `true`.
     use_intercept_term: bool,
     /// tolerance for determinant check on rank of data matrix X.
@@ -204,9 +244,13 @@ where
 
         Ok(Model {
             model: PhantomData,
-            y: data_y,
-            x: data_x,
-            linear_offset: self.linear_offset,
+            data: Dataset {
+                y: data_y,
+                x: data_x,
+                linear_offset: self.linear_offset,
+                weights: self.weights,
+                hat: RefCell::new(None),
+            },
             use_intercept: self.use_intercept_term,
         })
     }

@@ -6,7 +6,7 @@ use crate::{
     error::RegressionResult,
     fit::{options::FitOptions, Fit},
     irls::Irls,
-    model::Model,
+    model::{Dataset, Model},
     num::Float,
     regularization::IrlsReg,
 };
@@ -68,7 +68,7 @@ pub trait Glm: Sized {
         F: Float;
 
     /// Returns the log-likelihood contributions for each observable given the regressor values.
-    fn log_like_terms<F>(data: &Model<Self, F>, regressors: &Array1<F>) -> Array1<F>
+    fn log_like_terms<F>(data: &Dataset<F>, regressors: &Array1<F>) -> Array1<F>
     where
         F: Float,
     {
@@ -83,7 +83,7 @@ pub trait Glm: Sized {
     /// Returns the likelihood function summed over all observations including regularization
     /// terms.
     fn log_like_reg<F>(
-        data: &Model<Self, F>,
+        data: &Dataset<F>,
         regressors: &Array1<F>,
         regularization: &dyn IrlsReg<F>,
     ) -> F
@@ -103,7 +103,7 @@ pub trait Glm: Sized {
     /// This is equivalent to minimizing half the sum of squared differences
     /// between X*beta and g(0.5*(y + y_avg)).
     // TODO: consider incorporating weights and/or correlations.
-    fn init_guess<F>(data: &Model<Self, F>) -> Array1<F>
+    fn init_guess<F>(data: &Dataset<F>) -> Array1<F>
     where
         F: Float,
         Array2<F>: SolveH<F>,
@@ -131,7 +131,7 @@ pub trait Glm: Sized {
 
     /// Do the regression and return a result. Returns object holding fit result.
     fn regression<F>(
-        data: &Model<Self, F>,
+        model: &Model<Self, F>,
         options: FitOptions<F>,
     ) -> RegressionResult<Fit<Self, F>>
     where
@@ -141,7 +141,7 @@ pub trait Glm: Sized {
         let initial: Array1<F> = options
             .init_guess
             .clone()
-            .unwrap_or_else(|| Self::init_guess(&data));
+            .unwrap_or_else(|| Self::init_guess(&model.data));
 
         // This represents the number of overall iterations
         let mut n_iter: usize = 0;
@@ -149,9 +149,9 @@ pub trait Glm: Sized {
         let mut n_steps: usize = 0;
         // initialize the result and likelihood in case no steps are taken.
         let mut result: Array1<F> = initial.clone();
-        let mut model_like: F = Self::log_like_reg(&data, &initial, options.reg.as_ref());
+        let mut model_like: F = Self::log_like_reg(&model.data, &initial, options.reg.as_ref());
 
-        let irls: Irls<Self, F> = Irls::new(&data, initial, &options, model_like);
+        let irls: Irls<Self, F> = Irls::new(&model.data, initial, &options, model_like);
 
         for iteration in irls {
             let it_result = iteration?;
@@ -162,7 +162,15 @@ pub trait Glm: Sized {
             n_steps += it_result.steps;
         }
 
-        Ok(Fit::new(data, result, options, model_like, n_iter, n_steps))
+        Ok(Fit::new(
+            &model.data,
+            model.use_intercept,
+            result,
+            options,
+            model_like,
+            n_iter,
+            n_steps,
+        ))
     }
 }
 

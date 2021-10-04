@@ -1,11 +1,11 @@
 //! Iteratively re-weighed least squares algorithm
-
+use std::marker::PhantomData;
 use crate::glm::Glm;
 use crate::link::Transform;
+use crate::model::Dataset;
 use crate::{
     error::{RegressionError, RegressionResult},
     fit::options::FitOptions,
-    model::Model,
     num::Float,
 };
 use ndarray::{Array1, Array2};
@@ -19,7 +19,8 @@ where
     F: Float,
     Array2<F>: SolveH<F>,
 {
-    data: &'a Model<M, F>,
+    model: PhantomData<M>,
+    data: &'a Dataset<F>,
     /// The current parameter guess.
     guess: Array1<F>,
     /// The options for the fit
@@ -41,12 +42,13 @@ where
     Array2<F>: SolveH<F>,
 {
     pub fn new(
-        data: &'a Model<M, F>,
+        data: &'a Dataset<F>,
         initial: Array1<F>,
         options: &'a FitOptions<F>,
         initial_like: F,
     ) -> Self {
         Self {
+            model: PhantomData,
             data,
             guess: initial,
             options,
