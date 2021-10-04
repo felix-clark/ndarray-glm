@@ -1,5 +1,4 @@
 //! Iteratively re-weighed least squares algorithm
-use std::marker::PhantomData;
 use crate::glm::Glm;
 use crate::link::Transform;
 use crate::model::Dataset;
@@ -10,6 +9,7 @@ use crate::{
 };
 use ndarray::{Array1, Array2};
 use ndarray_linalg::SolveH;
+use std::marker::PhantomData;
 
 /// Iterate over updates via iteratively re-weighted least-squares until
 /// reaching a specified tolerance.
