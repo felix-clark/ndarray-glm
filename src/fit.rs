@@ -13,7 +13,7 @@ use crate::{
 use ndarray::{array, Array1, Array2, ArrayBase, ArrayView1, Data, Ix2};
 use ndarray_linalg::InverseHInto;
 use options::FitOptions;
-use std::{cell::RefCell, marker::PhantomData};
+use std::{cell::{Ref, RefCell}, marker::PhantomData};
 
 /// the result of a successful GLM fit
 pub struct Fit<'a, M, F>
@@ -269,7 +269,7 @@ where
     /// dispersion parameter. The matrix is cached to avoid repeating the
     /// potentially expensive matrix inversion.
     // TODO: This will also need to be fixed up for the weighted case.
-    pub fn covariance(&self) -> RegressionResult<Array2<F>> {
+    pub fn covariance(&self) -> RegressionResult<Ref<Array2<F>>> {
         if self.cov.borrow().is_none() {
             let fisher_reg = self.fisher(&self.result);
             // the covariance must be multiplied by the dispersion parameter.
@@ -280,7 +280,7 @@ where
             let cov = fisher_reg.invh_into()?;
             *self.cov.borrow_mut() = Some(cov);
         }
-        Ok(self.cov.borrow().as_ref().unwrap().clone())
+        Ok(Ref::map(self.cov.borrow(), |x| x.as_ref().unwrap()))
     }
 
     /// Returns the deviance of the fit: twice the difference between the
