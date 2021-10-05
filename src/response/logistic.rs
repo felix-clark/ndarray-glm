@@ -4,6 +4,7 @@ use crate::{
     error::{RegressionError, RegressionResult},
     glm::{Glm, Response},
     link::Link,
+    math::prod_log,
     num::Float,
 };
 use ndarray::Array1;
