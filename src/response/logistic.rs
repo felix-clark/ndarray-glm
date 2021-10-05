@@ -84,11 +84,10 @@ where
         yt * xt - num_traits::Float::exp(xt).ln_1p()
     }
 
-    /// The saturated likelihood is zero for logistic regression.
-    // Trying to solve directly for logit(p) results in logarithmic divergences,
-    // but the total likelihood vanishes as a limit is taken of y -> 0 or 1.
-    fn log_like_sat<F: Float>(_y: F) -> F {
-        F::zero()
+    /// The saturated likelihood is zero for logistic regression when y = 0 or 1 but is greater
+    /// than zero for 0 < y < 1.
+    fn log_like_sat<F: Float>(y: F) -> F {
+        prod_log(y) + prod_log(F::one() - y)
     }
 }
 
