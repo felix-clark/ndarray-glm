@@ -13,7 +13,10 @@ use crate::{
 use ndarray::{array, Array1, Array2, ArrayBase, ArrayView1, Data, Ix2};
 use ndarray_linalg::InverseHInto;
 use options::FitOptions;
-use std::{cell::{Ref, RefCell}, marker::PhantomData};
+use std::{
+    cell::{Ref, RefCell},
+    marker::PhantomData,
+};
 
 /// the result of a successful GLM fit
 pub struct Fit<'a, M, F>
