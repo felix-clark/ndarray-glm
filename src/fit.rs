@@ -293,8 +293,6 @@ where
     // TODO: This is likely sensitive to regularization because the saturated
     // model is not regularized but the model likelihood is. Perhaps this can be
     // accounted for with an effective number of degrees of freedom.
-    // TODO: Should this include a term for the dispersion parameter? Probably,
-    // as these likelihoods do not include it.
     pub fn deviance(&self) -> F {
         // Note that this must change if the GLM likelihood subtracts the
         // saturated one already.
@@ -304,22 +302,15 @@ where
     /// Estimate the dispersion parameter (typically denoted `phi`)  which relates the variance
     /// of the `y` values with the variance of the response distribution: `Var[y] = phi *
     /// Var[mu]`.
-    /// The method of moments is used to approximate phi, which is exact in the linear OLS case
-    /// but only an approximation in general.
-    /// Equal to the sum of `(y_i - mu_i)^2 / V(mu_i)` divided by the degrees of freedom (`n - p`).
-    /// For OLS linear regression, this provides an estimate of `sigma^2`; with no covariates
-    /// it is equal to the sample variance.
+    /// This is equal to the total deviance divided by the degrees of freedom.
+    /// For OLS linear regression this is equal to the sum of `(y_i - mu_i)^2 / (n-p)`, an estimate
+    /// of `sigma^2`; with no covariates it is equal to the sample variance.
     /// In logistic and Poisson regression `phi > 1` indicates overdispersion; that is, a larger
     /// variance in the `y` data than is accouned for in the response distribution.
-    // NOTE: This appears to be quite similar to the score test.
-    // TODO: This will need to be fixed up for weighted regression, including
-    // the weights in the covariance matrix.
     pub fn dispersion(&self) -> F {
         let ndf: F = F::from(self.ndf()).unwrap();
-        let mu: Array1<F> = self.expectation(&self.data.x, self.data.linear_offset.as_ref());
-        let errors: Array1<F> = &self.data.y - &mu;
-        let var_diag: Array1<F> = mu.mapv(M::variance);
-        (&errors * &var_diag.mapv_into(|v| (v + F::epsilon()).recip()) * errors).sum() / ndf
+        let dev = self.deviance();
+        dev / ndf
     }
 
     /// Returns the errors in the response variables for the data passed as an
@@ -620,6 +611,29 @@ mod tests {
         let pred_y = fit.expectation(&one_pad(data_x.view()), None);
         let target_dev = (data_y - pred_y).mapv(|dy| dy * dy).sum();
         assert_abs_diff_eq!(fit.deviance(), target_dev,);
+        Ok(())
+    }
+
+    // Check that the deviance and dispersion parameter are equal up to the number of degrees of
+    // freedom for a linea model.
+    #[test]
+    fn deviance_dispersion_eq_linear() -> Result<()> {
+        let data_y = array![0.2, -0.1, 0.4, 1.3, 0.2, -0.6, 0.9];
+        let data_x = array![
+            [0.4, 0.2],
+            [0.1, 0.4],
+            [-0.1, 0.3],
+            [0.5, 0.7],
+            [0.4, 0.1],
+            [-0.2, -0.3],
+            [0.4, -0.1]
+        ];
+        let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
+        let fit = model.fit()?;
+        let dev = fit.deviance();
+        let disp = fit.dispersion();
+        let ndf = fit.ndf() as f64;
+        assert_abs_diff_eq!(dev, disp * ndf, epsilon = 4. * f64::EPSILON);
         Ok(())
     }
 
