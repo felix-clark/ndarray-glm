@@ -67,6 +67,13 @@ where
         let borrowed: Ref<Option<Array2<F>>> = self.hat.borrow();
         Ok(Ref::map(borrowed, |x| x.as_ref().unwrap()))
     }
+
+    /// Returns the leverage for each observation. This is given by the diagonal of the projection
+    /// matrix.
+    pub fn leverage(&self) -> RegressionResult<Array1<F>> {
+        let hat = self.hat()?;
+        Ok(hat.diag().to_owned())
+    }
 }
 
 /// Holds the data and configuration settings for a regression.
