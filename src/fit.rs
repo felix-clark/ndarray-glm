@@ -51,6 +51,20 @@ where
     null_model: RefCell<Option<(F, Array1<F>)>>,
 }
 
+pub trait Dispersion<F>
+where
+    F: Float,
+{
+    /// The dispersion parameter(typically denoted `phi`)  which relates the variance of the `y`
+    /// values with the variance of the response distribution: `Var[y] = phi * Var[mu]`.
+    /// Identically one for logistic, binomial, and Poisson regression.
+    /// For others (linear, gamma) the dispersion parameter is estimated from the data.
+    /// This is equal to the total deviance divided by the degrees of freedom.  For OLS linear
+    /// regression this is equal to the sum of `(y_i - mu_i)^2 / (n-p)`, an estimate of `sigma^2`;
+    /// with no covariates it is equal to the sample variance.
+    fn dispersion(&self) -> F;
+}
+
 impl<'a, M, F> Fit<'a, M, F>
 where
     M: Glm,
@@ -101,17 +115,25 @@ where
         self.n_data - self.n_par
     }
 
+    #[deprecated(since = "0.0.10", note = "use predict() instead")]
+    pub fn expectation<S>(
+        &self,
+        data_x: &ArrayBase<S, Ix2>,
+        lin_off: Option<&Array1<F>>,
+    ) -> Array1<F>
+    where
+        S: Data<Elem = F>,
+    {
+        self.predict(data_x, lin_off)
+    }
+
     /// Returns the expected value of Y given the input data X. This data need
     /// not be the training data, so an option for linear offsets is provided.
     /// Panics if the number of covariates in the data matrix is not consistent
     /// with the training set. The data matrix may need to be padded by ones if
     /// it is not part of a Model. The `utility::one_pad()` function facilitates
     /// this.
-    pub fn expectation<S>(
-        &self,
-        data_x: &ArrayBase<S, Ix2>,
-        lin_off: Option<&Array1<F>>,
-    ) -> Array1<F>
+    pub fn predict<S>(&self, data_x: &ArrayBase<S, Ix2>, lin_off: Option<&Array1<F>>) -> Array1<F>
     where
         S: Data<Elem = F>,
     {
@@ -274,6 +296,12 @@ where
     // TODO: This will also need to be fixed up for the weighted case.
     pub fn covariance(&self) -> RegressionResult<Ref<Array2<F>>> {
         if self.cov.borrow().is_none() {
+            if self.data.weights.is_some() {
+                // NOTE: Perhaps it is just the fisher matrix that must be updated.
+                unimplemented!(
+                    "The covariance calculation must take into account weights/correlations."
+                );
+            }
             let fisher_reg = self.fisher(&self.result);
             // the covariance must be multiplied by the dispersion parameter.
             // However it should be the likelihood dispersion parameter, not the
@@ -299,24 +327,10 @@ where
         F::from(2.).unwrap() * (self.data.y.mapv(M::log_like_sat).sum() - self.model_like)
     }
 
-    /// Estimate the dispersion parameter (typically denoted `phi`)  which relates the variance
-    /// of the `y` values with the variance of the response distribution: `Var[y] = phi *
-    /// Var[mu]`.
-    /// This is equal to the total deviance divided by the degrees of freedom.
-    /// For OLS linear regression this is equal to the sum of `(y_i - mu_i)^2 / (n-p)`, an estimate
-    /// of `sigma^2`; with no covariates it is equal to the sample variance.
-    /// In logistic and Poisson regression `phi > 1` indicates overdispersion; that is, a larger
-    /// variance in the `y` data than is accouned for in the response distribution.
-    pub fn dispersion(&self) -> F {
-        let ndf: F = F::from(self.ndf()).unwrap();
-        let dev = self.deviance();
-        dev / ndf
-    }
-
     /// Returns the errors in the response variables for the data passed as an
     /// argument given the current model fit.
     fn errors(&self, data: &Dataset<F>) -> Array1<F> {
-        &data.y - &self.expectation(&data.x, data.linear_offset.as_ref())
+        &data.y - &self.predict(&data.x, data.linear_offset.as_ref())
     }
 
     /// Returns the fisher information (the negative hessian of the likelihood)
@@ -334,13 +348,13 @@ where
         self.options.reg.as_ref().irls_mat(fisher, params)
     }
 
-    /// Returns the deviance residuals for each point in the training data.
+    /// Return the deviance residuals for each point in the training data.
     /// Equal to `sign(y-E[y|x])*sqrt(-2*(L[y|x] - L_sat[y]))`.
     /// This is usually a better choice for non-linear models.
     /// NaNs might be possible if L[y|x] > L_sat[y] due to floating-point operations. These are
     /// not checked or clipped right now.
-    pub fn residuals_deviance(&self) -> Array1<F> {
-        let signs = self.residuals_response().mapv_into(F::signum);
+    pub fn resid_deviance(&self) -> Array1<F> {
+        let signs = self.resid_response().mapv_into(F::signum);
         let ll_terms: Array1<F> = M::log_like_terms(&self.data, &self.result);
         let ll_sat: Array1<F> = self.data.y.mapv(M::log_like_sat);
         let neg_two = F::from(-2.).unwrap();
@@ -349,21 +363,39 @@ where
         signs * dev
     }
 
-    /// Returns the Pearson or standardized residuals for each point in the training data.
+    /// Return the partial residuals.
+    pub fn resid_partial(&self) -> Array1<F> {
+        let x_mean = self.data.x.mean_axis(Axis(0)).expect("empty dataset");
+        let x_centered = &self.data.x - x_mean.insert_axis(Axis(0));
+        self.resid_working() + x_centered.dot(&self.result)
+    }
+
+    /// Return the Pearson or standardized residuals for each point in the training data.
     /// This is equal to `(y - E[y|x])/sqrt(Var[y|x])`, given the fitted model.
-    pub fn residuals_pearson(&self) -> Array1<F> {
-        let mu: Array1<F> = self.expectation(&self.data.x, self.data.linear_offset.as_ref());
+    pub fn resid_pearson(&self) -> Array1<F> {
+        let mu: Array1<F> = self.predict(&self.data.x, self.data.linear_offset.as_ref());
         let residuals = &self.data.y - &mu;
         let var_diag: Array1<F> = mu.mapv_into(M::variance);
         let std: Array1<F> = var_diag.mapv_into(num_traits::Float::sqrt);
         residuals / std
     }
 
-    /// Returns the raw residuals, or fitting deviation, for each data point in the fit; that is,
+    /// Return the raw residuals, or fitting deviation, for each data point in the fit; that is,
     /// the difference y - E[y|x] where the expectation value is the y value predicted by the model
     /// given x.
-    pub fn residuals_response(&self) -> Array1<F> {
+    pub fn resid_response(&self) -> Array1<F> {
         self.errors(&self.data)
+    }
+
+    /// Returns the working residuals `d\eta/d\mu * (y - E{y|x})`.
+    /// This should be equal to the response residuals divided by the variance function (as
+    /// opposed to the square root of the variance as in the Pearson residuals).
+    pub fn resid_working(&self) -> Array1<F> {
+        let lin_pred: Array1<F> = self.data.linear_predictor(&self.result);
+        let mu: Array1<F> = lin_pred.mapv(M::Link::func_inv);
+        let resid_response: Array1<F> = &self.data.y - &mu;
+        let d_eta: Array1<F> = M::Link::d_nat_param(&lin_pred);
+        d_eta * resid_response
     }
 
     /// Returns the score function (the gradient of the likelihood) at the
@@ -626,7 +658,7 @@ mod tests {
         let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
         let fit = model.fit()?;
         // The predicted values of Y given the model.
-        let pred_y = fit.expectation(&one_pad(data_x.view()), None);
+        let pred_y = fit.predict(&one_pad(data_x.view()), None);
         let target_dev = (data_y - pred_y).mapv(|dy| dy * dy).sum();
         assert_abs_diff_eq!(fit.deviance(), target_dev,);
         Ok(())
@@ -662,9 +694,9 @@ mod tests {
         let data_x = array![0.4, 0.1, 0.3, -0.1, 0.5, 0.6].insert_axis(Axis(1));
         let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
         let fit = model.fit()?;
-        let response = fit.residuals_response();
-        let pearson = fit.residuals_pearson();
-        let deviance = fit.residuals_deviance();
+        let response = fit.resid_response();
+        let pearson = fit.resid_pearson();
+        let deviance = fit.resid_deviance();
         assert_abs_diff_eq!(response, pearson);
         assert_abs_diff_eq!(response, deviance);
         Ok(())
