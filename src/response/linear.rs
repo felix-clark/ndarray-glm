@@ -2,7 +2,7 @@
 
 use crate::{
     error::{RegressionError, RegressionResult},
-    glm::{DefinedDispersion, FreeDispersion, Glm},
+    glm::{DispersionType, Glm},
     link::Link,
     num::Float,
     response::Response,
@@ -34,6 +34,7 @@ where
     L: Link<Linear<L>>,
 {
     type Link = L;
+    const DISPERSED: DispersionType = DispersionType::FreeDispersion;
 
     /// Logarithm of the partition function in terms of the natural parameter,
     /// which is mu for OLS.

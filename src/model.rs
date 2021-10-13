@@ -3,9 +3,10 @@
 use crate::{
     error::{RegressionError, RegressionResult},
     fit::{self, Fit},
-    glm::{Glm, Response},
+    glm::Glm,
     math::is_rank_deficient,
     num::Float,
+    response::Response,
     utility::one_pad,
 };
 use fit::options::{FitConfig, FitOptions};
@@ -69,7 +70,7 @@ where
     }
 
     /// Returns the leverage for each observation. This is given by the diagonal of the projection
-    /// matrix.
+    /// matrix and indicates the sensitivity of each prediction to its corresponding observation.
     pub fn leverage(&self) -> RegressionResult<Array1<F>> {
         let hat = self.hat()?;
         Ok(hat.diag().to_owned())

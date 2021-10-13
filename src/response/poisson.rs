@@ -2,7 +2,7 @@
 
 use crate::{
     error::{RegressionError, RegressionResult},
-    glm::{DefinedDispersion, Glm, NoDispersion},
+    glm::{DispersionType, Glm},
     link::Link,
     math::prod_log,
     num::Float,
@@ -36,6 +36,7 @@ where
     L: Link<Poisson<L>>,
 {
     type Link = L;
+    const DISPERSED: DispersionType = DispersionType::NoDispersion;
 
     /// The logarithm of the partition function for Poisson is the exponential of the natural
     /// parameter, which is the logarithm of the mean.

@@ -13,6 +13,13 @@ use crate::{
 use ndarray::{Array1, Array2};
 use ndarray_linalg::SolveH;
 
+/// Whether the model's response has a free dispersion parameter (e.g. linear) or if it is fixed to
+/// one (e.g. logistic)
+pub enum DispersionType {
+    FreeDispersion,
+    NoDispersion,
+}
+
 /// Trait describing generalized linear model that enables the IRLS algorithm
 /// for fitting.
 pub trait Glm: Sized {
@@ -20,6 +27,9 @@ pub trait Glm: Sized {
     /// this manually so that the provided methods can be called in this trait
     /// without necessitating a trait parameter.
     type Link: Link<Self>;
+
+    /// Registers whether the dispersion is fixed at one (e.g. logistic) or free (e.g. linear)
+    const DISPERSED: DispersionType;
 
     /// The link function which maps the expected value of the response variable
     /// to the linear predictor.

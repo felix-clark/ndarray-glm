@@ -1,7 +1,7 @@
 //! Regression with a binomial response function. The N parameter must be known ahead of time.
 use crate::{
     error::{RegressionError, RegressionResult},
-    glm::Glm,
+    glm::{DispersionType, Glm},
     math::prod_log,
     num::Float,
     response::Response,
@@ -24,6 +24,7 @@ impl<const N: BinDom> Response<Binomial<N>> for BinDom {
 impl<const N: BinDom> Glm for Binomial<N> {
     /// Only the canonical link function is available for binomial regression.
     type Link = link::Logit;
+    const DISPERSED: DispersionType = DispersionType::NoDispersion;
 
     /// The log-partition function for the binomial distribution is similar to
     /// that for logistic regression, but it is adjusted for the maximum value.

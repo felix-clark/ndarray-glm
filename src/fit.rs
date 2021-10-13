@@ -4,13 +4,13 @@
 pub mod options;
 use crate::{
     error::RegressionResult,
-    glm::Glm,
+    glm::{DispersionType, Glm},
     link::{Link, Transform},
     model::{Dataset, Model},
     num::Float,
     Linear,
 };
-use ndarray::{array, Array1, Array2, ArrayBase, ArrayView1, Data, Ix2};
+use ndarray::{array, Array1, Array2, ArrayBase, ArrayView1, Axis, Data, Ix2};
 use ndarray_linalg::InverseHInto;
 use options::FitOptions;
 use std::{
@@ -458,6 +458,24 @@ where
     }
 }
 
+impl<'a, M, F> Dispersion<F> for Fit<'a, M, F>
+where
+    M: Glm,
+    F: Float,
+{
+    fn dispersion(&self) -> F {
+        use DispersionType::*;
+        match M::DISPERSED {
+            FreeDispersion => {
+                let ndf: F = F::from(self.ndf()).unwrap();
+                let dev = self.deviance();
+                dev / ndf
+            }
+            NoDispersion => F::one(),
+        }
+    }
+}
+
 /// Specialized functions for OLS.
 impl<'a, F> Fit<'a, Linear, F>
 where
@@ -467,12 +485,12 @@ where
     pub fn r_sq(&self) -> F {
         let y_avg: F = self.data.y.mean().expect("Data should be non-empty");
         let total_sum_sq: F = self.data.y.mapv(|y| y - y_avg).mapv(|dy| dy * dy).sum();
-        (total_sum_sq - self.residual_sum_sq()) / total_sum_sq
+        (total_sum_sq - self.resid_sum_sq()) / total_sum_sq
     }
 
     /// Returns the residual sum of squares, i.e. the sum of the squared residuals.
-    pub fn residual_sum_sq(&self) -> F {
-        self.residuals_response().mapv_into(|r| r * r).sum()
+    pub fn resid_sum_sq(&self) -> F {
+        self.resid_response().mapv_into(|r| r * r).sum()
     }
 }
 

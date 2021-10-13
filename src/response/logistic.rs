@@ -2,7 +2,7 @@
 
 use crate::{
     error::{RegressionError, RegressionResult},
-    glm::Glm,
+    glm::{DispersionType, Glm},
     link::Link,
     math::prod_log,
     num::Float,
@@ -60,6 +60,7 @@ where
     L: Link<Logistic<L>>,
 {
     type Link = L;
+    const DISPERSED: DispersionType = DispersionType::NoDispersion;
 
     /// The log of the partition function for logistic regression. The natural
     /// parameter is the logit of p.
