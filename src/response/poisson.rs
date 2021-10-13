@@ -2,10 +2,11 @@
 
 use crate::{
     error::{RegressionError, RegressionResult},
-    glm::{Glm, Response},
+    glm::{DefinedDispersion, Glm, NoDispersion},
     link::Link,
     math::prod_log,
     num::Float,
+    response::Response,
 };
 use num_traits::{ToPrimitive, Unsigned};
 use std::marker::PhantomData;

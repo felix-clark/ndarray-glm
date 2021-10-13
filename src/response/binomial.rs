@@ -1,9 +1,10 @@
 //! Regression with a binomial response function. The N parameter must be known ahead of time.
 use crate::{
     error::{RegressionError, RegressionResult},
-    glm::{Glm, Response},
+    glm::Glm,
     math::prod_log,
     num::Float,
+    response::Response,
 };
 
 /// Use a fixed type of u16 for the domain of the binomial distribution.

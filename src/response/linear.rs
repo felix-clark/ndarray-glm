@@ -2,9 +2,10 @@
 
 use crate::{
     error::{RegressionError, RegressionResult},
-    glm::{Glm, Response},
+    glm::{DefinedDispersion, FreeDispersion, Glm},
     link::Link,
     num::Float,
+    response::Response,
 };
 use num_traits::ToPrimitive;
 use std::marker::PhantomData;

@@ -2,10 +2,11 @@
 
 use crate::{
     error::{RegressionError, RegressionResult},
-    glm::{Glm, Response},
+    glm::Glm,
     link::Link,
     math::prod_log,
     num::Float,
+    response::Response,
 };
 use ndarray::Array1;
 use std::marker::PhantomData;
