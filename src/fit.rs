@@ -406,9 +406,11 @@ where
         // fit parameters.
         let lin_pred: Array1<F> = self.data.linear_predictor(&params);
         let mu: Array1<F> = M::mean(&lin_pred);
+        let resid_response = &self.data.y - mu;
         // adjust for non-canonical link functions.
         let eta_d = M::Link::d_nat_param(&lin_pred);
-        let score_unreg = self.data.x.t().dot(&(eta_d * (&self.data.y - &mu)));
+        let resid_working = eta_d * resid_response;
+        let score_unreg = self.data.x.t().dot(&resid_working);
         self.options.reg.as_ref().gradient(score_unreg, &params)
     }
 
