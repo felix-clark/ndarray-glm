@@ -290,10 +290,9 @@ where
         null_like
     }
 
-    /// The covariance matrix estimated by the Fisher information and the
-    /// dispersion parameter. The matrix is cached to avoid repeating the
-    /// potentially expensive matrix inversion.
-    // TODO: This will also need to be fixed up for the weighted case.
+    /// The covariance matrix estimated by the Fisher information and the dispersion parameter (for
+    /// families with a free scale). The matrix is cached to avoid repeating the potentially
+    /// expensive matrix inversion.
     pub fn covariance(&self) -> RegressionResult<Ref<Array2<F>>> {
         if self.cov.borrow().is_none() {
             if self.data.weights.is_some() {
@@ -303,12 +302,12 @@ where
                 );
             }
             let fisher_reg = self.fisher(&self.result);
-            // the covariance must be multiplied by the dispersion parameter.
-            // However it should be the likelihood dispersion parameter, not the
-            // estimated one. In logistic regression, for instance, the dispersion
-            // parameter is identically 1.
-            // let phi = self.dispersion();
-            let cov = fisher_reg.invh_into()?;
+            // The covariance must be multiplied by the dispersion parameter.
+            // For logistic/poisson regression, this is identically 1.
+            // For linear/gamma regression it is estimated from the data.
+            let phi: F = self.dispersion();
+            let unscaled_cov: Array2<F> = fisher_reg.invh_into()?;
+            let cov = unscaled_cov * phi;
             *self.cov.borrow_mut() = Some(cov);
         }
         Ok(Ref::map(self.cov.borrow(), |x| x.as_ref().unwrap()))
@@ -358,8 +357,8 @@ where
         let ll_terms: Array1<F> = M::log_like_terms(&self.data, &self.result);
         let ll_sat: Array1<F> = self.data.y.mapv(M::log_like_sat);
         let neg_two = F::from(-2.).unwrap();
-        let dev: Array1<F> =
-            (ll_terms - ll_sat).mapv_into(|l| num_traits::Float::sqrt(neg_two * l));
+        let ll_diff = (ll_terms - ll_sat) * neg_two;
+        let dev: Array1<F> = ll_diff.mapv_into(num_traits::Float::sqrt);
         signs * dev
     }
 
