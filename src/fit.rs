@@ -191,7 +191,7 @@ where
         F::from(2.).unwrap() * (self.model_like - alt_like)
     }
 
-    /// Returns the number of degrees of freedom in the model, i.e. the number
+    /// Returns the residual degrees of freedom in the model, i.e. the number
     /// of data points minus the number of parameters. Not to be confused with
     /// `test_ndf()`, the degrees of freedom in the statistical tests of the
     /// fit.
