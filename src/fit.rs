@@ -440,6 +440,26 @@ where
         self.errors(&self.data)
     }
 
+    /// Return the studentized residuals, which are the changes in the fit likelihood resulting
+    /// from leaving each observation out. This is a robust and general method for outlier
+    /// detection, although a one-step approximation is used to avoid re-fitting the model
+    /// completely for each observation.
+    /// If the linear errors are standard normally distributed then this statistic should follow a
+    /// t-distribution with `self.ndf() - 1` degrees of freedom.
+    pub fn resid_student(&self) -> RegressionResult<Array1<F>> {
+        let r_dev = self.resid_dev();
+        let r_pear = self.resid_pear();
+        let signs = r_pear.mapv(F::signum);
+        let phi = self.dispersion();
+        let hat = self.data.leverage()?;
+        let omh = - hat.clone() + F::one();
+        let r_dev_sq = r_dev.mapv_into(|x| x * x);
+        let r_pear_sq = r_pear.mapv_into(|x| x * x);
+        let sum_quad = r_dev_sq + hat * r_pear_sq / omh;
+        let sum_quad_scaled = sum_quad / phi;
+        Ok(signs * sum_quad_scaled.mapv_into(num_traits::Float::sqrt))
+    }
+
     /// Returns the working residuals `d\eta/d\mu * (y - E{y|x})`.
     /// This should be equal to the response residuals divided by the variance function (as
     /// opposed to the square root of the variance as in the Pearson residuals).
@@ -720,7 +740,9 @@ mod tests {
         assert_abs_diff_eq!(response, deviance);
         let pearson = fit.resid_pear_std()?;
         let deviance = fit.resid_dev_std()?;
+        let student = fit.resid_student()?;
         assert_abs_diff_eq!(pearson, deviance, epsilon = 8. * f64::EPSILON);
+        assert_abs_diff_eq!(pearson, student, epsilon = 8. * f64::EPSILON);
         Ok(())
     }
 
