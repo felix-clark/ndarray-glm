@@ -11,7 +11,7 @@ use crate::{
 };
 use fit::options::{FitConfig, FitOptions};
 use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, Data, Ix1, Ix2};
-use ndarray_linalg::InverseHInto;
+use ndarray_linalg::InverseInto;
 use std::{
     cell::{Ref, RefCell},
     marker::PhantomData,
@@ -62,7 +62,8 @@ where
             }
             let xt = self.x.t();
             let xtx: Array2<F> = xt.dot(&self.x);
-            let xtx_inv = xtx.invh_into().map_err(|_| RegressionError::ColinearData)?;
+            // NOTE: invh/invh_into() are bugged and incorrect!
+            let xtx_inv = xtx.inv_into().map_err(|_| RegressionError::ColinearData)?;
             *self.hat.borrow_mut() = Some(self.x.dot(&xtx_inv).dot(&xt));
         }
         let borrowed: Ref<Option<Array2<F>>> = self.hat.borrow();
