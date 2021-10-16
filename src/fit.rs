@@ -450,13 +450,22 @@ where
         let r_dev = self.resid_dev();
         let r_pear = self.resid_pear();
         let signs = r_pear.mapv(F::signum);
-        let phi = self.dispersion();
-        let hat = self.data.leverage()?;
-        let omh = - hat.clone() + F::one();
         let r_dev_sq = r_dev.mapv_into(|x| x * x);
         let r_pear_sq = r_pear.mapv_into(|x| x * x);
-        let sum_quad = r_dev_sq + hat * r_pear_sq / omh;
-        let sum_quad_scaled = sum_quad / phi;
+        let hat = self.data.leverage()?;
+        let omh = -hat.clone() + F::one();
+        let sum_quad = &r_dev_sq + hat * r_pear_sq / &omh;
+        let sum_quad_scaled = match M::DISPERSED {
+            // The dispersion is corrected for the contribution from each current point.
+            // This is an approximation; the exact solution would perform a fit at each point.
+            DispersionType::FreeDispersion => {
+                let dev = self.deviance();
+                let dof = F::from(self.ndf() - 1).unwrap();
+                let phi_i: Array1<F> = (-r_dev_sq / &omh + dev) / dof;
+                sum_quad / phi_i
+            }
+            DispersionType::NoDispersion => sum_quad,
+        };
         Ok(signs * sum_quad_scaled.mapv_into(num_traits::Float::sqrt))
     }
 
@@ -738,11 +747,40 @@ mod tests {
         let deviance = fit.resid_dev();
         assert_abs_diff_eq!(response, pearson);
         assert_abs_diff_eq!(response, deviance);
-        let pearson = fit.resid_pear_std()?;
-        let deviance = fit.resid_dev_std()?;
-        let student = fit.resid_student()?;
-        assert_abs_diff_eq!(pearson, deviance, epsilon = 8. * f64::EPSILON);
-        assert_abs_diff_eq!(pearson, student, epsilon = 8. * f64::EPSILON);
+        let pearson_std = fit.resid_pear_std()?;
+        let deviance_std = fit.resid_dev_std()?;
+        let _student = fit.resid_student()?;
+        assert_abs_diff_eq!(pearson_std, deviance_std, epsilon = 8. * f64::EPSILON);
+
+        // // NOTE: Studentization can't be checked directly because the method used is an
+        // approximation. Another approach will be needed to give exact values.
+        // let orig_dev = fit.deviance();
+        // let n_data = data_y.len();
+        // // Check that the leave-one-out stats hold literally
+        // let mut loo_dev: Vec<f64> = Vec::new();
+        // for i in 0..n_data {
+        //     let ya = data_y.slice(s![0..i]);
+        //     let yb = data_y.slice(s![i + 1..]);
+        //     let xa = data_x.slice(s![0..i, ..]);
+        //     let xb = data_x.slice(s![i + 1.., ..]);
+        //     let y_loo = concatenate![Axis(0), ya, yb];
+        //     let x_loo = concatenate![Axis(0), xa, xb];
+        //     let model_i = ModelBuilder::<Linear>::data(&y_loo, &x_loo).build()?;
+        //     let fit_i = model_i.fit()?;
+        //     let yi = data_y[i];
+        //     let xi = data_x.slice(s![i..i + 1, ..]);
+        //     let xi = crate::utility::one_pad(xi);
+        //     let yi_pred: f64 = fit_i.predict(&xi, None)[0];
+        //     let disp_i = fit_i.dispersion();
+        //     let pear_loo = (yi - yi_pred) / disp_i.sqrt();
+        //     let dev_i = fit_i.deviance();
+        //     let d_dev = 2. * (orig_dev - dev_i);
+        //     loo_dev.push(d_dev.sqrt() * (yi - yi_pred).signum());
+        // }
+        // let loo_dev: Array1<f64> = loo_dev.into();
+        // This is off from 1 by a constant factor that depends on the data
+        // This is only approximately true
+        // assert_abs_diff_eq!(student, loo_dev);
         Ok(())
     }
 
