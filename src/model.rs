@@ -104,7 +104,7 @@ where
     /// Fit options builder interface
     pub fn fit_options(&self) -> FitConfig<M, F> {
         FitConfig {
-            model: &self,
+            model: self,
             options: FitOptions::default(),
         }
     }
@@ -112,7 +112,7 @@ where
     /// An experimental interface that would allow fit options to be set externally.
     pub fn with_options(&self, options: FitOptions<F>) -> FitConfig<M, F> {
         FitConfig {
-            model: &self,
+            model: self,
             options,
         }
     }

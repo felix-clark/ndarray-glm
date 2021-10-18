@@ -187,7 +187,7 @@ where
     /// way that the regression resulting in this fit was. The degrees of
     /// freedom cannot be generally inferred.
     pub fn lr_test_against(&self, alternative: &Array1<F>) -> F {
-        let alt_like = M::log_like_reg(&self.data, &alternative, self.options.reg.as_ref());
+        let alt_like = M::log_like_reg(self.data, alternative, self.options.reg.as_ref());
         F::from(2.).unwrap() * (self.model_like - alt_like)
     }
 
@@ -379,7 +379,7 @@ where
     /// not checked or clipped right now.
     pub fn resid_dev(&self) -> Array1<F> {
         let signs = self.resid_resp().mapv_into(F::signum);
-        let ll_terms: Array1<F> = M::log_like_terms(&self.data, &self.result);
+        let ll_terms: Array1<F> = M::log_like_terms(self.data, &self.result);
         let ll_sat: Array1<F> = self.data.y.mapv(M::log_like_sat);
         let neg_two = F::from(-2.).unwrap();
         let ll_diff = (ll_terms - ll_sat) * neg_two;
@@ -437,7 +437,7 @@ where
     /// is, the difference y - E[y|x] where the expectation value is the y value predicted by the
     /// model given x.
     pub fn resid_resp(&self) -> Array1<F> {
-        self.errors(&self.data)
+        self.errors(self.data)
     }
 
     /// Return the studentized residuals, which are the changes in the fit likelihood resulting
@@ -486,14 +486,14 @@ where
     pub fn score(&self, params: &Array1<F>) -> Array1<F> {
         // This represents the predictions given the input parameters, not the
         // fit parameters.
-        let lin_pred: Array1<F> = self.data.linear_predictor(&params);
+        let lin_pred: Array1<F> = self.data.linear_predictor(params);
         let mu: Array1<F> = M::mean(&lin_pred);
         let resid_response = &self.data.y - mu;
         // adjust for non-canonical link functions.
         let eta_d = M::Link::d_nat_param(&lin_pred);
         let resid_working = eta_d * resid_response;
         let score_unreg = self.data.x.t().dot(&resid_working);
-        self.options.reg.as_ref().gradient(score_unreg, &params)
+        self.options.reg.as_ref().gradient(score_unreg, params)
     }
 
     /// Returns the score test statistic. This statistic is asymptotically
@@ -542,7 +542,7 @@ where
     /// inferred.
     pub fn wald_test_against(&self, alternative: &Array1<F>) -> F {
         let d_params: Array1<F> = &self.result - alternative;
-        let fisher_alt: Array2<F> = self.fisher(&alternative);
+        let fisher_alt: Array2<F> = self.fisher(alternative);
         d_params.t().dot(&fisher_alt.dot(&d_params))
     }
 

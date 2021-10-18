@@ -82,7 +82,7 @@ pub trait Glm: Sized {
     where
         F: Float,
     {
-        let lin_pred = data.linear_predictor(&regressors);
+        let lin_pred = data.linear_predictor(regressors);
         let nat_par = Self::Link::nat_param(lin_pred);
         // the likelihood prior to regularization
         ndarray::Zip::from(&data.y)
@@ -101,7 +101,7 @@ pub trait Glm: Sized {
         F: Float,
     {
         // the total likelihood prior to regularization
-        let l_unreg: F = Self::log_like_terms(&data, &regressors).sum();
+        let l_unreg: F = Self::log_like_terms(data, regressors).sum();
         (*regularization).likelihood(l_unreg, regressors)
     }
 

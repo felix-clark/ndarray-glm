@@ -182,7 +182,7 @@ where
         // cases that lead to poor convergence.
         // Ideally we could only check the step difference but that might not be
         // as stable. Some parameters might be at different scales.
-        let mut next_like = M::log_like_reg(&self.data, &next_guess, self.options.reg.as_ref());
+        let mut next_like = M::log_like_reg(self.data, &next_guess, self.options.reg.as_ref());
         // This should be positive for an improved guess
         let mut rel =
             (next_like - self.last_like) / (F::epsilon() + num_traits::Float::abs(next_like));
@@ -215,7 +215,7 @@ where
             let next_guess_sh = next_guess.map(|&x| x * (step_multiplier))
                 + &self.guess.map(|&x| x * (F::one() - step_multiplier));
             let next_like_sh =
-                M::log_like_reg(&self.data, &next_guess_sh, self.options.reg.as_ref());
+                M::log_like_reg(self.data, &next_guess_sh, self.options.reg.as_ref());
             let next_rel = (next_like_sh - self.last_like)
                 / (F::epsilon() + num_traits::Float::abs(next_like_sh));
             if next_rel >= rel {
