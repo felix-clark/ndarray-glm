@@ -3,7 +3,7 @@
 use anyhow::Result;
 use approx::assert_abs_diff_eq;
 use ndarray::{array, Array1, Array2};
-use ndarray_glm::{standardize, Linear, Logistic, ModelBuilder};
+use ndarray_glm::{utility::standardize, Linear, Logistic, ModelBuilder};
 
 #[test]
 /// Test that the intercept is not affected by regularization when the dependent

@@ -2,12 +2,12 @@
 
 use crate::{
     error::{RegressionError, RegressionResult},
-    glm::{Glm, Response},
+    glm::{DispersionType, Glm},
     link::Link,
     math::prod_log,
     num::Float,
+    response::Response,
 };
-use ndarray::Array1;
 use num_traits::{ToPrimitive, Unsigned};
 use std::marker::PhantomData;
 
@@ -36,10 +36,12 @@ where
     L: Link<Poisson<L>>,
 {
     type Link = L;
+    const DISPERSED: DispersionType = DispersionType::NoDispersion;
 
-    /// The logarithm of the partition function for Poisson is the exponential of the natural parameter, which is the logarithm of the mean.
-    fn log_partition<F: Float>(nat_par: &Array1<F>) -> F {
-        nat_par.mapv(num_traits::Float::exp).sum()
+    /// The logarithm of the partition function for Poisson is the exponential of the natural
+    /// parameter, which is the logarithm of the mean.
+    fn log_partition<F: Float>(nat_par: F) -> F {
+        num_traits::Float::exp(nat_par)
     }
 
     /// The variance of a Poisson variable is equal to its mean.
@@ -49,8 +51,8 @@ where
 
     /// The saturation likelihood of the Poisson distribution is non-trivial.
     /// It is equal to y * (log(y) - 1).
-    fn log_like_sat<F: Float>(y: &Array1<F>) -> F {
-        y.mapv(|y| prod_log(y) - y).sum()
+    fn log_like_sat<F: Float>(y: F) -> F {
+        prod_log(y) - y
     }
 }
 

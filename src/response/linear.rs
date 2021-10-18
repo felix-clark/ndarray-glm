@@ -2,11 +2,11 @@
 
 use crate::{
     error::{RegressionError, RegressionResult},
-    glm::{Glm, Response},
+    glm::{DispersionType, Glm},
     link::Link,
     num::Float,
+    response::Response,
 };
-use ndarray::Array1;
 use num_traits::ToPrimitive;
 use std::marker::PhantomData;
 
@@ -25,8 +25,6 @@ where
     L: Link<Linear<L>>,
 {
     fn into_float<F: Float>(self) -> RegressionResult<F> {
-        // TODO: Can we avoid casting and use traits? We'd likely have to define
-        // our own trait constraint.
         F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))
     }
 }
@@ -36,12 +34,13 @@ where
     L: Link<Linear<L>>,
 {
     type Link = L;
+    const DISPERSED: DispersionType = DispersionType::FreeDispersion;
 
     /// Logarithm of the partition function in terms of the natural parameter,
     /// which is mu for OLS.
-    fn log_partition<F: Float>(nat_par: &Array1<F>) -> F {
+    fn log_partition<F: Float>(nat_par: F) -> F {
         let half = F::from(0.5).unwrap();
-        half * nat_par.mapv(|mu| mu * mu).sum()
+        half * nat_par * nat_par
     }
 
     /// variance is not a function of the mean in OLS regression.
@@ -52,7 +51,7 @@ where
     /// The saturated model likelihood is 0.5*y^2 for each observation. Note
     /// that if a sum of squares were used for the log-likelihood, this would be
     /// zero.
-    fn log_like_sat<F: Float>(y: &Array1<F>) -> F {
+    fn log_like_sat<F: Float>(y: F) -> F {
         // Only for linear regression does this identity hold.
         Self::log_partition(y)
     }

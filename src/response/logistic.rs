@@ -2,11 +2,13 @@
 
 use crate::{
     error::{RegressionError, RegressionResult},
-    glm::{Glm, Response},
+    glm::{DispersionType, Glm},
     link::Link,
+    math::prod_log,
     num::Float,
+    response::Response,
 };
-use ndarray::{Array1, Zip};
+use ndarray::Array1;
 use std::marker::PhantomData;
 
 /// Logistic regression
@@ -58,11 +60,12 @@ where
     L: Link<Logistic<L>>,
 {
     type Link = L;
+    const DISPERSED: DispersionType = DispersionType::NoDispersion;
 
     /// The log of the partition function for logistic regression. The natural
     /// parameter is the logit of p.
-    fn log_partition<F: Float>(nat_par: &Array1<F>) -> F {
-        nat_par.mapv(|lp| num_traits::Float::exp(lp).ln_1p()).sum()
+    fn log_partition<F: Float>(nat_par: F) -> F {
+        num_traits::Float::exp(nat_par).ln_1p()
     }
 
     /// var = mu*(1-mu)
@@ -72,33 +75,22 @@ where
 
     /// This function is specialized over the default provided by Glm in order
     /// to handle over/underflow issues more precisely.
-    fn log_like_natural<F>(y: &Array1<F>, logit_p: &Array1<F>) -> F
+    fn log_like_natural<F>(y: F, logit_p: F) -> F
     where
         F: Float,
     {
-        // initialize the log likelihood terms
-        let mut log_like_terms: Array1<F> = Array1::zeros(y.len());
-        Zip::from(&mut log_like_terms)
-            .and(y)
-            .and(logit_p)
-            .for_each(|l, &y, &wx| {
-                // Both of these expressions are mathematically identical.
-                // The distinction is made to avoid under/overflow.
-                let (yt, xt) = if wx < F::zero() {
-                    (y, wx)
-                } else {
-                    (F::one() - y, -wx)
-                };
-                *l = yt * xt - num_traits::Float::exp(xt).ln_1p()
-            });
-        log_like_terms.sum()
+        let (yt, xt) = if logit_p < F::zero() {
+            (y, logit_p)
+        } else {
+            (F::one() - y, -logit_p)
+        };
+        yt * xt - num_traits::Float::exp(xt).ln_1p()
     }
 
-    /// The saturated likelihood is zero for logistic regression.
-    // Trying to solve directly for logit(p) results in logarithmic divergences,
-    // but the total likelihood vanishes as a limit is taken of y -> 0 or 1.
-    fn log_like_sat<F: Float>(_y: &Array1<F>) -> F {
-        F::zero()
+    /// The saturated likelihood is zero for logistic regression when y = 0 or 1 but is greater
+    /// than zero for 0 < y < 1.
+    fn log_like_sat<F: Float>(y: F) -> F {
+        prod_log(y) + prod_log(F::one() - y)
     }
 }
 

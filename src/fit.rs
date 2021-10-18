@@ -4,15 +4,19 @@
 pub mod options;
 use crate::{
     error::RegressionResult,
-    glm::Glm,
+    glm::{DispersionType, Glm},
     link::{Link, Transform},
-    model::Model,
+    model::{Dataset, Model},
     num::Float,
+    Linear,
 };
-use ndarray::{array, Array1, Array2, ArrayBase, ArrayView1, Data, Ix2};
-use ndarray_linalg::InverseHInto;
+use ndarray::{array, Array1, Array2, ArrayBase, ArrayView1, Axis, Data, Ix2};
+use ndarray_linalg::InverseInto;
 use options::FitOptions;
-use std::cell::RefCell;
+use std::{
+    cell::{Ref, RefCell},
+    marker::PhantomData,
+};
 
 /// the result of a successful GLM fit
 pub struct Fit<'a, M, F>
@@ -20,11 +24,14 @@ where
     M: Glm,
     F: Float,
 {
+    model: PhantomData<M>,
     /// The data and model specification used in the fit.
-    data: &'a Model<M, F>,
+    data: &'a Dataset<F>,
+    /// Whether the intercept covariate is used
+    use_intercept: bool,
     /// The parameter values that maximize the likelihood as given by the IRLS regression.
     pub result: Array1<F>,
-    /// The options used in the fit
+    /// The options used for this fit.
     pub options: FitOptions<F>,
     /// The value of the likelihood function for the fit result.
     pub model_like: F,
@@ -48,56 +55,89 @@ impl<'a, M, F> Fit<'a, M, F>
 where
     M: Glm,
     F: 'static + Float,
-    // F: std::fmt::Debug,
 {
-    pub fn new(
-        data: &'a Model<M, F>,
-        result: Array1<F>,
-        options: FitOptions<F>,
-        model_like: F,
-        n_iter: usize,
-        n_steps: usize,
-    ) -> Self {
-        if !model_like.is_nan()
-            && model_like != M::log_like_reg(data, &result, options.reg.as_ref())
-        {
-            eprintln!("Model likelihood does not match result! There is an error in the GLM fitting code.");
-            dbg!(&result);
-            dbg!(model_like);
-            dbg!(n_iter);
-            dbg!(n_steps);
+    /// Returns the Akaike information criterion for the model fit.
+    // TODO: Should an effective number of parameters that takes regularization
+    // into acount be considered?
+    pub fn aic(&self) -> F {
+        F::from(2 * self.n_par).unwrap() - F::from(2.).unwrap() * self.model_like
+    }
+
+    /// Returns the Bayesian information criterion for the model fit.
+    // TODO: Also consider the effect of regularization on this statistic.
+    // TODO: Wikipedia suggests that the variance should included in the number
+    // of parameters for multiple linear regression. Should an additional
+    // parameter be included for the dispersion parameter? This question does
+    // not affect the difference between two models fit with the methodology in
+    // this package.
+    pub fn bic(&self) -> F {
+        let logn = num_traits::Float::ln(F::from(self.data.y.len()).unwrap());
+        logn * F::from(self.n_par).unwrap() - F::from(2.).unwrap() * self.model_like
+    }
+
+    /// The covariance matrix estimated by the Fisher information and the dispersion parameter (for
+    /// families with a free scale). The matrix is cached to avoid repeating the potentially
+    /// expensive matrix inversion.
+    pub fn covariance(&self) -> RegressionResult<Ref<Array2<F>>> {
+        if self.cov.borrow().is_none() {
+            if self.data.weights.is_some() {
+                // NOTE: Perhaps it is just the fisher matrix that must be updated.
+                unimplemented!(
+                    "The covariance calculation must take into account weights/correlations."
+                );
+            }
+            let fisher_reg = self.fisher(&self.result);
+            // The covariance must be multiplied by the dispersion parameter.
+            // For logistic/poisson regression, this is identically 1.
+            // For linear/gamma regression it is estimated from the data.
+            let phi: F = self.dispersion();
+            // NOTE: invh/invh_into() are bugged and incorrect!
+            let unscaled_cov: Array2<F> = fisher_reg.inv_into()?;
+            let cov = unscaled_cov * phi;
+            *self.cov.borrow_mut() = Some(cov);
         }
-        // Cache some of these variables that will be used often.
-        let n_par = result.len();
-        let n_data = data.y.len();
-        Self {
-            data,
-            result,
-            options,
-            model_like,
-            n_iter,
-            n_steps,
-            n_data,
-            n_par,
-            cov: RefCell::new(None),
-            null_model: RefCell::new(None),
+        Ok(Ref::map(self.cov.borrow(), |x| x.as_ref().unwrap()))
+    }
+
+    /// Returns the deviance of the fit: twice the difference between the
+    /// saturated likelihood and the model likelihood. Asymptotically this fits
+    /// a chi-squared distribution with `self.ndf()` degrees of freedom.
+    /// Note that the regularized likelihood is used here.
+    // TODO: This is likely sensitive to regularization because the saturated
+    // model is not regularized but the model likelihood is. Perhaps this can be
+    // accounted for with an effective number of degrees of freedom.
+    pub fn deviance(&self) -> F {
+        // Note that this must change if the GLM likelihood subtracts the
+        // saturated one already.
+        F::from(2.).unwrap() * (self.data.y.mapv(M::log_like_sat).sum() - self.model_like)
+    }
+
+    /// The dispersion parameter(typically denoted `phi`)  which relates the variance of the `y`
+    /// values with the variance of the response distribution: `Var[y] = phi * Var[mu]`.
+    /// Identically one for logistic, binomial, and Poisson regression.
+    /// For others (linear, gamma) the dispersion parameter is estimated from the data.
+    /// This is equal to the total deviance divided by the degrees of freedom.  For OLS linear
+    /// regression this is equal to the sum of `(y_i - mu_i)^2 / (n-p)`, an estimate of `sigma^2`;
+    /// with no covariates it is equal to the sample variance.
+    pub fn dispersion(&self) -> F {
+        use DispersionType::*;
+        match M::DISPERSED {
+            FreeDispersion => {
+                let ndf: F = F::from(self.ndf()).unwrap();
+                let dev = self.deviance();
+                dev / ndf
+            }
+            NoDispersion => F::one(),
         }
     }
 
-    /// Returns the number of degrees of freedom in the model, i.e. the number
-    /// of data points minus the number of parameters. Not to be confused with
-    /// `test_ndf()`, the degrees of freedom in the statistical tests of the
-    /// fit.
-    pub fn ndf(&self) -> usize {
-        self.n_data - self.n_par
+    /// Returns the errors in the response variables for the data passed as an
+    /// argument given the current model fit.
+    fn errors(&self, data: &Dataset<F>) -> Array1<F> {
+        &data.y - &self.predict(&data.x, data.linear_offset.as_ref())
     }
 
-    /// Returns the expected value of Y given the input data X. This data need
-    /// not be the training data, so an option for linear offsets is provided.
-    /// Panics if the number of covariates in the data matrix is not consistent
-    /// with the training set. The data matrix may need to be padded by ones if
-    /// it is not part of a Model. The `utility::one_pad()` function facilitates
-    /// this.
+    #[deprecated(since = "0.0.10", note = "use predict() instead")]
     pub fn expectation<S>(
         &self,
         data_x: &ArrayBase<S, Ix2>,
@@ -106,13 +146,22 @@ where
     where
         S: Data<Elem = F>,
     {
-        let lin_pred: Array1<F> = data_x.dot(&self.result);
-        let lin_pred: Array1<F> = if let Some(off) = &lin_off {
-            lin_pred + *off
-        } else {
-            lin_pred
-        };
-        lin_pred.mapv_into(M::Link::func_inv)
+        self.predict(data_x, lin_off)
+    }
+
+    /// Returns the fisher information (the negative hessian of the likelihood)
+    /// at the parameter values given. The regularization is included.
+    pub fn fisher(&self, params: &Array1<F>) -> Array2<F> {
+        let lin_pred: Array1<F> = self.data.linear_predictor(params);
+        let mu: Array1<F> = M::mean(&lin_pred);
+        let var_diag: Array1<F> = mu.mapv_into(M::variance);
+        // adjust the variance for non-canonical link functions
+        let eta_d = M::Link::d_nat_param(&lin_pred);
+        let adj_var: Array1<F> = &eta_d * &var_diag * eta_d;
+        // calculate the fisher matrix
+        let fisher: Array2<F> = (&self.data.x.t() * &adj_var).dot(&self.data.x);
+        // Regularize the fisher matrix
+        self.options.reg.as_ref().irls_mat(fisher, params)
     }
 
     /// Perform a likelihood-ratio test, returning the statistic -2*ln(L_0/L)
@@ -142,6 +191,59 @@ where
         F::from(2.).unwrap() * (self.model_like - alt_like)
     }
 
+    /// Returns the residual degrees of freedom in the model, i.e. the number
+    /// of data points minus the number of parameters. Not to be confused with
+    /// `test_ndf()`, the degrees of freedom in the statistical tests of the
+    /// fit.
+    pub fn ndf(&self) -> usize {
+        self.n_data - self.n_par
+    }
+
+    pub(crate) fn new(
+        data: &'a Dataset<F>,
+        use_intercept: bool,
+        result: Array1<F>,
+        options: FitOptions<F>,
+        model_like: F,
+        n_iter: usize,
+        n_steps: usize,
+    ) -> Self {
+        if !model_like.is_nan()
+            && model_like != M::log_like_reg(data, &result, options.reg.as_ref())
+        {
+            eprintln!("Model likelihood does not match result! There is an error in the GLM fitting code.");
+            dbg!(&result);
+            dbg!(model_like);
+            dbg!(n_iter);
+            dbg!(n_steps);
+        }
+        // Cache some of these variables that will be used often.
+        let n_par = result.len();
+        let n_data = data.y.len();
+        Self {
+            model: PhantomData,
+            data,
+            use_intercept,
+            result,
+            options,
+            model_like,
+            n_iter,
+            n_steps,
+            n_data,
+            n_par,
+            cov: RefCell::new(None),
+            null_model: RefCell::new(None),
+        }
+    }
+
+    /// Returns the likelihood given the null model, which fixes all parameters
+    /// to zero except the intercept (if it is used). A total of `test_ndf()`
+    /// parameters are constrained.
+    fn null_like(&self) -> F {
+        let (null_like, _) = self.null_model_fit();
+        null_like
+    }
+
     /// Return the likelihood and intercept for the null model. Since this can
     /// require an additional regression, the values are cached.
     fn null_model_fit(&self) -> (F, Array1<F>) {
@@ -168,7 +270,7 @@ where
                     // If the intercept is allowed to maximize the likelihood, the natural
                     // parameter is equal to the link of the expectation. Otherwise it is
                     // the transformation function of zero.
-                    let intercept: F = if self.data.use_intercept {
+                    let intercept: F = if self.use_intercept {
                         M::Link::func(y_bar)
                     } else {
                         F::zero()
@@ -177,7 +279,7 @@ where
                     // likelihood contribution is the same for all observations.
                     let nat_par = M::Link::nat_param(array![intercept]);
                     // The null likelihood per observation
-                    let null_like_one: F = M::log_like_natural(&array![y_bar], &nat_par);
+                    let null_like_one: F = M::log_like_natural(y_bar, nat_par[0]);
                     // just multiply the average likelihood by the number of data points, since every term is the same.
                     let null_like_total = F::from(self.n_data).unwrap() * null_like_one;
                     let null_params: Array1<F> = {
@@ -188,7 +290,7 @@ where
                     (null_like_total, null_params)
                 }
                 Some(off) => {
-                    if self.data.use_intercept {
+                    if self.use_intercept {
                         // If there are linear offsets and the intercept is allowed
                         // to be free, there is not a major simplification and the
                         // model needs to be re-fit.
@@ -198,10 +300,14 @@ where
                         let data_x_null = Array2::<F>::ones((self.n_data, 1));
                         let null_model = Model {
                             model: std::marker::PhantomData::<M>,
-                            y: self.data.y.clone(),
-                            x: data_x_null,
-                            linear_offset: Some(off.clone()),
-                            // If we are here it is because an intercept is needed.
+                            data: Dataset::<F> {
+                                y: self.data.y.clone(),
+                                x: data_x_null,
+                                linear_offset: Some(off.clone()),
+                                weights: self.data.weights.clone(),
+                                // If we are here it is because an intercept is needed.
+                                hat: RefCell::new(None),
+                            },
                             use_intercept: true,
                         };
                         // TODO: Make this function return an error, although it's
@@ -229,7 +335,10 @@ where
                         // of the linear offset. The likelihood must still be summed
                         // over all observations, since they have different offsets.
                         let nat_par = M::Link::nat_param(off.clone());
-                        let null_like = M::log_like_natural(&self.data.y, &nat_par);
+                        let null_like = ndarray::Zip::from(&self.data.y)
+                            .and(&nat_par)
+                            .map_collect(|&y, &eta| M::log_like_natural(y, eta))
+                            .sum();
                         let null_params = Array1::<F>::zeros(self.n_par);
                         (null_like, null_params)
                     }
@@ -244,79 +353,131 @@ where
             .clone()
     }
 
-    /// Returns the likelihood given the null model, which fixes all parameters
-    /// to zero except the intercept (if it is used). A total of `test_ndf()`
-    /// parameters are constrained.
-    fn null_like(&self) -> F {
-        let (null_like, _) = self.null_model_fit();
-        null_like
+    /// Returns the expected value of Y given the input data X. This data need
+    /// not be the training data, so an option for linear offsets is provided.
+    /// Panics if the number of covariates in the data matrix is not consistent
+    /// with the training set. The data matrix may need to be padded by ones if
+    /// it is not part of a Model. The `utility::one_pad()` function facilitates
+    /// this.
+    pub fn predict<S>(&self, data_x: &ArrayBase<S, Ix2>, lin_off: Option<&Array1<F>>) -> Array1<F>
+    where
+        S: Data<Elem = F>,
+    {
+        let lin_pred: Array1<F> = data_x.dot(&self.result);
+        let lin_pred: Array1<F> = if let Some(off) = &lin_off {
+            lin_pred + *off
+        } else {
+            lin_pred
+        };
+        lin_pred.mapv_into(M::Link::func_inv)
     }
 
-    /// The covariance matrix estimated by the Fisher information and the
-    /// dispersion parameter. The value will be cached to avoid repeating the
-    /// potentially expensive matrix inversion, but this is not yet implemented.
-    // TODO: This will also need to be fixed up for the weighted case.
-    pub fn covariance(&self) -> RegressionResult<Array2<F>> {
-        if self.cov.borrow().is_none() {
-            let fisher_reg = self.fisher(&self.result);
-            // the covariance must be multiplied by the dispersion parameter.
-            // However it should be the likelihood dispersion parameter, not the
-            // estimated one. In logistic regression, for instance, the dispersion
-            // parameter is identically 1.
-            // let phi = self.dispersion();
-            let cov = fisher_reg.invh_into()?;
-            *self.cov.borrow_mut() = Some(cov);
-        }
-        Ok(self.cov.borrow().as_ref().unwrap().clone())
+    /// Return the deviance residuals for each point in the training data.
+    /// Equal to `sign(y-E[y|x])*sqrt(-2*(L[y|x] - L_sat[y]))`.
+    /// This is usually a better choice for non-linear models.
+    /// NaNs might be possible if L[y|x] > L_sat[y] due to floating-point operations. These are
+    /// not checked or clipped right now.
+    pub fn resid_dev(&self) -> Array1<F> {
+        let signs = self.resid_resp().mapv_into(F::signum);
+        let ll_terms: Array1<F> = M::log_like_terms(&self.data, &self.result);
+        let ll_sat: Array1<F> = self.data.y.mapv(M::log_like_sat);
+        let neg_two = F::from(-2.).unwrap();
+        let ll_diff = (ll_terms - ll_sat) * neg_two;
+        let dev: Array1<F> = ll_diff.mapv_into(num_traits::Float::sqrt);
+        signs * dev
     }
 
-    /// Returns the deviance of the fit: twice the difference between the
-    /// saturated likelihood and the model likelihood. Asymptotically this fits
-    /// a chi-squared distribution with `self.ndf()` degrees of freedom.
-    // This could potentially return an array with the contribution to the
-    // deviance at every point.
-    // TODO: This is likely sensitive to regularization because the saturated
-    // model is not regularized but the model likelihood is. Perhaps this can be
-    // accounted for with an effective number of degrees of freedom.
-    // TODO: Should this include a term for the dispersion parameter? Probably,
-    // as these likelihoods do not include it.
-    pub fn deviance(&self) -> F {
-        // Note that this must change if the GLM likelihood subtracts the
-        // saturated one already.
-        F::from(2.).unwrap() * (M::log_like_sat(&self.data.y) - self.model_like)
+    /// Return the standardized deviance residuals, also known as the "internally studentized
+    /// deviance residuals". This is generally applicable for outlier detection, although the
+    /// influence of each point on the fit is only approximately accounted for.
+    /// `d / sqrt(phi * (1 - h))` where `d` is the deviance residual, phi is the dispersion (e.g.
+    /// sigma^2 for linear regression, 1 for logistic regression), and h is the leverage.
+    pub fn resid_dev_std(&self) -> RegressionResult<Array1<F>> {
+        let dev = self.resid_dev();
+        let phi = self.dispersion();
+        let hat: Array1<F> = self.data.leverage()?;
+        let omh: Array1<F> = -hat + F::one();
+        let denom: Array1<F> = (omh * phi).mapv_into(num_traits::Float::sqrt);
+        Ok(dev / denom)
     }
 
-    /// Estimate the dispersion parameter through the method of moments.
-    // NOTE: This appears to be quite similar to the score test.
-    // TODO: This will need to be fixed up for weighted regression, including
-    // the weights in the covariance matrix.
-    pub fn dispersion(&self) -> F {
-        let ndf: F = F::from(self.ndf()).unwrap();
-        let mu: Array1<F> = self.expectation(&self.data.x, self.data.linear_offset.as_ref());
-        let errors: Array1<F> = &self.data.y - &mu;
-        let var_diag: Array1<F> = mu.mapv(M::variance);
-        (&errors * &var_diag.mapv_into(|v| (v + F::epsilon()).recip()) * errors).sum() / ndf
+    /// Return the partial residuals.
+    pub fn resid_part(&self) -> Array1<F> {
+        let x_mean = self.data.x.mean_axis(Axis(0)).expect("empty dataset");
+        let x_centered = &self.data.x - x_mean.insert_axis(Axis(0));
+        self.resid_work() + x_centered.dot(&self.result)
     }
 
-    /// Returns the errors in the response variables for the data passed as an
-    /// argument given the current model fit.
-    pub fn errors(&self, data: &Model<M, F>) -> Array1<F> {
-        &data.y - &self.expectation(&data.x, data.linear_offset.as_ref())
-    }
-
-    /// Returns the fisher information (the negative hessian of the likelihood)
-    /// at the parameter values given. The regularization is included.
-    pub fn fisher(&self, params: &Array1<F>) -> Array2<F> {
-        let lin_pred: Array1<F> = self.data.linear_predictor(params);
-        let mu: Array1<F> = M::mean(&lin_pred);
+    /// Return the Pearson residuals for each point in the training data.
+    /// This is equal to `(y - E[y])/sqrt(V(E[y]))`, where V is the variance function.
+    /// These are not scaled by the sample standard deviation for families with a free dispersion
+    /// parameter like linear regression.
+    pub fn resid_pear(&self) -> Array1<F> {
+        let mu: Array1<F> = self.predict(&self.data.x, self.data.linear_offset.as_ref());
+        let residuals = &self.data.y - &mu;
         let var_diag: Array1<F> = mu.mapv_into(M::variance);
-        // adjust the variance for non-canonical link functions
-        let eta_d = M::Link::d_nat_param(&lin_pred);
-        let adj_var: Array1<F> = &eta_d * &var_diag * eta_d;
-        // calculate the fisher matrix
-        let fisher: Array2<F> = (&self.data.x.t() * &adj_var).dot(&self.data.x);
-        // Regularize the fisher matrix
-        self.options.reg.as_ref().irls_mat(fisher, params)
+        let std: Array1<F> = var_diag.mapv_into(num_traits::Float::sqrt);
+        residuals / std
+    }
+
+    /// Return the standardized Pearson residuals for every observation.
+    /// Also known as the "internally studentized Pearson residuals".
+    /// (y - E[y]) / (sqrt(Var[y] * (1 - h))) where h is a vector representing the leverage for
+    /// each observation.
+    pub fn resid_pear_std(&self) -> RegressionResult<Array1<F>> {
+        let pearson = self.resid_pear();
+        let phi = self.dispersion();
+        let hat = self.data.leverage()?;
+        let omh = -hat + F::one();
+        let denom: Array1<F> = (omh * phi).mapv_into(num_traits::Float::sqrt);
+        Ok(pearson / denom)
+    }
+
+    /// Return the response residuals, or fitting deviation, for each data point in the fit; that
+    /// is, the difference y - E[y|x] where the expectation value is the y value predicted by the
+    /// model given x.
+    pub fn resid_resp(&self) -> Array1<F> {
+        self.errors(&self.data)
+    }
+
+    /// Return the studentized residuals, which are the changes in the fit likelihood resulting
+    /// from leaving each observation out. This is a robust and general method for outlier
+    /// detection, although a one-step approximation is used to avoid re-fitting the model
+    /// completely for each observation.
+    /// If the linear errors are standard normally distributed then this statistic should follow a
+    /// t-distribution with `self.ndf() - 1` degrees of freedom.
+    pub fn resid_student(&self) -> RegressionResult<Array1<F>> {
+        let r_dev = self.resid_dev();
+        let r_pear = self.resid_pear();
+        let signs = r_pear.mapv(F::signum);
+        let r_dev_sq = r_dev.mapv_into(|x| x * x);
+        let r_pear_sq = r_pear.mapv_into(|x| x * x);
+        let hat = self.data.leverage()?;
+        let omh = -hat.clone() + F::one();
+        let sum_quad = &r_dev_sq + hat * r_pear_sq / &omh;
+        let sum_quad_scaled = match M::DISPERSED {
+            // The dispersion is corrected for the contribution from each current point.
+            // This is an approximation; the exact solution would perform a fit at each point.
+            DispersionType::FreeDispersion => {
+                let dev = self.deviance();
+                let dof = F::from(self.ndf() - 1).unwrap();
+                let phi_i: Array1<F> = (-r_dev_sq / &omh + dev) / dof;
+                sum_quad / phi_i
+            }
+            DispersionType::NoDispersion => sum_quad,
+        };
+        Ok(signs * sum_quad_scaled.mapv_into(num_traits::Float::sqrt))
+    }
+
+    /// Returns the working residuals `d\eta/d\mu * (y - E{y|x})`.
+    /// This should be equal to the response residuals divided by the variance function (as
+    /// opposed to the square root of the variance as in the Pearson residuals).
+    pub fn resid_work(&self) -> Array1<F> {
+        let lin_pred: Array1<F> = self.data.linear_predictor(&self.result);
+        let mu: Array1<F> = lin_pred.mapv(M::Link::func_inv);
+        let resid_response: Array1<F> = &self.data.y - &mu;
+        let d_eta: Array1<F> = M::Link::d_nat_param(&lin_pred);
+        d_eta * resid_response
     }
 
     /// Returns the score function (the gradient of the likelihood) at the
@@ -327,14 +488,16 @@ where
         // fit parameters.
         let lin_pred: Array1<F> = self.data.linear_predictor(&params);
         let mu: Array1<F> = M::mean(&lin_pred);
+        let resid_response = &self.data.y - mu;
         // adjust for non-canonical link functions.
         let eta_d = M::Link::d_nat_param(&lin_pred);
-        let score_unreg = self.data.x.t().dot(&(eta_d * (&self.data.y - &mu)));
+        let resid_working = eta_d * resid_response;
+        let score_unreg = self.data.x.t().dot(&resid_working);
         self.options.reg.as_ref().gradient(score_unreg, &params)
     }
 
     /// Returns the score test statistic. This statistic is asymptotically
-    /// chi-squared distributioned with `test_ndf()` degrees of freedom.
+    /// chi-squared distributed with `test_ndf()` degrees of freedom.
     pub fn score_test(&self) -> RegressionResult<F> {
         let (_, null_params) = self.null_model_fit();
         self.score_test_against(null_params)
@@ -348,7 +511,8 @@ where
         let fisher_alt = self.fisher(&alternative);
         // The is not the same as the cached covariance matrix since it is
         // evaluated at the null parameters.
-        let inv_fisher_alt = fisher_alt.invh_into()?;
+        // NOTE: invh/invh_into() are bugged and incorrect!
+        let inv_fisher_alt = fisher_alt.inv_into()?;
         Ok(score_alt.t().dot(&inv_fisher_alt.dot(&score_alt)))
     }
 
@@ -356,7 +520,7 @@ where
     /// and the Wald test. Not to be confused with `ndf()`, the degrees of
     /// freedom in the model fit.
     pub fn test_ndf(&self) -> usize {
-        if self.data.use_intercept {
+        if self.use_intercept {
             self.n_par - 1
         } else {
             self.n_par
@@ -390,26 +554,23 @@ where
         let par_variances: ArrayView1<F> = par_cov.diag();
         Ok(&self.result / &par_variances.mapv(num_traits::Float::sqrt))
     }
+}
 
-    // TODO: score test using Fisher score and information matrix.
-
-    /// Returns the Akaike information criterion for the model fit.
-    // TODO: Should an effective number of parameters that takes regularization
-    // into acount be considered?
-    pub fn aic(&self) -> F {
-        F::from(2 * self.n_par).unwrap() - F::from(2.).unwrap() * self.model_like
+/// Specialized functions for OLS.
+impl<'a, F> Fit<'a, Linear, F>
+where
+    F: 'static + Float,
+{
+    /// Returns the coefficient of multiple correlation, R^2.
+    pub fn r_sq(&self) -> F {
+        let y_avg: F = self.data.y.mean().expect("Data should be non-empty");
+        let total_sum_sq: F = self.data.y.mapv(|y| y - y_avg).mapv(|dy| dy * dy).sum();
+        (total_sum_sq - self.resid_sum_sq()) / total_sum_sq
     }
 
-    /// Returns the Bayesian information criterion for the model fit.
-    // TODO: Also consider the effect of regularization on this statistic.
-    // TODO: Wikipedia suggests that the variance should included in the number
-    // of parameters for multiple linear regression. Should an additional
-    // parameter be included for the dispersion parameter? This question does
-    // not affect the difference between two models fit with the methodology in
-    // this package.
-    pub fn bic(&self) -> F {
-        let logn = num_traits::Float::ln(F::from(self.data.y.len()).unwrap());
-        logn * F::from(self.n_par).unwrap() - F::from(2.).unwrap() * self.model_like
+    /// Returns the residual sum of squares, i.e. the sum of the squared residuals.
+    pub fn resid_sum_sq(&self) -> F {
+        self.resid_resp().mapv_into(|r| r * r).sum()
     }
 }
 
@@ -417,7 +578,9 @@ where
 mod tests {
     use super::*;
     use crate::{
-        model::ModelBuilder, standardize::standardize, utility::one_pad, Linear, Logistic,
+        model::ModelBuilder,
+        utility::{one_pad, standardize},
+        Linear, Logistic,
     };
     use anyhow::Result;
     use approx::assert_abs_diff_eq;
@@ -543,9 +706,81 @@ mod tests {
         let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
         let fit = model.fit()?;
         // The predicted values of Y given the model.
-        let pred_y = fit.expectation(&one_pad(data_x.view()), None);
+        let pred_y = fit.predict(&one_pad(data_x.view()), None);
         let target_dev = (data_y - pred_y).mapv(|dy| dy * dy).sum();
         assert_abs_diff_eq!(fit.deviance(), target_dev,);
+        Ok(())
+    }
+
+    // Check that the deviance and dispersion parameter are equal up to the number of degrees of
+    // freedom for a linea model.
+    #[test]
+    fn deviance_dispersion_eq_linear() -> Result<()> {
+        let data_y = array![0.2, -0.1, 0.4, 1.3, 0.2, -0.6, 0.9];
+        let data_x = array![
+            [0.4, 0.2],
+            [0.1, 0.4],
+            [-0.1, 0.3],
+            [0.5, 0.7],
+            [0.4, 0.1],
+            [-0.2, -0.3],
+            [0.4, -0.1]
+        ];
+        let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
+        let fit = model.fit()?;
+        let dev = fit.deviance();
+        let disp = fit.dispersion();
+        let ndf = fit.ndf() as f64;
+        assert_abs_diff_eq!(dev, disp * ndf, epsilon = 4. * f64::EPSILON);
+        Ok(())
+    }
+
+    // Check that the residuals for a linear model are all consistent.
+    #[test]
+    fn residuals_linear() -> Result<()> {
+        let data_y = array![0.1, -0.3, 0.7, 0.2, 1.2, -0.4];
+        let data_x = array![0.4, 0.1, 0.3, -0.1, 0.5, 0.6].insert_axis(Axis(1));
+        let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
+        let fit = model.fit()?;
+        let response = fit.resid_resp();
+        let pearson = fit.resid_pear();
+        let deviance = fit.resid_dev();
+        assert_abs_diff_eq!(response, pearson);
+        assert_abs_diff_eq!(response, deviance);
+        let pearson_std = fit.resid_pear_std()?;
+        let deviance_std = fit.resid_dev_std()?;
+        let _student = fit.resid_student()?;
+        assert_abs_diff_eq!(pearson_std, deviance_std, epsilon = 8. * f64::EPSILON);
+
+        // // NOTE: Studentization can't be checked directly because the method used is an
+        // approximation. Another approach will be needed to give exact values.
+        // let orig_dev = fit.deviance();
+        // let n_data = data_y.len();
+        // // Check that the leave-one-out stats hold literally
+        // let mut loo_dev: Vec<f64> = Vec::new();
+        // for i in 0..n_data {
+        //     let ya = data_y.slice(s![0..i]);
+        //     let yb = data_y.slice(s![i + 1..]);
+        //     let xa = data_x.slice(s![0..i, ..]);
+        //     let xb = data_x.slice(s![i + 1.., ..]);
+        //     let y_loo = concatenate![Axis(0), ya, yb];
+        //     let x_loo = concatenate![Axis(0), xa, xb];
+        //     let model_i = ModelBuilder::<Linear>::data(&y_loo, &x_loo).build()?;
+        //     let fit_i = model_i.fit()?;
+        //     let yi = data_y[i];
+        //     let xi = data_x.slice(s![i..i + 1, ..]);
+        //     let xi = crate::utility::one_pad(xi);
+        //     let yi_pred: f64 = fit_i.predict(&xi, None)[0];
+        //     let disp_i = fit_i.dispersion();
+        //     let pear_loo = (yi - yi_pred) / disp_i.sqrt();
+        //     let dev_i = fit_i.deviance();
+        //     let d_dev = 2. * (orig_dev - dev_i);
+        //     loo_dev.push(d_dev.sqrt() * (yi - yi_pred).signum());
+        // }
+        // let loo_dev: Array1<f64> = loo_dev.into();
+        // This is off from 1 by a constant factor that depends on the data
+        // This is only approximately true
+        // assert_abs_diff_eq!(student, loo_dev);
         Ok(())
     }
 

@@ -72,3 +72,22 @@ where
     let off = Array1::<X>::from(off_vec);
     Ok((y, x, off))
 }
+
+/// Read a flat array from a text file
+#[cfg(test)]
+pub fn array_from_csv<X>(file: &str) -> Result<Array1<X>>
+where
+    X: Float + FromStr,
+    <X as FromStr>::Err: 'static + Error + Send + Sync,
+{
+    let file = File::open(file)?;
+    let reader = BufReader::new(file);
+    let mut x_vec: Vec<X> = Vec::new();
+    for line_result in reader.lines() {
+        let line = line_result?;
+        let x_parsed: X = line.parse()?;
+        x_vec.push(x_parsed);
+    }
+    let x: Array1<X> = x_vec.into();
+    Ok(x)
+}
