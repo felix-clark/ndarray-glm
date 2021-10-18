@@ -75,6 +75,8 @@ where
 
 /// Read a flat array from a text file
 #[cfg(test)]
+// Silence an false warning about non-use
+#[allow(dead_code)]
 pub fn array_from_csv<X>(file: &str) -> Result<Array1<X>>
 where
     X: Float + FromStr,
