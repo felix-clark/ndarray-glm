@@ -86,7 +86,7 @@
 //! println!("Fit result: {}", fit.result);
 //! ```
 
-#[doc(html_root_url = "https://docs.rs/crate/ndarray-glm")]
+#![doc(html_root_url = "https://docs.rs/crate/ndarray-glm")]
 pub mod error;
 mod fit;
 mod glm;
