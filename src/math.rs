@@ -49,22 +49,13 @@ mod tests {
 
     #[test]
     fn test_rank_def() {
-        assert_eq!(true, is_rank_deficient(array![[0., 1.]], 0.).unwrap());
-        assert_eq!(
-            false,
-            is_rank_deficient(array![[0., 1.], [2., 0.]], f32::EPSILON as f64).unwrap()
-        );
-        assert_eq!(
-            true,
-            is_rank_deficient(array![[0., 1.], [0., 2.342]], f64::EPSILON).unwrap()
-        );
-        assert_eq!(
-            true,
-            is_rank_deficient(
-                array![[1., 1., 0.], [1., 0.5, 0.5], [1., 0.2, 0.8]],
-                f64::EPSILON
-            )
-            .unwrap()
-        );
+        assert!(is_rank_deficient(array![[0., 1.]], 0.).unwrap());
+        assert!(!is_rank_deficient(array![[0., 1.], [2., 0.]], f32::EPSILON as f64).unwrap());
+        assert!(is_rank_deficient(array![[0., 1.], [0., 2.342]], f64::EPSILON).unwrap());
+        assert!(is_rank_deficient(
+            array![[1., 1., 0.], [1., 0.5, 0.5], [1., 0.2, 0.8]],
+            f64::EPSILON
+        )
+        .unwrap());
     }
 }

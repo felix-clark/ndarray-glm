@@ -13,7 +13,7 @@ fn start_zero() -> Result<()> {
     let data_x: Array2<f64> = array![[], [], [], []];
     let model = ModelBuilder::<Logistic>::data(&data_y, &data_x).build()?;
     let fit = model.fit()?;
-    assert_eq!(fit.model_like > -f64::infinity(), true);
+    assert!(fit.model_like > -f64::infinity());
 
     Ok(())
 }

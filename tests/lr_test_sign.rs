@@ -14,6 +14,6 @@ fn lr_test_sign0() -> Result<()> {
         .build()?;
     let fit = model.fit_options().l2_reg(2e-6).fit()?;
     dbg!(&fit.result);
-    assert_eq!(fit.lr_test() >= 0., true);
+    assert!(fit.lr_test() >= 0.);
     Ok(())
 }
