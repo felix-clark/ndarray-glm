@@ -66,9 +66,6 @@ let fit = model.fit_options().l2_reg(1e-5).fit()?;
 println!("Fit result: {}", fit.result);
 ```
 
-For logistic regression, the `y` array data must be boolean, and for Poisson
-regression it must be an unsigned integer.
-
 Custom non-canonical link functions can be defined by the user, although the
 interface is not particularly ergonomic. See `tests/custom_link.rs` for examples.
 
