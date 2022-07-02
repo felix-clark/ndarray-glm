@@ -190,14 +190,32 @@ where
         if rel > F::zero() {
             return Some(self.step_with(next_guess, next_like, 0));
         }
-        // Terminate if the difference is close to zero
-        if num_traits::Float::abs(rel) <= self.options.tol {
+
+        // Indicates if the likelihood change is small, within tolerance, even if it is not
+        // positive.
+        let small_delta_like = num_traits::Float::abs(rel) <= self.options.tol;
+
+        // If the parameters have changed significantly but the likelihood hasn't improved,
+        // step halving needs to be engaged. The parameter delta should probably ideally be
+        // tested using the spread of the covariate data, but in principle the data can be
+        // standardized so this will just compare to the raw tolerance.
+        let delta_guess = &next_guess - &self.guess;
+        let small_delta_guess = delta_guess
+            .mapv(num_traits::Float::abs)
+            .into_iter()
+            .sum::<F>()
+            <= F::from(delta_guess.len()).unwrap() * self.options.tol;
+
+        // Terminate if the difference is close to zero and the parameters haven't changed
+        // significantly.
+        if small_delta_like && small_delta_guess {
             // If this guess is an improvement then go ahead and return it, but
             // quit early on the next iteration. The equivalence with zero is
             // necessary in order to return a value when the iteration starts at
             // the best guess. This comparison includes zero so that the
             // iteration terminates if the likelihood hasn't changed at all.
             if rel >= F::zero() {
+                // If here, rel == 0.
                 self.done = true;
                 return Some(self.step_with(next_guess, next_like, 0));
             }
@@ -206,11 +224,12 @@ where
 
         // apply step halving if rel < 0, which means the likelihood has decreased.
         // Don't terminate if rel gets back to within tolerance as a result of this.
-        // TODO: None of the tests result in step-halving, so this part is untested.
+        // NOTE: It's difficult to engage the step halving because it's rarely necessary, so this
+        // part of the algorithm is undertested.
         let mut step_halves = 0;
         let half: F = F::from(0.5).unwrap();
         let mut step_multiplier = half;
-        while rel < -self.options.tol && step_halves < self.options.max_step_halves {
+        while rel <= F::zero() && step_halves < self.options.max_step_halves {
             // The next guess for the step-halving
             let next_guess_sh = next_guess.map(|&x| x * (step_multiplier))
                 + &self.guess.map(|&x| x * (F::one() - step_multiplier));

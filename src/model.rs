@@ -32,6 +32,7 @@ where
     /// The weight of each observation
     pub weights: Option<Array1<F>>,
     /// The cached projection matrix
+    // crate-public only so that a null dataset can be created.
     pub(crate) hat: RefCell<Option<Array2<F>>>,
 }
 

@@ -239,7 +239,7 @@ where
     /// Returns the likelihood given the null model, which fixes all parameters
     /// to zero except the intercept (if it is used). A total of `test_ndf()`
     /// parameters are constrained.
-    fn null_like(&self) -> F {
+    pub fn null_like(&self) -> F {
         let (null_like, _) = self.null_model_fit();
         null_like
     }
@@ -305,9 +305,9 @@ where
                                 x: data_x_null,
                                 linear_offset: Some(off.clone()),
                                 weights: self.data.weights.clone(),
-                                // If we are here it is because an intercept is needed.
                                 hat: RefCell::new(None),
                             },
+                            // If we are in this branch it is because an intercept is needed.
                             use_intercept: true,
                         };
                         // TODO: Make this function return an error, although it's

@@ -17,3 +17,17 @@ fn lr_test_sign0() -> Result<()> {
     assert!(fit.lr_test() >= 0.);
     Ok(())
 }
+
+#[test]
+fn lr_test_sign1() -> Result<()> {
+    let (y, x, off) = y_x_off_from_csv::<bool, f32>("tests/data/lr_test_sign1.csv")?;
+    let model = ModelBuilder::<Logistic>::data(&y, &x)
+        .linear_offset(off)
+        .build()?;
+    // This fit failed with regularization in the range of about 3e-7 to 3e-6.
+    // Only a single iteration was performed in this case, because step halving was not being
+    // engaged when it should have.
+    let fit = model.fit_options().l2_reg(1e-6).fit()?;
+    assert!(fit.lr_test() >= 0.);
+    Ok(())
+}
