@@ -199,12 +199,7 @@ where
         // step halving needs to be engaged. The parameter delta should probably ideally be
         // tested using the spread of the covariate data, but in principle the data can be
         // standardized so this will just compare to the raw tolerance.
-        let delta_guess = &next_guess - &self.guess;
-        let small_delta_guess = delta_guess
-            .mapv(num_traits::Float::abs)
-            .into_iter()
-            .sum::<F>()
-            <= F::from(delta_guess.len()).unwrap() * self.options.tol;
+        let small_delta_guess = small_delta(&next_guess, &self.guess, self.options.tol);
 
         // Terminate if the difference is close to zero and the parameters haven't changed
         // significantly.
@@ -229,8 +224,9 @@ where
         let mut step_halves = 0;
         let half: F = F::from(0.5).unwrap();
         let mut step_multiplier = half;
-        while rel <= F::zero() && step_halves < self.options.max_step_halves {
-            // The next guess for the step-halving
+        loop {
+            let last_guess_sh = next_guess.clone();
+            // The next guess for the step-halving, done relative to the initial guess
             let next_guess_sh = next_guess.map(|&x| x * (step_multiplier))
                 + &self.guess.map(|&x| x * (F::one() - step_multiplier));
             let next_like_sh =
@@ -238,7 +234,7 @@ where
             let next_rel = (next_like_sh - self.last_like)
                 / (F::epsilon() + num_traits::Float::abs(next_like_sh));
             if next_rel >= rel {
-                next_guess = next_guess_sh;
+                next_guess.assign(&next_guess_sh);
                 next_like = next_like_sh;
                 rel = next_rel;
                 step_multiplier = half;
@@ -246,15 +242,39 @@ where
                 step_multiplier *= half;
             }
             step_halves += 1;
+            if step_halves >= self.options.max_step_halves {
+                break;
+            }
+            if rel > F::zero() {
+                break;
+            }
+            let small_delta_guess = small_delta(&next_guess, &last_guess_sh, self.options.tol);
+            if rel > -self.options.tol && small_delta_guess {
+                break;
+            }
         }
 
         if rel > F::zero() {
             Some(self.step_with(next_guess, next_like, step_halves))
         } else {
             // We can end up here if the step direction is a poor one.
-            // This signals the end of iteration, but more checks should be done
+            // This signals the end of iteration, but more checks could be done
             // to see how valid the result is.
             None
         }
     }
+}
+
+fn small_delta<F>(new: &Array1<F>, old: &Array1<F>, tol: F) -> bool
+where
+    F: Float,
+{
+    let delta = new - old;
+    // this interpolates between relative and absolute differences
+    let denom = new.mapv(|f| F::one() + num_traits::Float::abs(f));
+    let abs_diff = delta.mapv(num_traits::Float::abs) / denom;
+    let n = F::from(abs_diff.len()).unwrap();
+    // use sum of absolute values to indicate magnitude of beta
+    // sum of squares might be better
+    abs_diff.into_iter().sum::<F>() <= n * tol * tol
 }
