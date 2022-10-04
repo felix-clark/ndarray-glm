@@ -10,17 +10,13 @@ iteratively reweighted least squares, using the
 
 ## Status
 
-This package is in early alpha and the interface is likely to undergo many
-changes. Even the return value of certain functions may change from one release
-to the next.
+This package is in alpha and the interface could undergo changes. Even the
+return value of certain functions may change from one release to the next.
+Correctness is not guaranteed.
 
 The regression algorithm uses iteratively re-weighted least squares (IRLS) with
 a step-halving procedure applied when the next iteration of guesses does not
 increase the likelihood.
-
-Much of the logic is done at the type/trait level to avoid compiling code a user does
-not need and to allow general implementations that the compiler can optimize in trivial
-cases.
 
 Suggestions (via issues) and pull requests are welcome.
 
@@ -67,7 +63,8 @@ println!("Fit result: {}", fit.result);
 ```
 
 Custom non-canonical link functions can be defined by the user, although the
-interface is not particularly ergonomic. See `tests/custom_link.rs` for examples.
+interface is currently not particularly ergonomic. See `tests/custom_link.rs`
+for examples.
 
 ## Features
 
