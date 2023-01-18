@@ -8,6 +8,7 @@ use crate::{
     link::{Link, Transform},
     model::{Dataset, Model},
     num::Float,
+    regularization::IrlsReg,
     Linear,
 };
 use ndarray::{array, Array1, Array2, ArrayBase, ArrayView1, Axis, Data, Ix2};
@@ -35,6 +36,8 @@ where
     pub options: FitOptions<F>,
     /// The value of the likelihood function for the fit result.
     pub model_like: F,
+    /// The regularizer of the fit
+    reg: Box<dyn IrlsReg<F>>,
     /// The number of overall iterations taken in the IRLS.
     pub n_iter: usize,
     /// The number of steps taken in the algorithm, which includes step halving.
@@ -161,7 +164,7 @@ where
         // calculate the fisher matrix
         let fisher: Array2<F> = (&self.data.x.t() * &adj_var).dot(&self.data.x);
         // Regularize the fisher matrix
-        self.options.reg.as_ref().irls_mat(fisher, params)
+        self.reg.as_ref().irls_mat(fisher, params)
     }
 
     /// Perform a likelihood-ratio test, returning the statistic -2*ln(L_0/L)
@@ -187,8 +190,9 @@ where
     /// way that the regression resulting in this fit was. The degrees of
     /// freedom cannot be generally inferred.
     pub fn lr_test_against(&self, alternative: &Array1<F>) -> F {
-        let alt_like = M::log_like_reg(self.data, alternative, self.options.reg.as_ref());
-        F::from(2.).unwrap() * (self.model_like - alt_like)
+        let alt_like = M::log_like(self.data, alternative);
+        let alt_like_reg = alt_like + self.reg.likelihood(alternative);
+        F::from(2.).unwrap() * (self.model_like - alt_like_reg)
     }
 
     /// Returns the residual degrees of freedom in the model, i.e. the number
@@ -205,11 +209,12 @@ where
         result: Array1<F>,
         options: FitOptions<F>,
         model_like: F,
+        reg: Box<dyn IrlsReg<F>>,
         n_iter: usize,
         n_steps: usize,
     ) -> Self {
         if !model_like.is_nan()
-            && model_like != M::log_like_reg(data, &result, options.reg.as_ref())
+            && model_like != M::log_like(data, &result) + reg.likelihood(&result)
         {
             eprintln!("Model likelihood does not match result! There is an error in the GLM fitting code.");
             dbg!(&result);
@@ -227,6 +232,7 @@ where
             result,
             options,
             model_like,
+            reg,
             n_iter,
             n_steps,
             n_data,
@@ -493,7 +499,7 @@ where
         let eta_d = M::Link::d_nat_param(&lin_pred);
         let resid_working = eta_d * resid_response;
         let score_unreg = self.data.x.t().dot(&resid_working);
-        self.options.reg.as_ref().gradient(score_unreg, params)
+        self.reg.as_ref().gradient(score_unreg, params)
     }
 
     /// Returns the score test statistic. This statistic is asymptotically

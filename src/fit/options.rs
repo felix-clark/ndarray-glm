@@ -1,13 +1,6 @@
 //! Fit-specific configuration and fit builder
 use super::Fit;
-use crate::{
-    error::RegressionResult,
-    glm::Glm,
-    model::Model,
-    num::Float,
-    regularization::{IrlsReg, LassoSmooth, Null, Ridge},
-    Array1,
-};
+use crate::{error::RegressionResult, glm::Glm, model::Model, num::Float, Array1};
 
 /// A builder struct for fit configuration
 pub struct FitConfig<'a, M, F>
@@ -16,7 +9,7 @@ where
     F: Float,
 {
     pub(crate) model: &'a Model<M, F>,
-    pub(crate) options: FitOptions<F>,
+    pub options: FitOptions<F>,
 }
 
 impl<'a, M, F> FitConfig<'a, M, F>
@@ -36,45 +29,12 @@ where
 
     /// Use to set a L2 regularization parameter
     pub fn l2_reg(mut self, l2: F) -> Self {
-        // This check could be made at compile-time with more complex typing, but it
-        // will be kept simple for now. There isn't yet support for elastic net, but
-        // calling both types of regularization could induce it.
-        if !self.options.reg.as_ref().is_null() {
-            eprintln!("WARNING: regularization set twice")
-        }
-        self.options.reg = {
-            // make the vector of L2 coefficients
-            let l2_diag: Array1<F> = {
-                let mut l2_diag: Array1<F> = Array1::<F>::from_elem(self.model.data.x.ncols(), l2);
-                // if an intercept term is included it should not be subject to
-                // regularization.
-                if self.model.use_intercept {
-                    l2_diag[0] = F::zero();
-                }
-                l2_diag
-            };
-            Box::new(Ridge::from_diag(l2_diag))
-        };
+        self.options.l2 = l2;
         self
     }
 
-    /// Use to set a L1 regularization parameter with a smoother tolerance
-    pub fn l1_smooth_reg(mut self, l1: F, eps: F) -> Self {
-        if !self.options.reg.as_ref().is_null() {
-            eprintln!("WARNING: regularization set twice")
-        }
-        self.options.reg = {
-            let l1_diag: Array1<F> = {
-                let mut l1_diag: Array1<F> = Array1::<F>::from_elem(self.model.data.x.ncols(), l1);
-                // if an intercept term is included it should not be subject to
-                // regularization.
-                if self.model.use_intercept {
-                    l1_diag[0] = F::zero();
-                }
-                l1_diag
-            };
-            Box::new(LassoSmooth::from_diag(l1_diag, eps))
-        };
+    pub fn l1_reg(mut self, l1: F) -> Self {
+        self.options.l1 = l1;
         self
     }
 }
@@ -89,7 +49,8 @@ where
     /// The relative tolerance of the likelihood
     pub tol: F,
     /// The regularization of the fit
-    pub reg: Box<dyn IrlsReg<F>>,
+    pub l2: F,
+    pub l1: F,
     /// An initial guess. A sensible default is selected if this is not provided.
     pub init_guess: Option<Array1<F>>,
     /// The maximum number of step halves to try
@@ -106,7 +67,8 @@ where
             // This tolerance is rather small, but it is used in the context of a
             // fraction of the total likelihood.
             tol: F::epsilon(),
-            reg: Box::new(Null {}),
+            l2: F::zero(),
+            l1: F::zero(),
             init_guess: None,
             max_step_halves: 8,
         }

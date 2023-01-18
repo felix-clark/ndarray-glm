@@ -32,13 +32,13 @@ fn same_lin_intercept() -> Result<()> {
 }
 
 #[test]
-/// Test the smoothed lasso regression on underconstrained data
-fn lasso_smooth_underconstrained() -> Result<()> {
+/// Test the lasso regression on underconstrained data
+fn lasso_underconstrained() -> Result<()> {
     let y_data: Array1<bool> = array![true, false, true];
     let x_data: Array2<f64> = array![[0.1, 1.5, 8.0], [-0.1, 1.0, -12.0], [0.2, 0.5, 9.5]];
     let model = ModelBuilder::<Logistic>::data(&y_data, &x_data).build()?;
     // The smoothing parameter needs to be relatively large in order to work
-    let fit = model.fit_options().l1_smooth_reg(1.0, 1e-2).fit()?;
+    let fit = model.fit_options().l1_reg(1.0).fit()?;
     dbg!(fit.result);
     let like = fit.model_like;
     // make sure the likelihood isn't NaN

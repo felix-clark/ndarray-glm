@@ -1,11 +1,13 @@
 //! Iteratively re-weighed least squares algorithm
 use crate::glm::Glm;
 use crate::link::Transform;
-use crate::model::Dataset;
+use crate::model::{Dataset, Model};
+use crate::regularization::{Lasso, Null, Ridge};
 use crate::{
     error::{RegressionError, RegressionResult},
     fit::options::FitOptions,
     num::Float,
+    regularization::IrlsReg,
 };
 use ndarray::{Array1, Array2};
 use ndarray_linalg::SolveH;
@@ -13,7 +15,7 @@ use std::marker::PhantomData;
 
 /// Iterate over updates via iteratively re-weighted least-squares until
 /// reaching a specified tolerance.
-pub struct Irls<'a, M, F>
+pub(crate) struct Irls<'a, M, F>
 where
     M: Glm,
     F: Float,
@@ -22,13 +24,15 @@ where
     model: PhantomData<M>,
     data: &'a Dataset<F>,
     /// The current parameter guess.
-    guess: Array1<F>,
+    pub(crate) guess: Array1<F>,
     /// The options for the fit
-    options: &'a FitOptions<F>,
+    pub(crate) options: FitOptions<F>,
+    /// The regularizer object, which may be stateful
+    pub(crate) reg: Box<dyn IrlsReg<F>>,
     /// The number of iterations taken so far
     pub n_iter: usize,
     /// The likelihood for the previous iteration
-    last_like: F,
+    pub(crate) last_like: F,
     /// Sometimes the next guess is better than the previous but within
     /// tolerance, so we want to return the current guess but exit immediately
     /// in the next iteration.
@@ -41,17 +45,16 @@ where
     F: Float,
     Array2<F>: SolveH<F>,
 {
-    pub fn new(
-        data: &'a Dataset<F>,
-        initial: Array1<F>,
-        options: &'a FitOptions<F>,
-        initial_like: F,
-    ) -> Self {
+    pub fn new(model: &'a Model<M, F>, initial: Array1<F>, options: FitOptions<F>) -> Self {
+        let data = &model.data;
+        let reg = get_reg(&options, data.x.ncols(), model.use_intercept);
+        let initial_like: F = M::log_like(data, &initial) + reg.likelihood(&initial);
         Self {
             model: PhantomData,
             data,
             guess: initial,
             options,
+            reg,
             n_iter: 0,
             last_like: initial_like,
             done: false,
@@ -82,6 +85,7 @@ where
 
     /// Returns the (LHS, RHS) of the IRLS update matrix equation. This is a bit
     /// faster than computing the Fisher matrix and the Jacobian separately.
+    /// The returned matrix and vector are not regularized.
     // TODO: re-factor to have the distributions compute the fisher information,
     // as that is useful in the score test as well.
     fn irls_mat_vec(&self) -> (Array2<F>, Array1<F>) {
@@ -136,10 +140,7 @@ where
             let target: Array1<F> = self.data.x.t().dot(&target);
             target
         };
-        // Regularize the matrix and vector terms
-        let lhs: Array2<F> = (*self.options.reg).irls_mat(neg_hessian, &self.guess);
-        let rhs: Array1<F> = (*self.options.reg).irls_vec(rhs, &self.guess);
-        (lhs, rhs)
+        (neg_hessian, rhs)
     }
 }
 
@@ -172,9 +173,9 @@ where
         }
 
         let (irls_mat, irls_vec) = self.irls_mat_vec();
-        let mut next_guess: Array1<F> = match irls_mat.solveh_into(irls_vec) {
+        let mut next_guess: Array1<F> = match self.reg.next_guess(&self.guess, irls_vec, irls_mat) {
             Ok(solution) => solution,
-            Err(err) => return Some(Err(err.into())),
+            Err(err) => return Some(Err(err)),
         };
 
         // NOTE: might be optimizable by not checking the likelihood until step
@@ -182,7 +183,7 @@ where
         // cases that lead to poor convergence.
         // Ideally we could only check the step difference but that might not be
         // as stable. Some parameters might be at different scales.
-        let mut next_like = M::log_like_reg(self.data, &next_guess, self.options.reg.as_ref());
+        let mut next_like = M::log_like(self.data, &next_guess) + self.reg.likelihood(&next_guess);
         // This should be positive for an improved guess
         let mut rel =
             (next_like - self.last_like) / (F::epsilon() + num_traits::Float::abs(next_like));
@@ -230,7 +231,7 @@ where
             let next_guess_sh = next_guess.map(|&x| x * (step_multiplier))
                 + &self.guess.map(|&x| x * (F::one() - step_multiplier));
             let next_like_sh =
-                M::log_like_reg(self.data, &next_guess_sh, self.options.reg.as_ref());
+                M::log_like(self.data, &next_guess_sh) + self.reg.likelihood(&next_guess_sh);
             let next_rel = (next_like_sh - self.last_like)
                 / (F::epsilon() + num_traits::Float::abs(next_like_sh));
             if next_rel >= rel {
@@ -277,4 +278,47 @@ where
     // use sum of absolute values to indicate magnitude of beta
     // sum of squares might be better
     abs_diff.into_iter().sum::<F>() <= n * tol * tol
+}
+
+/// Zero the first element of the array
+fn zero_first_maybe<F>(mut l: Array1<F>, use_intercept: bool) -> Array1<F>
+where
+    F: Float,
+{
+    // if an intercept term is included it should not be subject to
+    // regularization.
+    if use_intercept {
+        l[0] = F::zero();
+    }
+    l
+}
+
+/// Generate a regularizer from the set of options
+fn get_reg<F: Float>(
+    options: &FitOptions<F>,
+    n: usize,
+    use_intercept: bool,
+) -> Box<dyn IrlsReg<F>> {
+    if options.l1 < F::zero() || options.l2 < F::zero() {
+        eprintln!("WARNING: ");
+        todo!("Return an error or print warning")
+    }
+    let use_l1 = options.l1 > F::zero();
+    let use_l2 = options.l2 > F::zero();
+
+    if use_l1 && use_l2 {
+        unimplemented!("Elastic net not yet implemented");
+    } else if use_l2 {
+        // make the vector of L2 coefficients
+        let l2_diag: Array1<F> = Array1::<F>::from_elem(n, options.l2);
+        let l2_diag: Array1<F> = zero_first_maybe(l2_diag, use_intercept);
+        Box::new(Ridge::from_diag(l2_diag))
+    } else if use_l1 {
+        // make the vector of L1 coefficients
+        let l1_diag: Array1<F> = Array1::<F>::from_elem(n, options.l1);
+        let l1_diag: Array1<F> = zero_first_maybe(l1_diag, use_intercept);
+        Box::new(Lasso::from_diag(l1_diag))
+    } else {
+        Box::new(Null {})
+    }
 }

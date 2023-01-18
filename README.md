@@ -75,8 +75,7 @@ for examples.
 - [X] Generic over floating point type
 - [X] Non-float domain types
 - [X] L2 (ridge) Regularization
-- [ ] L1 (lasso) Regularization
-  - An experimental smoothed version with an epsilon tolerance is WIP
+- [X] L1 (lasso) Regularization
 - [ ] Other exponential family distributions
   - [X] Poisson
   - [X] Binomial
