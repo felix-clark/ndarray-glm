@@ -75,8 +75,10 @@ for examples.
 - [X] Linear offsets
 - [X] Generic over floating point type
 - [X] Non-float domain types
-- [X] L2 (ridge) Regularization
-- [X] L1 (lasso) Regularization
+- [ ] Regularization
+  - [X] L2 (ridge)
+  - [X] L1 (lasso)
+  - [ ] Elastic Net
 - [ ] Other exponential family distributions
   - [X] Poisson
   - [X] Binomial
