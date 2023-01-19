@@ -5,6 +5,7 @@ iteratively reweighted least squares, using the
 [`ndarray-linalg`](https://docs.rs/crate/ndarray-linalg/) module.
 
 [![Crate](https://img.shields.io/crates/v/ndarray-glm.svg)](https://crates.io/crates/ndarray-glm)
+![Downloads](https://img.shields.io/crates/d/ndarray-glm)
 [![Documentation](https://docs.rs/ndarray-glm/badge.svg)](https://docs.rs/ndarray-glm)
 [![Build Status](https://travis-ci.org/felix-clark/ndarray-glm.png?branch=master)](https://travis-ci.org/felix-clark/ndarray-glm)
 
