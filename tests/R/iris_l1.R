@@ -15,7 +15,7 @@ x_data <- scale(x_data)
 # This class is seperable, so this will test regularization
 # y_data <- data["class"] == "setosa"
 y_data <- data["class"] == "versicolor"
-# l1 <- 1e-2 / length(y_data)
+l1 <- 1e-2 / length(y_data)
 # NOTE: We had trouble with convergence for larger lambda
 # l1 <- 0.1 / length(y_data)
 model <- glmnet(
