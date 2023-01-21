@@ -146,29 +146,17 @@ pub trait Glm: Sized {
             .clone()
             .unwrap_or_else(|| Self::init_guess(&model.data));
 
-        // This represents the number of overall iterations
-        let mut n_iter: usize = 0;
-        // This is the number of steps tried, which includes those arising from step halving.
-        let mut n_steps: usize = 0;
-
         let mut irls: Irls<Self, F> = Irls::new(model, initial, options);
 
         for iteration in irls.by_ref() {
-            let it_result = iteration?;
-            // This number of iterations does not include any extras from step halving.
-            n_iter += 1;
-            n_steps += it_result.steps;
+            let _it_result = iteration?;
+            // TODO: Optionally track history
         }
 
         Ok(Fit::new(
             &model.data,
             model.use_intercept,
-            irls.guess,
-            irls.options,
-            irls.last_like,
-            irls.reg,
-            n_iter,
-            n_steps,
+            irls,
         ))
     }
 }

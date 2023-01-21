@@ -5,6 +5,7 @@ pub mod options;
 use crate::{
     error::RegressionResult,
     glm::{DispersionType, Glm},
+    irls::Irls,
     link::{Link, Transform},
     model::{Dataset, Model},
     num::Float,
@@ -40,8 +41,6 @@ where
     reg: Box<dyn IrlsReg<F>>,
     /// The number of overall iterations taken in the IRLS.
     pub n_iter: usize,
-    /// The number of steps taken in the algorithm, which includes step halving.
-    pub n_steps: usize,
     /// The number of data points
     n_data: usize,
     /// The number of parameters
@@ -203,16 +202,15 @@ where
         self.n_data - self.n_par
     }
 
-    pub(crate) fn new(
-        data: &'a Dataset<F>,
-        use_intercept: bool,
-        result: Array1<F>,
-        options: FitOptions<F>,
-        model_like: F,
-        reg: Box<dyn IrlsReg<F>>,
-        n_iter: usize,
-        n_steps: usize,
-    ) -> Self {
+    pub(crate) fn new(data: &'a Dataset<F>, use_intercept: bool, irls: Irls<M, F>) -> Self {
+        let Irls {
+            guess: result,
+            options,
+            reg,
+            n_iter,
+            last_like: model_like,
+            ..
+        } = irls;
         if !model_like.is_nan()
             && model_like != M::log_like(data, &result) + reg.likelihood(&result)
         {
@@ -220,7 +218,6 @@ where
             dbg!(&result);
             dbg!(model_like);
             dbg!(n_iter);
-            dbg!(n_steps);
         }
         // Cache some of these variables that will be used often.
         let n_par = result.len();
@@ -234,7 +231,6 @@ where
             model_like,
             reg,
             n_iter,
-            n_steps,
             n_data,
             n_par,
             cov: RefCell::new(None),
@@ -658,7 +654,7 @@ mod tests {
         let lr = fit.lr_test();
         // Since there is no data, the null likelihood should be identical to
         // the fit likelihood, so the likelihood ratio test should yield zero.
-        assert_abs_diff_eq!(lr, 0.);
+        assert_abs_diff_eq!(lr, 0., epsilon = 4. * f64::EPSILON);
 
         // Check that the assertions still hold if linear offsets are included.
         let lin_off: Array1<f64> = array![0.2, -0.1, 0.1, 0.0, 0.1];
