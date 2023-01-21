@@ -63,23 +63,16 @@ where
 
     /// A helper function to step to a new guess, while incrementing the number
     /// of iterations and checking that it is not over the maximum.
-    fn step_with(
-        &mut self,
-        next_guess: Array1<F>,
-        next_like: F,
-        extra_iter: usize,
-    ) -> <Self as Iterator>::Item {
-        let n_steps: usize = 1 + extra_iter;
+    fn step_with(&mut self, next_guess: Array1<F>, next_like: F) -> <Self as Iterator>::Item {
         self.guess.assign(&next_guess);
         self.last_like = next_like;
-        self.n_iter += n_steps;
+        self.n_iter += 1;
         if self.n_iter > self.options.max_iter {
             return Err(RegressionError::MaxIter(self.options.max_iter));
         }
         Ok(IrlsStep {
             guess: next_guess,
             like: next_like,
-            steps: n_steps,
         })
     }
 
@@ -151,9 +144,6 @@ pub struct IrlsStep<F> {
     pub guess: Array1<F>,
     /// The log-likelihood of the current guess.
     pub like: F,
-    /// The number of steps taken this iteration. Often equal to 1, but step
-    /// halving increases it.
-    pub steps: usize,
 }
 
 impl<'a, M, F> Iterator for Irls<'a, M, F>
