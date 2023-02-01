@@ -13,23 +13,31 @@ where
     /// must be zero when the regressors are zero, otherwise some assumptions in
     /// the fitting statistics section may be invalidated.
     fn likelihood(&self, regressors: &Array1<F>) -> F;
+
     /// Defines the regularization effect on the gradient of the likelihood with respect
     /// to beta.
     fn gradient(&self, l: Array1<F>, regressors: &Array1<F>) -> Array1<F>;
+
+    /// Processing to do before each step.
+    fn prepare(&mut self, _guess: &Array1<F>) {}
+
+    /// For ADMM, the likelihood in the IRLS step is augmented with a rho term and does not include
+    /// the L1 component. Without ADMM this should return the actual un-augmented likelihood.
+    fn irls_like(&self, regressors: &Array1<F>) -> F {
+        self.likelihood(regressors)
+    }
+
     /// Defines the adjustment to the vector side of the IRLS update equation.
     /// It is the negative gradient of the penalty plus the hessian times the
     /// regressors. A default implementation is provided, but this is zero for
     /// ridge regression so it is allowed to be overridden.
     fn irls_vec(&self, vec: Array1<F>, regressors: &Array1<F>) -> Array1<F>;
+
     /// Defines the change to the matrix side of the IRLS update equation. It
     /// subtracts the Hessian of the penalty from the matrix. The difference is
     /// typically only on the diagonal.
     fn irls_mat(&self, mat: Array2<F>, regressors: &Array1<F>) -> Array2<F>;
-    /// Defines additional changes to the next guess vector after the IRLS matrix solving step.
-    /// This is particularly relevant for Lasso/L1 regularization as ADMM is used in an additional
-    /// step to handle the discontinuities. This must be called after solving the IRLS step using
-    /// the regularized Hessian and adjusted Jacobian.
-    fn irls_guess(&mut self, regressors: Array1<F>) -> Array1<F>;
+
     /// Return the next guess under regularization given the current guess and the RHS and LHS of
     /// the unregularized IRLS matrix solution equation for the next guess.
     fn next_guess(
@@ -38,13 +46,17 @@ where
         irls_vec: Array1<F>,
         irls_mat: Array2<F>,
     ) -> RegressionResult<Array1<F>> {
+        self.prepare(guess);
         // Apply the regularization effects to the Hessian (LHS)
         let lhs = self.irls_mat(irls_mat, guess);
         // Apply regularization effects to the modified Jacobian (RHS)
         let rhs = self.irls_vec(irls_vec, guess);
         let next_guess = lhs.solveh_into(rhs)?;
-        let next_guess = self.irls_guess(next_guess);
         Ok(next_guess)
+    }
+
+    fn terminate_ok(&self, _tol: F) -> bool {
+        true
     }
 }
 
@@ -67,10 +79,6 @@ impl<F: Float> IrlsReg<F> for Null {
     #[inline]
     fn irls_mat(&self, mat: Array2<F>, _: &Array1<F>) -> Array2<F> {
         mat
-    }
-    #[inline]
-    fn irls_guess(&mut self, guess: Array1<F>) -> Array1<F> {
-        guess
     }
 }
 
@@ -97,7 +105,8 @@ impl<F: Float> IrlsReg<F> for Ridge<F> {
     fn gradient(&self, jac: Array1<F>, beta: &Array1<F>) -> Array1<F> {
         jac - (&self.l2_vec * beta)
     }
-    /// Ridge regression has no effect on the vector side of the IRLS step equation.
+    /// Ridge regression has no effect on the vector side of the IRLS step equation, because the
+    /// 1st and 2nd order derivative terms exactly cancel.
     #[inline]
     fn irls_vec(&self, vec: Array1<F>, _: &Array1<F>) -> Array1<F> {
         vec
@@ -108,38 +117,52 @@ impl<F: Float> IrlsReg<F> for Ridge<F> {
         mat_diag += &self.l2_vec;
         mat
     }
-    /// Nothing additional is done to the guess after solving
-    #[inline]
-    fn irls_guess(&mut self, guess: Array1<F>) -> Array1<F> {
-        guess
-    }
 }
 
 /// Penalizes the likelihood by the L1-norm of the parameters.
 pub struct Lasso<F: Float> {
     /// The L1 parameters for each element
     l1_vec: Array1<F>,
-    /// Previous guesses (both may not be needed)
-    beta: Array1<F>,
-    gamma: Array1<F>,
-    /// The cumulative sum of residuals
-    u: F,
-    /// ADMM parameter
+    /// The dual solution
+    dual: Array1<F>,
+    /// The cumulative sum of residuals for each element
+    cum_res: Array1<F>,
+    /// ADMM penalty parameter
     rho: F,
+    /// L2-Norm of primal residuals |r|^2
+    r_sq: F,
+    /// L2-Norm of dual residuals |s|^2
+    s_sq: F,
 }
 
 impl<F: Float> Lasso<F> {
     /// Create the regularization from the diagonal, outsourcing the question of whether to include
     /// the first term (commonly the intercept, which is left out) in the diagonal.
     pub fn from_diag(l1: Array1<F>) -> Self {
-        let beta = Array1::zeros(l1.len());
-        let gamma = Array1::zeros(l1.len());
+        let n: usize = l1.len();
+        let gamma = Array1::zeros(n);
+        let u = Array1::zeros(n);
         Self {
             l1_vec: l1,
-            beta,
-            gamma,
-            u: F::zero(),
+            dual: gamma,
+            cum_res: u,
             rho: F::one(),
+            r_sq: F::infinity(), // or should it be NaN?
+            s_sq: F::infinity(),
+        }
+    }
+
+    fn update_rho(&mut self) {
+        // Can these be declared const?
+        let mu: F = F::from(8.).unwrap();
+        let tau: F = F::from(2.).unwrap();
+        if self.r_sq > mu * mu * self.s_sq {
+            self.rho *= tau;
+            self.cum_res /= tau;
+        }
+        if self.r_sq * mu * mu < self.s_sq {
+            self.rho /= tau;
+            self.cum_res *= tau;
         }
     }
 }
@@ -149,40 +172,77 @@ impl<F: Float> IrlsReg<F> for Lasso<F> {
         -(&self.l1_vec * beta.mapv(num_traits::Float::abs)).sum()
     }
 
+    // This is used in the fit's score function, for instance. Thus it includes the regularization
+    // terms and not the augmented term.
     fn gradient(&self, jac: Array1<F>, regressors: &Array1<F>) -> Array1<F> {
-        jac - &self.l1_vec * &regressors.mapv(sign)
+        jac - &self.l1_vec * &regressors.mapv(F::sign)
     }
 
-    fn irls_vec(&self, _vec: Array1<F>, _regressors: &Array1<F>) -> Array1<F> {
-        todo!()
+    /// Update the dual solution and the cumulative residuals.
+    fn prepare(&mut self, beta: &Array1<F>) {
+        // Apply adaptive penalty term updating
+        self.update_rho();
+
+        let old_dual = self.dual.clone();
+        self.dual = soft_thresh(beta + &self.cum_res, &self.l1_vec / self.rho);
+        // the primal residuals
+        let r: Array1<F> = beta - &self.dual;
+        // the dual residuals
+        let s: Array1<F> = (&self.dual - old_dual) * self.rho;
+        self.cum_res += &r;
+
+        self.r_sq = r.mapv(|r| r * r).sum();
+        self.s_sq = s.mapv(|s| s * s).sum();
     }
 
-    fn irls_mat(&self, _mat: Array2<F>, _regressors: &Array1<F>) -> Array2<F> {
-        todo!()
+    fn irls_like(&self, regressors: &Array1<F>) -> F {
+        -F::from(0.5).unwrap()
+            * self.rho
+            * (regressors - &self.dual + &self.cum_res)
+                .mapv(|x| x * x)
+                .sum()
     }
 
-    fn irls_guess(&mut self, _regressors: Array1<F>) -> Array1<F> {
-        todo!()
+    /// The beta term from the gradient is cancelled by the corresponding term from the Hessian.
+    /// The dual and residual terms remain.
+    fn irls_vec(&self, vec: Array1<F>, _regressors: &Array1<F>) -> Array1<F> {
+        let d: Array1<F> = &self.dual - &self.cum_res;
+        vec + d * self.rho
+    }
+
+    /// Add the constant rho to all elements of the diagonal of the Hessian.
+    fn irls_mat(&self, mut mat: Array2<F>, _: &Array1<F>) -> Array2<F> {
+        let mut mat_diag: ArrayViewMut1<F> = mat.diag_mut();
+        mat_diag += self.rho;
+        mat
+    }
+
+    fn terminate_ok(&self, tol: F) -> bool {
+        // Expressed like this, it should perhaps instead be an epsilon^2.
+        let n: usize = self.dual.len();
+        let n_sq = F::from((n as f64).sqrt()).unwrap();
+        let r_pass = self.r_sq < n_sq * tol;
+        let s_pass = self.s_sq < n_sq * tol;
+        r_pass && s_pass
     }
 }
 
 // TODO: Elastic Net (L1 + L2)
-pub struct ElasticNet {}
+// pub struct ElasticNet {}
 
-/// Returns 1 if x > 0, -1 if x < 0, and 0 if x == 0.
-fn sign<F: Float>(x: F) -> F {
-    // signum returns +-1 for +-0, surprisingly.
-    // https://github.com/rust-lang/rust/issues/57543
-    if x == F::zero() {
-        F::zero()
-    } else {
-        x.signum()
-    }
+/// The soft thresholding operator
+fn soft_thresh<F: Float>(x: Array1<F>, lambda: Array1<F>) -> Array1<F> {
+    let sign_x = x.mapv(F::sign);
+    let abs_x = x.mapv(<F as num_traits::Float>::abs);
+    let red_x = abs_x - lambda;
+    let clipped = red_x.mapv(|x| if x < F::zero() { F::zero() } else { x });
+    sign_x * clipped
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx::assert_abs_diff_eq;
     use ndarray::array;
 
     #[test]
@@ -194,5 +254,14 @@ mod tests {
         target_mat[[1, 1]] += l;
         let dummy_beta = array![0., 0.];
         assert_eq!(ridge.irls_mat(mat, &dummy_beta), target_mat);
+    }
+
+    #[test]
+    fn soft_thresh_correct() {
+        let x = array![0.25, -0.1, -0.4, 0.3, 0.5, -0.5];
+        let lambda = array![-0., 0.0, 0.1, 0.1, 1.0, 1.0];
+        let target = array![0.25, -0.1, -0.3, 0.2, 0., 0.];
+        let output = soft_thresh(x, lambda);
+        assert_abs_diff_eq!(target, output);
     }
 }
