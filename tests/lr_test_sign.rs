@@ -18,6 +18,8 @@ fn lr_test_sign0() -> Result<()> {
     Ok(())
 }
 
+// This test seems to have a first step that has a big jump but lands at exactly the same
+// likelihood, so it's useful for testing the step halving and termination logic.
 #[test]
 fn lr_test_sign1() -> Result<()> {
     let (y, x, off) = y_x_off_from_csv::<bool, f32>("tests/data/lr_test_sign1.csv")?;
