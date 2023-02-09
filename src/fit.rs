@@ -208,20 +208,14 @@ where
             options,
             reg,
             n_iter,
-            last_like: model_like,
+            last_like_data: data_like,
             ..
         } = irls;
-        if !model_like.is_nan()
-            && model_like != M::log_like(data, &result) + reg.likelihood(&result)
-        {
-            eprintln!("Model likelihood does not match result! There is an error in the GLM fitting code.");
-            dbg!(&result);
-            dbg!(model_like);
-            dbg!(n_iter);
-        }
+        assert_eq!(data_like, M::log_like(data, &result), "Unregularized likelihoods should match exactly.");
         // Cache some of these variables that will be used often.
         let n_par = result.len();
         let n_data = data.y.len();
+        let model_like = data_like + reg.likelihood(&result);
         Self {
             model: PhantomData,
             data,

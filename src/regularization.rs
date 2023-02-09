@@ -184,6 +184,7 @@ impl<F: Float> IrlsReg<F> for Lasso<F> {
         self.update_rho();
 
         let old_dual = self.dual.clone();
+
         self.dual = soft_thresh(beta + &self.cum_res, &self.l1_vec / self.rho);
         // the primal residuals
         let r: Array1<F> = beta - &self.dual;
@@ -227,8 +228,120 @@ impl<F: Float> IrlsReg<F> for Lasso<F> {
     }
 }
 
-// TODO: Elastic Net (L1 + L2)
-// pub struct ElasticNet {}
+/// Penalizes the likelihood with both an L1-norm and L2-norm.
+pub struct ElasticNet<F: Float> {
+    /// The L1 parameters for each element
+    l1_vec: Array1<F>,
+    /// The L2 parameters for each element
+    l2_vec: Array1<F>,
+    /// The dual solution
+    dual: Array1<F>,
+    /// The cumulative sum of residuals for each element
+    cum_res: Array1<F>,
+    /// ADMM penalty parameter
+    rho: F,
+    /// L2-Norm of primal residuals |r|^2
+    r_sq: F,
+    /// L2-Norm of dual residuals |s|^2
+    s_sq: F,
+}
+
+impl<F: Float> ElasticNet<F> {
+    /// Create the regularization from the diagonal, outsourcing the question of whether to include
+    /// the first term (commonly the intercept, which is left out) in the diagonal.
+    pub fn from_diag(l1: Array1<F>, l2: Array1<F>) -> Self {
+        let n: usize = l1.len();
+        let gamma = Array1::zeros(n);
+        let u = Array1::zeros(n);
+        Self {
+            l1_vec: l1,
+            l2_vec: l2,
+            dual: gamma,
+            cum_res: u,
+            rho: F::one(),
+            r_sq: F::infinity(), // or should it be NaN?
+            s_sq: F::infinity(),
+        }
+    }
+
+    fn update_rho(&mut self) {
+        // Can these be declared const?
+        let mu: F = F::from(8.).unwrap();
+        let tau: F = F::from(2.).unwrap();
+        if self.r_sq > mu * mu * self.s_sq {
+            self.rho *= tau;
+            self.cum_res /= tau;
+        }
+        if self.r_sq * mu * mu < self.s_sq {
+            self.rho /= tau;
+            self.cum_res *= tau;
+        }
+    }
+}
+
+impl<F: Float> IrlsReg<F> for ElasticNet<F> {
+    fn likelihood(&self, beta: &Array1<F>) -> F {
+        -(&self.l1_vec * beta.mapv(num_traits::Float::abs)).sum()
+            -F::from(0.5).unwrap() * (&self.l2_vec * &beta.mapv(|b| b * b)).sum()
+    }
+
+    // This is used in the fit's score function, for instance. Thus it includes the regularization
+    // terms and not the augmented term.
+    fn gradient(&self, jac: Array1<F>, regressors: &Array1<F>) -> Array1<F> {
+        jac - &self.l1_vec * &regressors.mapv(F::sign) - &self.l2_vec * regressors
+    }
+
+    /// Update the dual solution and the cumulative residuals.
+    fn prepare(&mut self, beta: &Array1<F>) {
+        // Apply adaptive penalty term updating
+        self.update_rho();
+
+        let old_dual = self.dual.clone();
+       
+        self.dual = soft_thresh(beta + &self.cum_res, &self.l1_vec / self.rho);
+        // the primal residuals
+        let r: Array1<F> = beta - &self.dual;
+        // the dual residuals
+        let s: Array1<F> = (&self.dual - old_dual) * self.rho;
+        self.cum_res += &r;
+
+        self.r_sq = r.mapv(|r| r * r).sum();
+        self.s_sq = s.mapv(|s| s * s).sum();
+    }
+
+    fn irls_like(&self, regressors: &Array1<F>) -> F {
+        -F::from(0.5).unwrap()
+            * self.rho
+            * (regressors - &self.dual + &self.cum_res)
+                .mapv(|x| x * x)
+                .sum()
+            -F::from(0.5).unwrap() * (&self.l2_vec * &regressors.mapv(|b| b * b)).sum()
+    }
+
+    /// The beta term from the gradient is cancelled by the corresponding term from the Hessian.
+    /// The dual and residual terms remain.
+    fn irls_vec(&self, vec: Array1<F>, _regressors: &Array1<F>) -> Array1<F> {
+        let d: Array1<F> = &self.dual - &self.cum_res;
+        vec + d * self.rho
+    }
+
+    /// Add the constant rho to all elements of the diagonal of the Hessian.
+    fn irls_mat(&self, mut mat: Array2<F>, _: &Array1<F>) -> Array2<F> {
+        let mut mat_diag: ArrayViewMut1<F> = mat.diag_mut();
+        mat_diag += &self.l2_vec;
+        mat_diag += self.rho;
+        mat
+    }
+
+    fn terminate_ok(&self, tol: F) -> bool {
+        // Expressed like this, it should perhaps instead be an epsilon^2.
+        let n: usize = self.dual.len();
+        let n_sq = F::from((n as f64).sqrt()).unwrap();
+        let r_pass = self.r_sq < n_sq * tol;
+        let s_pass = self.s_sq < n_sq * tol;
+        r_pass && s_pass
+    }
+}
 
 /// The soft thresholding operator
 fn soft_thresh<F: Float>(x: Array1<F>, lambda: Array1<F>) -> Array1<F> {

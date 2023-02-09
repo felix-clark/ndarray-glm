@@ -49,22 +49,17 @@ fn lasso_underconstrained() -> Result<()> {
 }
 
 #[test]
-fn lasso_seperable() -> Result<()> {
+fn elnet_seperable() -> Result<()> {
     let (y_labels, x_data) = y_x_from_iris()?;
     let x_data = standardize(x_data);
-    // let y_data: Array1<bool> = y_labels.mapv(|i| i == 0);
-    // versicolor
-    let y_data: Array1<bool> = y_labels.mapv(|i| i == 1);
-    let target: Array1<f32> = array_from_csv("tests/R/log_regularization/iris_setosa_l1_1e-2.csv")?;
+    // setosa
+    let y_data: Array1<bool> = y_labels.mapv(|i| i == 0);
+    let target: Array1<f32> = array_from_csv("tests/R/log_regularization/iris_setosa_l1_l2_1e-2.csv")?;
     dbg!(&target);
     let model = ModelBuilder::<Logistic>::data(&y_data, &x_data).build()?;
-    // TODO: increasing the lambda seems to cause slow or failed convergence.
-    // In particular, it finishes but fails to converge to the better value at lambda = 0.1
-    // let fit = model.fit_options().l1_reg(0.1).max_iter(100).fit()?;
-    let fit = model.fit_options().l1_reg(1e-2).fit()?;
+    let fit = model.fit_options().l1_reg(1e-2).l2_reg(1e-2).fit()?;
     dbg!(&fit.result);
     // If this is negative then our alg hasn't converged to a good minimum
-    dbg!(fit.lr_test_against(&target));
     assert!(fit.lr_test_against(&target) >= 0., "If it's not an exact match to the target, it should be a better result under our likelihood.");
     assert_abs_diff_eq!(&target, &fit.result, epsilon = 0.01);
     Ok(())
@@ -75,17 +70,33 @@ fn ridge_seperable() -> Result<()> {
     let (y_labels, x_data) = y_x_from_iris()?;
     // let x_data = standardize(x_data);
     let y_data: Array1<bool> = y_labels.mapv(|i| i == 0);
-    // versicolor
-    // let y_data: Array1<bool> = y_labels.mapv(|i| i == 1);
     let target: Array1<f32> = array_from_csv("tests/R/log_regularization/iris_setosa_l2_1e-2.csv")?;
     let model = ModelBuilder::<Logistic>::data(&y_data, &x_data).build()?;
     // Temporarily try L2 for testing
     let fit = model.fit_options().l2_reg(1e-2).fit()?;
     // This still appears to be positive so our result is better
-    dbg!(fit.lr_test_against(&target));
     // Ensure that our result is better, even if the parameters aren't epsilon-equivalent.
     assert!(fit.lr_test_against(&target) > -f32::EPSILON);
     // their result seems less precise, even when reducing the threshold.
     assert_abs_diff_eq!(&target, &fit.result, epsilon = 2e-3);
+    Ok(())
+}
+
+#[test]
+fn lasso_versicolor() -> Result<()> {
+    let (y_labels, x_data) = y_x_from_iris()?;
+    let x_data = standardize(x_data);
+    // NOTE: It matches for versicolor, but not setosa (which is fully seperable).
+    // versicolor
+    let y_data: Array1<bool> = y_labels.mapv(|i| i == 1);
+    let target: Array1<f32> = array_from_csv("tests/R/log_regularization/iris_versicolor_l1_1e-2.csv")?;
+    let model = ModelBuilder::<Logistic>::data(&y_data, &x_data).build()?;
+    // TODO: test more harshly by increasing lambda. It passes at l1 = 1 at time of writing but
+    // taks longer.
+    let fit = model.fit_options().l1_reg(1e-2).fit()?;
+    // If this is negative then our alg hasn't converged to a good minimum
+    assert!(fit.lr_test_against(&target) >= 0., "If it's not an exact match to the target, it should be a better result under our likelihood.");
+    // The epsilon tolerance doesn't need to be very low if we've found a better minimum
+    assert_abs_diff_eq!(&target, &fit.result, epsilon = 0.01);
     Ok(())
 }

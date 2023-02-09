@@ -27,6 +27,12 @@ where
         self
     }
 
+    /// Set the tolerance of iteration
+    pub fn tol(mut self, tol: F) -> Self {
+        self.options.tol = tol;
+        self
+    }
+
     /// Use to set a L2 regularization parameter
     pub fn l2_reg(mut self, l2: F) -> Self {
         self.options.l2 = l2;

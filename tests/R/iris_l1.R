@@ -16,8 +16,6 @@ x_data <- scale(x_data)
 # y_data <- data["class"] == "setosa"
 y_data <- data["class"] == "versicolor"
 l1 <- 1e-2 / length(y_data)
-# NOTE: We had trouble with convergence for larger lambda
-# l1 <- 0.1 / length(y_data)
 model <- glmnet(
   x_data, y_data,
   # Standardization is recommended particularly for L1, although the result is
@@ -34,4 +32,4 @@ model <- glmnet(
 beta <- coef(model)
 print(beta)
 beta <- beta[, "s0"]
-write(beta, file = "log_regularization/iris_setosa_l1_1e-2.csv", sep = "\n")
+write(beta, file = "log_regularization/iris_versicolor_l1_1e-2.csv", sep = "\n")
