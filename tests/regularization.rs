@@ -38,9 +38,11 @@ fn same_lin_intercept() -> Result<()> {
 fn lasso_underconstrained() -> Result<()> {
     let y_data: Array1<bool> = array![true, false, true];
     let x_data: Array2<f64> = array![[0.1, 1.5, 8.0], [-0.1, 1.0, -12.0], [0.2, 0.5, 9.5]];
+    // Either standardization or 32-bit floats is needed to converge.
+    let x_data = standardize(x_data);
     let model = ModelBuilder::<Logistic>::data(&y_data, &x_data).build()?;
-    // The smoothing parameter needs to be relatively large in order to work
-    let fit = model.fit_options().l1_reg(1.0).fit()?;
+    // The smoothing parameter needs to be relatively large in order to test
+    let fit = model.fit_options().max_iter(64).l1_reg(1.0).fit()?;
     dbg!(fit.result);
     let like = fit.model_like;
     // make sure the likelihood isn't NaN

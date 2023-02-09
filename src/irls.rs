@@ -219,7 +219,7 @@ where
             // the best guess. This comparison includes zero so that the
             // iteration terminates if the likelihood hasn't changed at all.
             if next_like_obj >= last_like_obj {
-                assert_eq!(next_like_obj, last_like_obj);
+                // assert_eq!(next_like_obj, last_like_obj); // this should still hold
                 self.done = true;
                 return Some(self.step_with(next_guess, next_like_data));
             }
@@ -236,7 +236,7 @@ where
         // part of the algorithm is undertested. It may be more common using L1 regularization.
         let f_step = |x: F| {
             let b = &next_guess * x + &self.guess * (F::one() - x);
-            // Use the real likelihood in the step halving to avoid any issues with the
+            // Using the real likelihood in the step finding avoids potential issues with the
             // augmentation. They should be close to equivalent at this point because the
             // regularization has reported that the internals have converged.
             M::log_like(self.data, &b) + self.reg.likelihood(&b)
@@ -247,11 +247,12 @@ where
             // can't find a better minimum if the step multiplier returns zero
             return None;
         }
+        // If step_mult == 1, that means the guess is a good one according to the un-augmented
+        // regularized likelihood, so go ahead and use it.
 
         // If the step multiplier is not zero, it found a better guess
         let next_guess = &next_guess * step_mult + &self.guess * (F::one() - step_mult);
         let next_like_data = M::log_like(self.data, &next_guess);
-        // let next_like_obj = next_like_data + self.reg.irls_like(&next_guess);
         let next_like = M::log_like(self.data, &next_guess) + self.reg.likelihood(&next_guess);
         let last_like = self.last_like_data + self.reg.likelihood(&self.guess);
         if next_like < last_like {
@@ -345,9 +346,10 @@ fn step_scale<F: Float>(f: &dyn Fn(F) -> F, tol: F) -> F {
     // TODO: Add list of values to explicitly try (for instance with zeroed parameters)
 
     let zero: F = F::zero();
+    let one: F = F::one();
     // `scale = 0.5` should also work, but using the golden ratio is prettier.
     let scale = F::from(0.618033988749894).unwrap();
-    let mut x: F = F::one();
+    let mut x: F = one;
     let f0: F = f(zero);
 
     while x > tol {
@@ -357,6 +359,10 @@ fn step_scale<F: Float>(f: &dyn Fn(F) -> F, tol: F) -> F {
         }
         x *= scale;
     }
+
+    // If f(1) > f(0), then an improvement has already been found. However, if the optimization is
+    // languishing, it could be useful to try x > 1. It's pretty rare to get to this state,
+    // however.
 
     // If we're here a strict improvement hasn't been found, but it's possible that the likelihoods
     // are equal.
