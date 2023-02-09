@@ -53,8 +53,6 @@ where
     pub l1: F,
     /// An initial guess. A sensible default is selected if this is not provided.
     pub init_guess: Option<Array1<F>>,
-    /// The maximum number of step halves to try
-    pub max_step_halves: usize,
 }
 
 impl<F> Default for FitOptions<F>
@@ -63,14 +61,13 @@ where
 {
     fn default() -> Self {
         Self {
-            max_iter: 50,
+            max_iter: 32,
             // This tolerance is rather small, but it is used in the context of a
             // fraction of the total likelihood.
             tol: F::epsilon(),
             l2: F::zero(),
             l1: F::zero(),
             init_guess: None,
-            max_step_halves: 8,
         }
     }
 }
