@@ -75,20 +75,38 @@ for examples.
 - [X] Linear offsets
 - [X] Generic over floating point type
 - [X] Non-float domain types
-- [ ] Regularization
+- [X] Regularization
   - [X] L2 (ridge)
   - [X] L1 (lasso)
-  - [ ] Elastic Net
+  - [X] Elastic Net
 - [ ] Other exponential family distributions
   - [X] Poisson
   - [X] Binomial
   - [ ] Exponential
   - [ ] Gamma
   - [ ] Inverse Gaussian
-- [X] Utility function for data standardization/normalization
-- [ ] Weighted and correlated regressions
+- [X] Data standardization/normalization
+  - [X] External utility function
+  - [ ] Automatic internal transformation
+- [ ] Weighted (and correlated?) regressions
 - [X] Non-canonical link functions
 - [X] Goodness-of-fit tests
+
+## Troubleshooting
+
+Lasso/L1 regularization can converge slowly in some cases, particularly when
+the data is poorly-behaved, seperable, etc.
+
+The following tips are recommended things to try if facing convergence issues
+generally, but are more likely to be necessary in a L1 regularization problem.
+
+* Standardize the feature data
+* Use f32 instead of f64
+* Increase the tolerance and/or the maximum number of iterations
+* Include a small L2 regularization as well.
+
+If you encounter problems that persist even after these techniques are applied,
+please file an issue so the algorithm can be improved.
 
 ## References
 
