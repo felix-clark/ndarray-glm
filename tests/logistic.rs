@@ -24,18 +24,22 @@ fn log_termination_0() -> Result<()> {
     // Check consistency with R results
     let r_result = array_from_csv::<f32>("tests/R/log_termination_0/coefficients.csv")?;
     assert_abs_diff_eq!(&fit.result, &r_result, epsilon=1e-5);
+    assert!(fit.lr_test_against(&r_result) >= 0., "make sure this is better than R's");
     let r_dev_resid = array_from_csv::<f32>("tests/R/log_termination_0/dev_resid.csv")?;
     assert_abs_diff_eq!(fit.resid_dev(), r_dev_resid, epsilon=1e-5);
     let r_flat_cov = array_from_csv::<f32>("tests/R/log_termination_0/covariance.csv")?;
     let r_cov = Array::from_shape_vec((n_par, n_par), r_flat_cov.into_raw_vec())?;
     assert_abs_diff_eq!(*fit.covariance()?, r_cov, epsilon=1e-5);
 
+    // We've already asserted that our fit is better according to our likelihood function, so the
+    // epsilon doesn't have to be extremely strict.
+    let eps = 5e-5;
     let r_dev = array_from_csv::<f32>("tests/R/log_termination_0/deviance.csv")?[0];
-    assert_abs_diff_eq!(fit.deviance(), r_dev, epsilon=1e-5);
+    assert_abs_diff_eq!(fit.deviance(), r_dev, epsilon=eps);
     let r_aic = array_from_csv::<f32>("tests/R/log_termination_0/aic.csv")?[0];
-    assert_abs_diff_eq!(fit.aic(), r_aic, epsilon=1e-5);
+    assert_abs_diff_eq!(fit.aic(), r_aic, epsilon=eps);
     let r_bic = array_from_csv::<f32>("tests/R/log_termination_0/bic.csv")?[0];
-    assert_abs_diff_eq!(fit.bic(), r_bic, epsilon=1e-5);
+    assert_abs_diff_eq!(fit.bic(), r_bic, epsilon=eps);
     let r_stand_resid_pear = array_from_csv::<f32>("tests/R/log_termination_0/standard_pearson_resid.csv")?;
     let r_stand_resid_dev = array_from_csv::<f32>("tests/R/log_termination_0/standard_deviance_resid.csv")?;
     assert_abs_diff_eq!(fit.resid_pear_std()?, r_stand_resid_pear, epsilon=0.02);
@@ -44,7 +48,7 @@ fn log_termination_0() -> Result<()> {
     assert_abs_diff_eq!(fit.resid_student()?, r_stud_resid, epsilon=0.05);
 
     let r_null_dev = array_from_csv::<f32>("tests/R/log_termination_0/null_dev.csv")?[0];
-    assert_abs_diff_eq!(fit.lr_test(), r_null_dev - r_dev);
+    assert_abs_diff_eq!(fit.lr_test(), r_null_dev - r_dev, epsilon=eps);
 
 
     // dbg!(fit.score_test()?);
