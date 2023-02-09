@@ -10,9 +10,10 @@ addons:
 jobs:
   allow_failures:
     - rust: nightly
-  include:
-    # add a job to test the nightly features on the nightly build
-    - rust: nightly
-      script:
-        - cargo +nightly build --verbose --features nightly
-        - cargo +nightly test --verbose --features nightly
+  # The nightly features have been stabilized, so there's no longer need for
+  # additional tasks here.
+  # include:
+  #   - rust: nightly
+  #     script:
+  #       - cargo +nightly build --verbose --features nightly
+  #       - cargo +nightly test --verbose --features nightly

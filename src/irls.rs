@@ -1,11 +1,13 @@
 //! Iteratively re-weighed least squares algorithm
 use crate::glm::Glm;
 use crate::link::Transform;
-use crate::model::Dataset;
+use crate::model::{Dataset, Model};
+use crate::regularization::{ElasticNet, Lasso, Null, Ridge};
 use crate::{
     error::{RegressionError, RegressionResult},
     fit::options::FitOptions,
     num::Float,
+    regularization::IrlsReg,
 };
 use ndarray::{Array1, Array2};
 use ndarray_linalg::SolveH;
@@ -13,7 +15,7 @@ use std::marker::PhantomData;
 
 /// Iterate over updates via iteratively re-weighted least-squares until
 /// reaching a specified tolerance.
-pub struct Irls<'a, M, F>
+pub(crate) struct Irls<'a, M, F>
 where
     M: Glm,
     F: Float,
@@ -22,13 +24,18 @@ where
     model: PhantomData<M>,
     data: &'a Dataset<F>,
     /// The current parameter guess.
-    guess: Array1<F>,
+    pub(crate) guess: Array1<F>,
     /// The options for the fit
-    options: &'a FitOptions<F>,
+    pub(crate) options: FitOptions<F>,
+    /// The regularizer object, which may be stateful
+    pub(crate) reg: Box<dyn IrlsReg<F>>,
     /// The number of iterations taken so far
     pub n_iter: usize,
-    /// The likelihood for the previous iteration
-    last_like: F,
+    /// The data likelihood for the previous iteration, unregularized and unaugmented.
+    /// This is cached separately from the guess because it demands expensive matrix
+    /// multiplications. The augmented and/or regularized terms are relatively cheap, so they
+    /// aren't stored.
+    pub(crate) last_like_data: F,
     /// Sometimes the next guess is better than the previous but within
     /// tolerance, so we want to return the current guess but exit immediately
     /// in the next iteration.
@@ -41,47 +48,43 @@ where
     F: Float,
     Array2<F>: SolveH<F>,
 {
-    pub fn new(
-        data: &'a Dataset<F>,
-        initial: Array1<F>,
-        options: &'a FitOptions<F>,
-        initial_like: F,
-    ) -> Self {
+    pub fn new(model: &'a Model<M, F>, initial: Array1<F>, options: FitOptions<F>) -> Self {
+        let data = &model.data;
+        let reg = get_reg(&options, data.x.ncols(), model.use_intercept);
+        let initial_like_data: F = M::log_like(data, &initial);
         Self {
             model: PhantomData,
             data,
             guess: initial,
             options,
+            reg,
             n_iter: 0,
-            last_like: initial_like,
+            last_like_data: initial_like_data,
             done: false,
         }
     }
 
     /// A helper function to step to a new guess, while incrementing the number
     /// of iterations and checking that it is not over the maximum.
-    fn step_with(
-        &mut self,
-        next_guess: Array1<F>,
-        next_like: F,
-        extra_iter: usize,
-    ) -> <Self as Iterator>::Item {
-        let n_steps: usize = 1 + extra_iter;
+    fn step_with(&mut self, next_guess: Array1<F>, next_like_data: F) -> <Self as Iterator>::Item {
         self.guess.assign(&next_guess);
-        self.last_like = next_like;
-        self.n_iter += n_steps;
+        self.last_like_data = next_like_data;
+        let model_like = next_like_data + self.reg.likelihood(&next_guess);
+        self.n_iter += 1;
         if self.n_iter > self.options.max_iter {
+            // NOTE: This could also return the best guess so far. Including the data in the error
+            // type would necessitate either a conversion to f32 or a parameterization.
             return Err(RegressionError::MaxIter(self.options.max_iter));
         }
         Ok(IrlsStep {
             guess: next_guess,
-            like: next_like,
-            steps: n_steps,
+            like: model_like,
         })
     }
 
     /// Returns the (LHS, RHS) of the IRLS update matrix equation. This is a bit
     /// faster than computing the Fisher matrix and the Jacobian separately.
+    /// The returned matrix and vector are not regularized.
     // TODO: re-factor to have the distributions compute the fisher information,
     // as that is useful in the score test as well.
     fn irls_mat_vec(&self) -> (Array2<F>, Array1<F>) {
@@ -136,10 +139,7 @@ where
             let target: Array1<F> = self.data.x.t().dot(&target);
             target
         };
-        // Regularize the matrix and vector terms
-        let lhs: Array2<F> = (*self.options.reg).irls_mat(neg_hessian, &self.guess);
-        let rhs: Array1<F> = (*self.options.reg).irls_vec(rhs, &self.guess);
-        (lhs, rhs)
+        (neg_hessian, rhs)
     }
 }
 
@@ -148,11 +148,10 @@ where
 pub struct IrlsStep<F> {
     /// The current parameter guess.
     pub guess: Array1<F>,
-    /// The log-likelihood of the current guess.
+    /// The regularized log-likelihood of the current guess.
     pub like: F,
-    /// The number of steps taken this iteration. Often equal to 1, but step
-    /// halving increases it.
-    pub steps: usize,
+    // TODO: Consider tracking data likelihood, regularized likelihood, and augmented likelihood
+    // separately.
 }
 
 impl<'a, M, F> Iterator for Irls<'a, M, F>
@@ -172,34 +171,44 @@ where
         }
 
         let (irls_mat, irls_vec) = self.irls_mat_vec();
-        let mut next_guess: Array1<F> = match irls_mat.solveh_into(irls_vec) {
+        let next_guess: Array1<F> = match self.reg.next_guess(&self.guess, irls_vec, irls_mat) {
             Ok(solution) => solution,
-            Err(err) => return Some(Err(err.into())),
+            Err(err) => return Some(Err(err)),
         };
+
+        // This is the raw, unregularized and unaugmented
+        let next_like_data = M::log_like(self.data, &next_guess);
+
+        // The augmented likelihood to maximize may not be the same as the regularized model
+        // likelihood.
+        // NOTE: This must be computed after self.reg.next_guess() is called, because that step can
+        // change the penalty parameter in ADMM. last_like_obj does not represent the previous
+        // objective; it represents the current version of the objective function using the
+        // previous guess. These may be different because the augmentation parameter and dual
+        // variables for the regularization can change.
+        let last_like_obj = self.last_like_data + self.reg.irls_like(&self.guess);
+        let next_like_obj = next_like_data + self.reg.irls_like(&next_guess);
 
         // NOTE: might be optimizable by not checking the likelihood until step
         // = next_guess - &self.guess stops decreasing. There could be edge
         // cases that lead to poor convergence.
         // Ideally we could only check the step difference but that might not be
         // as stable. Some parameters might be at different scales.
-        let mut next_like = M::log_like_reg(self.data, &next_guess, self.options.reg.as_ref());
-        // This should be positive for an improved guess
-        let mut rel =
-            (next_like - self.last_like) / (F::epsilon() + num_traits::Float::abs(next_like));
+
         // If this guess is a strict improvement, return it immediately.
-        if rel > F::zero() {
-            return Some(self.step_with(next_guess, next_like, 0));
+        if next_like_obj > last_like_obj {
+            return Some(self.step_with(next_guess, next_like_data));
         }
 
         // Indicates if the likelihood change is small, within tolerance, even if it is not
         // positive.
-        let small_delta_like = num_traits::Float::abs(rel) <= self.options.tol;
+        let small_delta_like = small_delta(next_like_obj, last_like_obj, self.options.tol);
 
         // If the parameters have changed significantly but the likelihood hasn't improved,
         // step halving needs to be engaged. The parameter delta should probably ideally be
         // tested using the spread of the covariate data, but in principle the data can be
         // standardized so this will just compare to the raw tolerance.
-        let small_delta_guess = small_delta(&next_guess, &self.guess, self.options.tol);
+        let small_delta_guess = small_delta_vec(&next_guess, &self.guess, self.options.tol);
 
         // Terminate if the difference is close to zero and the parameters haven't changed
         // significantly.
@@ -209,72 +218,158 @@ where
             // necessary in order to return a value when the iteration starts at
             // the best guess. This comparison includes zero so that the
             // iteration terminates if the likelihood hasn't changed at all.
-            if rel >= F::zero() {
-                // If here, rel == 0.
+            if next_like_obj >= last_like_obj {
+                // assert_eq!(next_like_obj, last_like_obj); // this should still hold
                 self.done = true;
-                return Some(self.step_with(next_guess, next_like, 0));
+                return Some(self.step_with(next_guess, next_like_data));
             }
             return None;
         }
 
-        // apply step halving if rel < 0, which means the likelihood has decreased.
-        // Don't terminate if rel gets back to within tolerance as a result of this.
-        // NOTE: It's difficult to engage the step halving because it's rarely necessary, so this
-        // part of the algorithm is undertested.
-        let mut step_halves = 0;
-        let half: F = F::from(0.5).unwrap();
-        let mut step_multiplier = half;
-        loop {
-            let last_guess_sh = next_guess.clone();
-            // The next guess for the step-halving, done relative to the initial guess
-            let next_guess_sh = next_guess.map(|&x| x * (step_multiplier))
-                + &self.guess.map(|&x| x * (F::one() - step_multiplier));
-            let next_like_sh =
-                M::log_like_reg(self.data, &next_guess_sh, self.options.reg.as_ref());
-            let next_rel = (next_like_sh - self.last_like)
-                / (F::epsilon() + num_traits::Float::abs(next_like_sh));
-            if next_rel >= rel {
-                next_guess.assign(&next_guess_sh);
-                next_like = next_like_sh;
-                rel = next_rel;
-                step_multiplier = half;
-            } else {
-                step_multiplier *= half;
-            }
-            step_halves += 1;
-            if step_halves >= self.options.max_step_halves {
-                break;
-            }
-            if rel > F::zero() {
-                break;
-            }
-            let small_delta_guess = small_delta(&next_guess, &last_guess_sh, self.options.tol);
-            if rel > -self.options.tol && small_delta_guess {
-                break;
-            }
+        // Don't go through step halving if the regularization isn't convergent
+        if !self.reg.terminate_ok(self.options.tol) {
+            return Some(self.step_with(next_guess, next_like_data));
         }
 
-        if rel > F::zero() {
-            Some(self.step_with(next_guess, next_like, step_halves))
-        } else {
-            // We can end up here if the step direction is a poor one.
-            // This signals the end of iteration, but more checks could be done
-            // to see how valid the result is.
-            None
+        // apply step halving if the new likelihood is the same or worse as the previous guess.
+        // NOTE: It's difficult to engage the step halving because it's rarely necessary, so this
+        // part of the algorithm is undertested. It may be more common using L1 regularization.
+        let f_step = |x: F| {
+            let b = &next_guess * x + &self.guess * (F::one() - x);
+            // Using the real likelihood in the step finding avoids potential issues with the
+            // augmentation. They should be close to equivalent at this point because the
+            // regularization has reported that the internals have converged.
+            M::log_like(self.data, &b) + self.reg.likelihood(&b)
+        };
+        let beta_tol_factor = num_traits::Float::sqrt(self.guess.mapv(|b| F::one() + b * b).sum());
+        let step_mult: F = step_scale(&f_step, beta_tol_factor * self.options.tol);
+        if step_mult.is_zero() {
+            // can't find a better minimum if the step multiplier returns zero
+            return None;
         }
+        // If step_mult == 1, that means the guess is a good one according to the un-augmented
+        // regularized likelihood, so go ahead and use it.
+
+        // If the step multiplier is not zero, it found a better guess
+        let next_guess = &next_guess * step_mult + &self.guess * (F::one() - step_mult);
+        let next_like_data = M::log_like(self.data, &next_guess);
+        let next_like = M::log_like(self.data, &next_guess) + self.reg.likelihood(&next_guess);
+        let last_like = self.last_like_data + self.reg.likelihood(&self.guess);
+        if next_like < last_like {
+            return None;
+        }
+
+        let small_delta_like = small_delta(next_like, last_like, self.options.tol);
+        let small_delta_guess = small_delta_vec(&next_guess, &self.guess, self.options.tol);
+        if small_delta_like && small_delta_guess {
+            self.done = true;
+        }
+
+        Some(self.step_with(next_guess, next_like_data))
     }
 }
 
-fn small_delta<F>(new: &Array1<F>, old: &Array1<F>, tol: F) -> bool
+fn small_delta<F>(new: F, old: F, tol: F) -> bool
 where
     F: Float,
 {
+    let rel = (new - old) / (F::epsilon() + num_traits::Float::abs(new));
+    num_traits::Float::abs(rel) <= tol
+}
+
+fn small_delta_vec<F>(new: &Array1<F>, old: &Array1<F>, tol: F) -> bool
+where
+    F: Float,
+{
+    // this method interpolates between relative and absolute differences
     let delta = new - old;
-    // this interpolates between relative and absolute differences
-    let denom = new.mapv(|f| F::one() + num_traits::Float::abs(f));
-    let abs_diff = delta.mapv(num_traits::Float::abs) / denom;
-    let n = F::from(abs_diff.len()).unwrap();
+    let n = F::from(delta.len()).unwrap();
+
+    let new2: F = new.mapv(|d| d * d).sum();
+    let delta2: F = delta.mapv(|d| d * d).sum();
+
     // use sum of absolute values to indicate magnitude of beta
     // sum of squares might be better
-    abs_diff.into_iter().sum::<F>() <= n * tol * tol
+    delta2 <= (n + new2) * tol * tol
+}
+
+/// Zero the first element of the array `l` if `use_intercept == true`
+fn zero_first_maybe<F>(mut l: Array1<F>, use_intercept: bool) -> Array1<F>
+where
+    F: Float,
+{
+    // if an intercept term is included it should not be subject to
+    // regularization.
+    if use_intercept {
+        l[0] = F::zero();
+    }
+    l
+}
+
+/// Generate a regularizer from the set of options
+fn get_reg<F: Float>(
+    options: &FitOptions<F>,
+    n: usize,
+    use_intercept: bool,
+) -> Box<dyn IrlsReg<F>> {
+    if options.l1 < F::zero() || options.l2 < F::zero() {
+        eprintln!("WARNING: regularization parameters should not be negative.");
+    }
+    let use_l1 = options.l1 > F::zero();
+    let use_l2 = options.l2 > F::zero();
+
+    if use_l1 && use_l2 {
+        let l1_diag: Array1<F> = Array1::<F>::from_elem(n, options.l1);
+        let l1_diag: Array1<F> = zero_first_maybe(l1_diag, use_intercept);
+        let l2_diag: Array1<F> = Array1::<F>::from_elem(n, options.l2);
+        let l2_diag: Array1<F> = zero_first_maybe(l2_diag, use_intercept);
+        Box::new(ElasticNet::from_diag(l1_diag, l2_diag))
+    } else if use_l2 {
+        let l2_diag: Array1<F> = Array1::<F>::from_elem(n, options.l2);
+        let l2_diag: Array1<F> = zero_first_maybe(l2_diag, use_intercept);
+        Box::new(Ridge::from_diag(l2_diag))
+    } else if use_l1 {
+        let l1_diag: Array1<F> = Array1::<F>::from_elem(n, options.l1);
+        let l1_diag: Array1<F> = zero_first_maybe(l1_diag, use_intercept);
+        Box::new(Lasso::from_diag(l1_diag))
+    } else {
+        Box::new(Null {})
+    }
+}
+
+/// Find a better step scale to optimize and objective function.
+/// Looks for a new solution better than x = 1 looking first at 0 < x < 1 and returning any value
+/// found to be a strict improvement.
+/// If none are found, it will check a single negative step.
+fn step_scale<F: Float>(f: &dyn Fn(F) -> F, tol: F) -> F {
+    let tol = num_traits::Float::abs(tol);
+    // TODO: Add list of values to explicitly try (for instance with zeroed parameters)
+
+    let zero: F = F::zero();
+    let one: F = F::one();
+    // `scale = 0.5` should also work, but using the golden ratio is prettier.
+    let scale = F::from(0.618033988749894).unwrap();
+    let mut x: F = one;
+    let f0: F = f(zero);
+
+    while x > tol {
+        let fx = f(x);
+        if fx > f0 {
+            return x;
+        }
+        x *= scale;
+    }
+
+    // If f(1) > f(0), then an improvement has already been found. However, if the optimization is
+    // languishing, it could be useful to try x > 1. It's pretty rare to get to this state,
+    // however.
+
+    // If we're here a strict improvement hasn't been found, but it's possible that the likelihoods
+    // are equal.
+    // check a single step in the negative direction, in case this is an improvement.
+    if f(-scale) > f0 {
+        return -scale;
+    }
+
+    x
 }

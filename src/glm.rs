@@ -8,7 +8,6 @@ use crate::{
     irls::Irls,
     model::{Dataset, Model},
     num::Float,
-    regularization::IrlsReg,
 };
 use ndarray::{Array1, Array2};
 use ndarray_linalg::SolveH;
@@ -53,6 +52,15 @@ pub trait Glm: Sized {
     /// to each response function, but should not depend on the link function.
     fn variance<F: Float>(mean: F) -> F;
 
+    /// Returns the likelihood function summed over all observations.
+    fn log_like<F>(data: &Dataset<F>, regressors: &Array1<F>) -> F
+    where
+        F: Float,
+    {
+        // the total likelihood prior to regularization
+        Self::log_like_terms(data, regressors).sum()
+    }
+
     /// Returns the likelihood function of the response distribution as a
     /// function of the response variable y and the natural parameters of each
     /// observation. Terms that depend only on the response variable `y` are
@@ -88,21 +96,6 @@ pub trait Glm: Sized {
         ndarray::Zip::from(&data.y)
             .and(&nat_par)
             .map_collect(|&y, &eta| Self::log_like_natural(y, eta))
-    }
-
-    /// Returns the likelihood function summed over all observations including regularization
-    /// terms.
-    fn log_like_reg<F>(
-        data: &Dataset<F>,
-        regressors: &Array1<F>,
-        regularization: &dyn IrlsReg<F>,
-    ) -> F
-    where
-        F: Float,
-    {
-        // the total likelihood prior to regularization
-        let l_unreg: F = Self::log_like_terms(data, regressors).sum();
-        (*regularization).likelihood(l_unreg, regressors)
     }
 
     /// Provide an initial guess for the parameters. This can be overridden
@@ -153,33 +146,17 @@ pub trait Glm: Sized {
             .clone()
             .unwrap_or_else(|| Self::init_guess(&model.data));
 
-        // This represents the number of overall iterations
-        let mut n_iter: usize = 0;
-        // This is the number of steps tried, which includes those arising from step halving.
-        let mut n_steps: usize = 0;
-        // initialize the result and likelihood in case no steps are taken.
-        let mut result: Array1<F> = initial.clone();
-        let mut model_like: F = Self::log_like_reg(&model.data, &initial, options.reg.as_ref());
+        let mut irls: Irls<Self, F> = Irls::new(model, initial, options);
 
-        let irls: Irls<Self, F> = Irls::new(&model.data, initial, &options, model_like);
-
-        for iteration in irls {
-            let it_result = iteration?;
-            result.assign(&it_result.guess);
-            model_like = it_result.like;
-            // This number of iterations does not include any extras from step halving.
-            n_iter += 1;
-            n_steps += it_result.steps;
+        for iteration in irls.by_ref() {
+            let _it_result = iteration?;
+            // TODO: Optionally track history
         }
 
         Ok(Fit::new(
             &model.data,
             model.use_intercept,
-            result,
-            options,
-            model_like,
-            n_iter,
-            n_steps,
+            irls,
         ))
     }
 }

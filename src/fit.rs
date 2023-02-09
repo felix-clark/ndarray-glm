@@ -5,9 +5,11 @@ pub mod options;
 use crate::{
     error::RegressionResult,
     glm::{DispersionType, Glm},
+    irls::Irls,
     link::{Link, Transform},
     model::{Dataset, Model},
     num::Float,
+    regularization::IrlsReg,
     Linear,
 };
 use ndarray::{array, Array1, Array2, ArrayBase, ArrayView1, Axis, Data, Ix2};
@@ -35,10 +37,10 @@ where
     pub options: FitOptions<F>,
     /// The value of the likelihood function for the fit result.
     pub model_like: F,
+    /// The regularizer of the fit
+    reg: Box<dyn IrlsReg<F>>,
     /// The number of overall iterations taken in the IRLS.
     pub n_iter: usize,
-    /// The number of steps taken in the algorithm, which includes step halving.
-    pub n_steps: usize,
     /// The number of data points
     n_data: usize,
     /// The number of parameters
@@ -161,7 +163,7 @@ where
         // calculate the fisher matrix
         let fisher: Array2<F> = (&self.data.x.t() * &adj_var).dot(&self.data.x);
         // Regularize the fisher matrix
-        self.options.reg.as_ref().irls_mat(fisher, params)
+        self.reg.as_ref().irls_mat(fisher, params)
     }
 
     /// Perform a likelihood-ratio test, returning the statistic -2*ln(L_0/L)
@@ -187,8 +189,9 @@ where
     /// way that the regression resulting in this fit was. The degrees of
     /// freedom cannot be generally inferred.
     pub fn lr_test_against(&self, alternative: &Array1<F>) -> F {
-        let alt_like = M::log_like_reg(self.data, alternative, self.options.reg.as_ref());
-        F::from(2.).unwrap() * (self.model_like - alt_like)
+        let alt_like = M::log_like(self.data, alternative);
+        let alt_like_reg = alt_like + self.reg.likelihood(alternative);
+        F::from(2.).unwrap() * (self.model_like - alt_like_reg)
     }
 
     /// Returns the residual degrees of freedom in the model, i.e. the number
@@ -199,27 +202,20 @@ where
         self.n_data - self.n_par
     }
 
-    pub(crate) fn new(
-        data: &'a Dataset<F>,
-        use_intercept: bool,
-        result: Array1<F>,
-        options: FitOptions<F>,
-        model_like: F,
-        n_iter: usize,
-        n_steps: usize,
-    ) -> Self {
-        if !model_like.is_nan()
-            && model_like != M::log_like_reg(data, &result, options.reg.as_ref())
-        {
-            eprintln!("Model likelihood does not match result! There is an error in the GLM fitting code.");
-            dbg!(&result);
-            dbg!(model_like);
-            dbg!(n_iter);
-            dbg!(n_steps);
-        }
+    pub(crate) fn new(data: &'a Dataset<F>, use_intercept: bool, irls: Irls<M, F>) -> Self {
+        let Irls {
+            guess: result,
+            options,
+            reg,
+            n_iter,
+            last_like_data: data_like,
+            ..
+        } = irls;
+        assert_eq!(data_like, M::log_like(data, &result), "Unregularized likelihoods should match exactly.");
         // Cache some of these variables that will be used often.
         let n_par = result.len();
         let n_data = data.y.len();
+        let model_like = data_like + reg.likelihood(&result);
         Self {
             model: PhantomData,
             data,
@@ -227,8 +223,8 @@ where
             result,
             options,
             model_like,
+            reg,
             n_iter,
-            n_steps,
             n_data,
             n_par,
             cov: RefCell::new(None),
@@ -493,7 +489,7 @@ where
         let eta_d = M::Link::d_nat_param(&lin_pred);
         let resid_working = eta_d * resid_response;
         let score_unreg = self.data.x.t().dot(&resid_working);
-        self.options.reg.as_ref().gradient(score_unreg, params)
+        self.reg.as_ref().gradient(score_unreg, params)
     }
 
     /// Returns the score test statistic. This statistic is asymptotically
@@ -652,7 +648,7 @@ mod tests {
         let lr = fit.lr_test();
         // Since there is no data, the null likelihood should be identical to
         // the fit likelihood, so the likelihood ratio test should yield zero.
-        assert_abs_diff_eq!(lr, 0.);
+        assert_abs_diff_eq!(lr, 0., epsilon = 4. * f64::EPSILON);
 
         // Check that the assertions still hold if linear offsets are included.
         let lin_off: Array1<f64> = array![0.2, -0.1, 0.1, 0.0, 0.1];
