@@ -126,7 +126,7 @@ pub trait Glm: Sized {
                 .solveh_into(data.x.t().dot(&link_y))
                 .unwrap_or_else(|err| {
                     eprintln!("WARNING: failed to get initial guess for IRLS. Will begin at zero.");
-                    eprintln!("{}", err);
+                    eprintln!("{err}");
                     Array1::<F>::zeros(data.x.ncols())
                 });
         init_guess
