@@ -231,8 +231,7 @@ where
             return Some(self.step_with(next_guess, next_like_data));
         }
 
-        // apply step halving if rel < 0, which means the likelihood has decreased.
-        // Don't terminate if rel gets back to within tolerance as a result of this.
+        // apply step halving if the new likelihood is the same or worse as the previous guess.
         // NOTE: It's difficult to engage the step halving because it's rarely necessary, so this
         // part of the algorithm is undertested. It may be more common using L1 regularization.
         let f_step = |x: F| {
