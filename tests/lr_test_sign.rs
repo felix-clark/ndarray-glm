@@ -8,7 +8,7 @@ use ndarray_glm::{Logistic, ModelBuilder};
 fn lr_test_sign0() -> Result<()> {
     // TODO: this assumes the tests are run from the root directory of the
     // crate. This might not be true in general, but it often will be.
-    let (y, x, off) = y_x_off_from_csv::<bool, f32>("tests/data/lr_test_sign0.csv")?;
+    let (y, x, off) = y_x_off_from_csv::<bool, f32, 1>("tests/data/lr_test_sign0.csv")?;
     let model = ModelBuilder::<Logistic>::data(&y, &x)
         .linear_offset(off)
         .build()?;
@@ -22,7 +22,7 @@ fn lr_test_sign0() -> Result<()> {
 // likelihood, so it's useful for testing the step halving and termination logic.
 #[test]
 fn lr_test_sign1() -> Result<()> {
-    let (y, x, off) = y_x_off_from_csv::<bool, f32>("tests/data/lr_test_sign1.csv")?;
+    let (y, x, off) = y_x_off_from_csv::<bool, f32, 1>("tests/data/lr_test_sign1.csv")?;
     let model = ModelBuilder::<Logistic>::data(&y, &x)
         .linear_offset(off)
         .build()?;
