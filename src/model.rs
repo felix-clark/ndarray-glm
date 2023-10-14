@@ -147,6 +147,7 @@ impl<M: Glm> ModelBuilder<M> {
             weights: None,
             use_intercept_term: true,
             colin_tol: F::epsilon(),
+            error: None,
         }
     }
 }
@@ -176,6 +177,8 @@ where
     use_intercept_term: bool,
     /// tolerance for determinant check on rank of data matrix X.
     colin_tol: F,
+    /// An error that has come up in the build compilation.
+    error: Option<RegressionError>,
 }
 
 /// A builder to generate a Model object
@@ -188,7 +191,23 @@ where
     /// Represents an offset added to the linear predictor for each data point.
     /// This can be used to control for fixed effects or in multi-level models.
     pub fn linear_offset(mut self, linear_offset: Array1<F>) -> Self {
+        if self.linear_offset.is_some() {
+            self.error = Some(RegressionError::BuildError(
+                "Offsets specified multiple times".to_string(),
+            ));
+        }
         self.linear_offset = Some(linear_offset);
+        self
+    }
+
+    /// Weights each observation according to the given array
+    pub fn weight(mut self, weights: Array1<F>) -> Self {
+        if self.weights.is_some() {
+            self.error = Some(RegressionError::BuildError(
+                "Weights specified multiple times".to_string(),
+            ));
+        }
+        self.weights = Some(weights);
         self
     }
 
@@ -210,6 +229,10 @@ where
         M: Glm,
         F: Float,
     {
+        if let Some(err) = self.error {
+            return Err(err);
+        }
+
         let n_data = self.data_y.len();
         if n_data != self.data_x.nrows() {
             return Err(RegressionError::BadInput(
