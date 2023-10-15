@@ -88,7 +88,7 @@ for examples.
 - [X] Data standardization/normalization
   - [X] External utility function
   - [ ] Automatic internal transformation
-- [ ] Weighted (and correlated?) regressions
+- [X] Weighted regressions
 - [X] Non-canonical link functions
 - [X] Goodness-of-fit tests
 
