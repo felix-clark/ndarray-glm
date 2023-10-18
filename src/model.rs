@@ -58,14 +58,11 @@ where
     /// "influence" matrix.
     pub fn hat(&self) -> RegressionResult<Ref<Array2<F>>> {
         if self.hat.borrow().is_none() {
-            if self.weights.is_some() {
-                unimplemented!("Weights must be accounted for in the hat matrix")
-            }
-            let xt = self.x.t();
-            let xtx: Array2<F> = xt.dot(&self.x);
+            let xtw = self.x_conj();
+            let xtwx: Array2<F> = xtw.dot(&self.x);
             // NOTE: invh/invh_into() are bugged and incorrect!
-            let xtx_inv = xtx.inv_into().map_err(|_| RegressionError::ColinearData)?;
-            *self.hat.borrow_mut() = Some(self.x.dot(&xtx_inv).dot(&xt));
+            let xtwx_inv = xtwx.inv_into().map_err(|_| RegressionError::ColinearData)?;
+            *self.hat.borrow_mut() = Some(self.x.dot(&xtwx_inv).dot(&xtw));
         }
         let borrowed: Ref<Option<Array2<F>>> = self.hat.borrow();
         Ok(Ref::map(borrowed, |x| x.as_ref().unwrap()))
@@ -76,6 +73,22 @@ where
     pub fn leverage(&self) -> RegressionResult<Array1<F>> {
         let hat = self.hat()?;
         Ok(hat.diag().to_owned())
+    }
+
+    /// multiply the input vector element-wise by the weights, if they exist
+    pub(crate) fn apply_weights(&self, rhs: Array1<F>) -> Array1<F> {
+        match &self.weights {
+            None => rhs,
+            Some(w) => w * rhs,
+        }
+    }
+
+    /// Returns the weighted transpose of the feature data
+    pub(crate) fn x_conj(&self) -> Array2<F> {
+        match &self.weights {
+            None => self.x.t().to_owned(),
+            Some(w) => &self.x.t() * w,
+        }
     }
 }
 

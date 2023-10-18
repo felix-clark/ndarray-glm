@@ -117,9 +117,6 @@ where
         // the link function.
         let (errors, var_diag) =
             M::Link::adjust_errors_variance(errors, var_diag, &linear_predictor);
-        // Try adjusting only the variance as if the derivative will cancel.
-        // This might not be quite right due to the matrix multiplications.
-        // let var_diag = M::Link::d_nat_param(&linear_predictor) * var_diag;
 
         // condition after the adjustment in case the derivatives are zero. Or
         // should the Hessian itself be conditioned?
@@ -127,16 +124,14 @@ where
 
         // X weighted by the model variance for each observation
         // This is really the negative Hessian of the likelihood.
-        // When adding correlations between observations this statement will
-        // need to be modified.
-        let neg_hessian: Array2<F> = (&self.data.x.t() * &var_diag).dot(&self.data.x);
+        let neg_hessian: Array2<F> = (self.data.x_conj() * &var_diag).dot(&self.data.x);
 
         // This isn't quite the jacobian because the H*beta_old term is subtracted out.
         let rhs: Array1<F> = {
             // NOTE: This w*X should not include the linear offset, because it
             // comes from the Hessian times the last guess.
             let target: Array1<F> = (var_diag * linear_predictor_no_control) + errors;
-            let target: Array1<F> = self.data.x.t().dot(&target);
+            let target: Array1<F> = self.data.x_conj().dot(&target);
             target
         };
         (neg_hessian, rhs)

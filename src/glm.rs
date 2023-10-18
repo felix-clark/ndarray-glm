@@ -58,7 +58,9 @@ pub trait Glm: Sized {
         F: Float,
     {
         // the total likelihood prior to regularization
-        Self::log_like_terms(data, regressors).sum()
+        let terms = Self::log_like_terms(data, regressors);
+        let weighted_terms = data.apply_weights(terms);
+        weighted_terms.sum()
     }
 
     /// Returns the likelihood function of the response distribution as a
@@ -105,14 +107,13 @@ pub trait Glm: Sized {
     /// X * beta_0 ~ g(0.5*(y + y_avg))
     /// This is equivalent to minimizing half the sum of squared differences
     /// between X*beta and g(0.5*(y + y_avg)).
-    // TODO: consider incorporating weights and/or correlations.
     fn init_guess<F>(data: &Dataset<F>) -> Array1<F>
     where
         F: Float,
         Array2<F>: SolveH<F>,
     {
         let y_bar: F = data.y.mean().unwrap_or_else(F::zero);
-        let mu_y: Array1<F> = data.y.mapv(|y| F::from(0.5).unwrap() * (y + y_bar));
+        let mu_y: Array1<F> = data.y.mapv(|y| F::half() * (y + y_bar));
         let link_y = mu_y.mapv(Self::Link::func);
         // Compensate for linear offsets if they are present
         let link_y: Array1<F> = if let Some(off) = &data.linear_offset {
@@ -120,10 +121,10 @@ pub trait Glm: Sized {
         } else {
             link_y
         };
-        let x_mat: Array2<F> = data.x.t().dot(&data.x);
+        let x_mat: Array2<F> = data.x_conj().dot(&data.x);
         let init_guess: Array1<F> =
             x_mat
-                .solveh_into(data.x.t().dot(&link_y))
+                .solveh_into(data.x_conj().dot(&link_y))
                 .unwrap_or_else(|err| {
                     eprintln!("WARNING: failed to get initial guess for IRLS. Will begin at zero.");
                     eprintln!("{err}");
