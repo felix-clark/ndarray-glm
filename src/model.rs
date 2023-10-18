@@ -75,6 +75,15 @@ where
         Ok(hat.diag().to_owned())
     }
 
+    /// Returns the sum of the weights, or the number of data points if the weights are all equal
+    /// to 1 (i.e. not explicit)
+    pub fn sum_weights(&self) -> F {
+        match &self.weights {
+            None => F::from(self.y.len()).unwrap(),
+            Some(w) => w.sum(),
+        }
+    }
+
     /// multiply the input vector element-wise by the weights, if they exist
     pub(crate) fn apply_weights(&self, rhs: Array1<F>) -> Array1<F> {
         match &self.weights {

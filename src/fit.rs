@@ -82,12 +82,6 @@ where
     /// expensive matrix inversion.
     pub fn covariance(&self) -> RegressionResult<Ref<Array2<F>>> {
         if self.cov.borrow().is_none() {
-            if self.data.weights.is_some() {
-                // NOTE: Perhaps it is just the fisher matrix that must be updated.
-                unimplemented!(
-                    "The covariance calculation must take into account weights/correlations."
-                );
-            }
             let fisher_reg = self.fisher(&self.result);
             // The covariance must be multiplied by the dispersion parameter.
             // For logistic/poisson regression, this is identically 1.
@@ -161,7 +155,7 @@ where
         let eta_d = M::Link::d_nat_param(&lin_pred);
         let adj_var: Array1<F> = &eta_d * &var_diag * eta_d;
         // calculate the fisher matrix
-        let fisher: Array2<F> = (&self.data.x.t() * &adj_var).dot(&self.data.x);
+        let fisher: Array2<F> = (self.data.x_conj() * &adj_var).dot(&self.data.x);
         // Regularize the fisher matrix
         self.reg.as_ref().irls_mat(fisher, params)
     }
@@ -211,7 +205,11 @@ where
             last_like_data: data_like,
             ..
         } = irls;
-        assert_eq!(data_like, M::log_like(data, &result), "Unregularized likelihoods should match exactly.");
+        assert_eq!(
+            data_like,
+            M::log_like(data, &result),
+            "Unregularized likelihoods should match exactly."
+        );
         // Cache some of these variables that will be used often.
         let n_par = result.len();
         let n_data = data.y.len();
@@ -252,11 +250,8 @@ where
                     // calculate the null likelihood for a single point with y equal
                     // to the average.
                     // The average y
-                    let y_bar: F = self
-                        .data
-                        .y
-                        .mean()
-                        .expect("Should be able to take average of y values");
+                    let y_bar: F = self.data.apply_weights(self.data.y.clone()).sum()
+                        / self.data.sum_weights();
                     // This approach assumes that the likelihood is in the natural
                     // exponential form as calculated by Glm::log_like_natural(). If that
                     // function is overridden and the values differ significantly, this
@@ -277,7 +272,7 @@ where
                     // The null likelihood per observation
                     let null_like_one: F = M::log_like_natural(y_bar, nat_par[0]);
                     // just multiply the average likelihood by the number of data points, since every term is the same.
-                    let null_like_total = F::from(self.n_data).unwrap() * null_like_one;
+                    let null_like_total = self.data.sum_weights() * null_like_one;
                     let null_params: Array1<F> = {
                         let mut par = Array1::<F>::zeros(self.n_par);
                         par[0] = intercept;
@@ -331,10 +326,11 @@ where
                         // of the linear offset. The likelihood must still be summed
                         // over all observations, since they have different offsets.
                         let nat_par = M::Link::nat_param(off.clone());
-                        let null_like = ndarray::Zip::from(&self.data.y)
+                        let null_like_terms = ndarray::Zip::from(&self.data.y)
                             .and(&nat_par)
-                            .map_collect(|&y, &eta| M::log_like_natural(y, eta))
-                            .sum();
+                            .map_collect(|&y, &eta| M::log_like_natural(y, eta));
+                        let null_like = self.data.apply_weights(null_like_terms).sum()
+                            / self.data.sum_weights();
                         let null_params = Array1::<F>::zeros(self.n_par);
                         (null_like, null_params)
                     }
@@ -488,7 +484,7 @@ where
         // adjust for non-canonical link functions.
         let eta_d = M::Link::d_nat_param(&lin_pred);
         let resid_working = eta_d * resid_response;
-        let score_unreg = self.data.x.t().dot(&resid_working);
+        let score_unreg = self.data.x_conj().dot(&resid_working);
         self.reg.as_ref().gradient(score_unreg, params)
     }
 
