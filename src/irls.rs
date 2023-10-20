@@ -107,19 +107,19 @@ where
         // The variances predicted by the model. This should have weights with
         // it and must be non-zero.
         // This could become a full covariance with weights.
-        // TODO: allow the variance conditioning to be a configurable parameter.
         let var_diag: Array1<F> = predictor.mapv(M::variance);
 
         // The errors represent the difference between observed and predicted.
         let errors = &self.data.y - &predictor;
 
         // Adjust the errors and variance using the appropriate derivatives of
-        // the link function.
+        // the link function. With the canonical link function, this is a no-op.
         let (errors, var_diag) =
             M::Link::adjust_errors_variance(errors, var_diag, &linear_predictor);
 
         // condition after the adjustment in case the derivatives are zero. Or
         // should the Hessian itself be conditioned?
+        // TODO: allow the variance conditioning to be a configurable parameter.
         let var_diag: Array1<F> = var_diag.mapv_into(|v| v + F::epsilon());
 
         // X weighted by the model variance for each observation
