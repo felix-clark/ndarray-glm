@@ -42,10 +42,10 @@ fn log_termination_0() -> Result<()> {
     assert_abs_diff_eq!(fit.bic(), r_bic, epsilon=eps);
     let r_stand_resid_pear = array_from_csv::<f32>("tests/R/log_termination_0/standard_pearson_resid.csv")?;
     let r_stand_resid_dev = array_from_csv::<f32>("tests/R/log_termination_0/standard_deviance_resid.csv")?;
-    assert_abs_diff_eq!(fit.resid_pear_std()?, r_stand_resid_pear, epsilon=0.02);
-    assert_abs_diff_eq!(fit.resid_dev_std()?, r_stand_resid_dev, epsilon=0.02);
+    assert_abs_diff_eq!(fit.resid_pear_std()?, r_stand_resid_pear, epsilon=eps);
+    assert_abs_diff_eq!(fit.resid_dev_std()?, r_stand_resid_dev, epsilon=eps);
     let r_stud_resid = array_from_csv::<f32>("tests/R/log_termination_0/student_resid.csv")?;
-    assert_abs_diff_eq!(fit.resid_student()?, r_stud_resid, epsilon=0.05);
+    assert_abs_diff_eq!(fit.resid_student()?, r_stud_resid, epsilon=eps);
 
     let r_null_dev = array_from_csv::<f32>("tests/R/log_termination_0/null_dev.csv")?[0];
     assert_abs_diff_eq!(fit.lr_test(), r_null_dev - r_dev, epsilon=eps);

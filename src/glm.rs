@@ -52,6 +52,19 @@ pub trait Glm: Sized {
     /// to each response function, but should not depend on the link function.
     fn variance<F: Float>(mean: F) -> F;
 
+    /// Get the full adjusted variance diagonal from the linear predictors directly
+    fn adjusted_variance_diag<F: Float>(lin_pred: &Array1<F>) -> Array1<F> {
+        // The prediction of y given the current model.
+        // This does cause an unnecessary clone with an identity link, but we
+        // need the linear predictor around for the future.
+        let predictor: Array1<F> = Self::mean(&lin_pred);
+
+        // The variances predicted by the model.
+        let var_diag: Array1<F> = predictor.mapv(Self::variance);
+
+        Self::Link::adjust_variance(var_diag, lin_pred)
+    }
+
     /// Returns the likelihood function summed over all observations.
     fn log_like<F>(data: &Dataset<F>, regressors: &Array1<F>) -> F
     where
@@ -59,7 +72,7 @@ pub trait Glm: Sized {
     {
         // the total likelihood prior to regularization
         let terms = Self::log_like_terms(data, regressors);
-        let weighted_terms = data.apply_weights(terms);
+        let weighted_terms = data.apply_total_weights(terms);
         weighted_terms.sum()
     }
 

@@ -41,14 +41,16 @@ where
     reg: Box<dyn IrlsReg<F>>,
     /// The number of overall iterations taken in the IRLS.
     pub n_iter: usize,
-    /// The number of data points
-    n_data: usize,
     /// The number of parameters
     n_par: usize,
     /// The estimated covariance matrix of the parameters. Since the calculation
     /// requires a matrix inversion, it is computed only when needed and the
     /// value is cached. Access through the `covariance()` function.
     cov: RefCell<Option<Array2<F>>>,
+    /// The hat matrix of the data and fit. Since the calculation requires a matrix inversion of
+    /// the fisher information, it is computed only when needed and the value is cached. Access
+    /// through the `hat()` function.
+    hat: RefCell<Option<Array2<F>>>,
     /// The likelihood and parameters for the null model.
     null_model: RefCell<Option<(F, Array1<F>)>>,
 }
@@ -73,7 +75,7 @@ where
     // not affect the difference between two models fit with the methodology in
     // this package.
     pub fn bic(&self) -> F {
-        let logn = num_traits::Float::ln(F::from(self.data.y.len()).unwrap());
+        let logn = num_traits::Float::ln(self.data.n_obs());
         logn * F::from(self.n_par).unwrap() - F::from(2.).unwrap() * self.model_like
     }
 
@@ -105,7 +107,11 @@ where
     pub fn deviance(&self) -> F {
         // Note that this must change if the GLM likelihood subtracts the
         // saturated one already.
-        F::from(2.).unwrap() * (self.data.y.mapv(M::log_like_sat).sum() - self.model_like)
+        let sat_like = self
+            .data
+            .apply_total_weights(self.data.y.mapv(M::log_like_sat))
+            .sum();
+        F::from(2.).unwrap() * (sat_like - self.model_like)
     }
 
     /// The dispersion parameter(typically denoted `phi`)  which relates the variance of the `y`
@@ -119,9 +125,8 @@ where
         use DispersionType::*;
         match M::DISPERSED {
             FreeDispersion => {
-                let ndf: F = F::from(self.ndf()).unwrap();
                 let dev = self.deviance();
-                dev / ndf
+                dev / self.ndf()
             }
             NoDispersion => F::one(),
         }
@@ -149,15 +154,40 @@ where
     /// at the parameter values given. The regularization is included.
     pub fn fisher(&self, params: &Array1<F>) -> Array2<F> {
         let lin_pred: Array1<F> = self.data.linear_predictor(params);
-        let mu: Array1<F> = M::mean(&lin_pred);
-        let var_diag: Array1<F> = mu.mapv_into(M::variance);
-        // adjust the variance for non-canonical link functions
-        let eta_d = M::Link::d_nat_param(&lin_pred);
-        let adj_var: Array1<F> = &eta_d * &var_diag * eta_d;
+        let adj_var: Array1<F> = M::adjusted_variance_diag(&lin_pred);
         // calculate the fisher matrix
         let fisher: Array2<F> = (self.data.x_conj() * &adj_var).dot(&self.data.x);
         // Regularize the fisher matrix
         self.reg.as_ref().irls_mat(fisher, params)
+    }
+
+    /// Returns the hat matrix of fit, also known as the "projection" or "influence" matrix.
+    /// The convention used corresponds to H = dE[y]/dy and is orthogonal to the response
+    /// residuals. This version is not symmetric.
+    pub fn hat(&self) -> RegressionResult<Ref<Array2<F>>> {
+        if self.hat.borrow().is_none() {
+            let lin_pred = self.data.linear_predictor(&self.result);
+            let adj_var = M::adjusted_variance_diag(&lin_pred);
+            // regularized version of fisher info
+            let fisher = self.fisher(&self.result);
+            // the invh and invh_into methods are still wrong
+            let fisher_inv = fisher.inv_into()?;
+
+            // the GLM variance and the data weights are put on different sides in this convention
+            let left = adj_var.insert_axis(Axis(1)) * &self.data.x;
+            let result = left.dot(&fisher_inv.dot(&self.data.x_conj()));
+
+            *self.hat.borrow_mut() = Some(result);
+        }
+        let borrowed: Ref<Option<Array2<F>>> = self.hat.borrow();
+        Ok(Ref::map(borrowed, |x| x.as_ref().unwrap()))
+    }
+
+    /// Returns the leverage for each observation. This is given by the diagonal of the projection
+    /// matrix and indicates the sensitivity of each prediction to its corresponding observation.
+    pub fn leverage(&self) -> RegressionResult<Array1<F>> {
+        let hat = self.hat()?;
+        Ok(hat.diag().to_owned())
     }
 
     /// Perform a likelihood-ratio test, returning the statistic -2*ln(L_0/L)
@@ -192,8 +222,8 @@ where
     /// of data points minus the number of parameters. Not to be confused with
     /// `test_ndf()`, the degrees of freedom in the statistical tests of the
     /// fit.
-    pub fn ndf(&self) -> usize {
-        self.n_data - self.n_par
+    pub fn ndf(&self) -> F {
+        self.data.n_obs() - F::from(self.n_par).unwrap()
     }
 
     pub(crate) fn new(data: &'a Dataset<F>, use_intercept: bool, irls: Irls<M, F>) -> Self {
@@ -212,7 +242,6 @@ where
         );
         // Cache some of these variables that will be used often.
         let n_par = result.len();
-        let n_data = data.y.len();
         let model_like = data_like + reg.likelihood(&result);
         Self {
             model: PhantomData,
@@ -223,9 +252,9 @@ where
             model_like,
             reg,
             n_iter,
-            n_data,
             n_par,
             cov: RefCell::new(None),
+            hat: RefCell::new(None),
             null_model: RefCell::new(None),
         }
     }
@@ -250,7 +279,7 @@ where
                     // calculate the null likelihood for a single point with y equal
                     // to the average.
                     // The average y
-                    let y_bar: F = self.data.apply_weights(self.data.y.clone()).sum()
+                    let y_bar: F = self.data.apply_total_weights(self.data.y.clone()).sum()
                         / self.data.sum_weights();
                     // This approach assumes that the likelihood is in the natural
                     // exponential form as calculated by Glm::log_like_natural(). If that
@@ -288,7 +317,7 @@ where
                         // the X data is a single column of ones. Since this model
                         // isn't being created by the ModelBuilder, the X data
                         // has to be automatically padded with ones.
-                        let data_x_null = Array2::<F>::ones((self.n_data, 1));
+                        let data_x_null = Array2::<F>::ones((self.data.y.len(), 1));
                         let null_model = Model {
                             model: std::marker::PhantomData::<M>,
                             data: Dataset::<F> {
@@ -296,6 +325,7 @@ where
                                 x: data_x_null,
                                 linear_offset: Some(off.clone()),
                                 weights: self.data.weights.clone(),
+                                freqs: self.data.freqs.clone(),
                                 hat: RefCell::new(None),
                             },
                             // If we are in this branch it is because an intercept is needed.
@@ -329,7 +359,7 @@ where
                         let null_like_terms = ndarray::Zip::from(&self.data.y)
                             .and(&nat_par)
                             .map_collect(|&y, &eta| M::log_like_natural(y, eta));
-                        let null_like = self.data.apply_weights(null_like_terms).sum()
+                        let null_like = self.data.apply_total_weights(null_like_terms).sum()
                             / self.data.sum_weights();
                         let null_params = Array1::<F>::zeros(self.n_par);
                         (null_like, null_params)
@@ -387,7 +417,7 @@ where
     pub fn resid_dev_std(&self) -> RegressionResult<Array1<F>> {
         let dev = self.resid_dev();
         let phi = self.dispersion();
-        let hat: Array1<F> = self.data.leverage()?;
+        let hat: Array1<F> = self.leverage()?;
         let omh: Array1<F> = -hat + F::one();
         let denom: Array1<F> = (omh * phi).mapv_into(num_traits::Float::sqrt);
         Ok(dev / denom)
@@ -419,7 +449,7 @@ where
     pub fn resid_pear_std(&self) -> RegressionResult<Array1<F>> {
         let pearson = self.resid_pear();
         let phi = self.dispersion();
-        let hat = self.data.leverage()?;
+        let hat = self.leverage()?;
         let omh = -hat + F::one();
         let denom: Array1<F> = (omh * phi).mapv_into(num_traits::Float::sqrt);
         Ok(pearson / denom)
@@ -444,7 +474,7 @@ where
         let signs = r_pear.mapv(F::signum);
         let r_dev_sq = r_dev.mapv_into(|x| x * x);
         let r_pear_sq = r_pear.mapv_into(|x| x * x);
-        let hat = self.data.leverage()?;
+        let hat = self.leverage()?;
         let omh = -hat.clone() + F::one();
         let sum_quad = &r_dev_sq + hat * r_pear_sq / &omh;
         let sum_quad_scaled = match M::DISPERSED {
@@ -452,7 +482,7 @@ where
             // This is an approximation; the exact solution would perform a fit at each point.
             DispersionType::FreeDispersion => {
                 let dev = self.deviance();
-                let dof = F::from(self.ndf() - 1).unwrap();
+                let dof = self.ndf() - F::one();
                 let phi_i: Array1<F> = (-r_dev_sq / &omh + dev) / dof;
                 sum_quad / phi_i
             }
@@ -722,7 +752,7 @@ mod tests {
         let fit = model.fit()?;
         let dev = fit.deviance();
         let disp = fit.dispersion();
-        let ndf = fit.ndf() as f64;
+        let ndf = fit.ndf();
         assert_abs_diff_eq!(dev, disp * ndf, epsilon = 4. * f64::EPSILON);
         Ok(())
     }

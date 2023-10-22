@@ -11,11 +11,7 @@ use crate::{
 };
 use fit::options::{FitConfig, FitOptions};
 use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, Data, Ix1, Ix2};
-use ndarray_linalg::InverseInto;
-use std::{
-    cell::{Ref, RefCell},
-    marker::PhantomData,
-};
+use std::marker::PhantomData;
 
 pub struct Dataset<F>
 where
@@ -29,11 +25,10 @@ where
     /// to fix the effect of control variables.
     // TODO: Consider making this an option of a reference.
     pub linear_offset: Option<Array1<F>>,
-    /// The weight of each observation
+    /// The variance weight of each observation (a.k.a. analytic weights)
     pub weights: Option<Array1<F>>,
-    /// The cached projection matrix
-    // crate-public only so that a null dataset can be created.
-    pub(crate) hat: RefCell<Option<Array2<F>>>,
+    /// The frequency of each observation (traditionally positive integers)
+    pub freqs: Option<Array1<F>>,
 }
 
 impl<F> Dataset<F>
@@ -54,25 +49,12 @@ where
         }
     }
 
-    /// Returns the hat matrix of the dataset of covariate data, also known as the "projection" or
-    /// "influence" matrix.
-    pub fn hat(&self) -> RegressionResult<Ref<Array2<F>>> {
-        if self.hat.borrow().is_none() {
-            let xtw = self.x_conj();
-            let xtwx: Array2<F> = xtw.dot(&self.x);
-            // NOTE: invh/invh_into() are bugged and incorrect!
-            let xtwx_inv = xtwx.inv_into().map_err(|_| RegressionError::ColinearData)?;
-            *self.hat.borrow_mut() = Some(self.x.dot(&xtwx_inv).dot(&xtw));
+    /// Total number of observations as given by the sum of the frequencies of observations
+    pub fn n_obs(&self) -> F {
+        match &self.freqs {
+            None => F::from(self.y.len()).unwrap(),
+            Some(w) => w.sum(),
         }
-        let borrowed: Ref<Option<Array2<F>>> = self.hat.borrow();
-        Ok(Ref::map(borrowed, |x| x.as_ref().unwrap()))
-    }
-
-    /// Returns the leverage for each observation. This is given by the diagonal of the projection
-    /// matrix and indicates the sensitivity of each prediction to its corresponding observation.
-    pub fn leverage(&self) -> RegressionResult<Array1<F>> {
-        let hat = self.hat()?;
-        Ok(hat.diag().to_owned())
     }
 
     /// Returns the sum of the weights, or the number of data points if the weights are all equal
@@ -85,7 +67,11 @@ where
     }
 
     /// multiply the input vector element-wise by the weights, if they exist
-    pub(crate) fn apply_weights(&self, rhs: Array1<F>) -> Array1<F> {
+    pub(crate) fn apply_total_weights(&self, rhs: Array1<F>) -> Array1<F> {
+        let rhs = match &self.freqs {
+            None => rhs,
+            Some(w) => w * rhs,
+        };
         match &self.weights {
             None => rhs,
             Some(w) => w * rhs,
@@ -94,9 +80,14 @@ where
 
     /// Returns the weighted transpose of the feature data
     pub(crate) fn x_conj(&self) -> Array2<F> {
+        let xt = self.x.t().to_owned();
+        let xt = match &self.freqs {
+            None => xt,
+            Some(f) => xt * f,
+        };
         match &self.weights {
-            None => self.x.t().to_owned(),
-            Some(w) => &self.x.t() * w,
+            None => xt,
+            Some(w) => xt * w,
         }
     }
 }
@@ -166,7 +157,8 @@ impl<M: Glm> ModelBuilder<M> {
             data_y: data_y.view(),
             data_x: data_x.view(),
             linear_offset: None,
-            weights: None,
+            var_weights: None,
+            freq_weights: None,
             use_intercept_term: true,
             colin_tol: F::epsilon(),
             error: None,
@@ -193,8 +185,10 @@ where
     // TODO: consider making this a reference/ArrayView. Y and X are effectively
     // cloned so perhaps this isn't a big deal.
     linear_offset: Option<Array1<F>>,
-    /// The weights for each observation.
-    weights: Option<Array1<F>>,
+    /// The variance/analytic weights for each observation.
+    var_weights: Option<Array1<F>>,
+    /// The frequency/count of each observation.
+    freq_weights: Option<Array1<F>>,
     /// Whether to use an intercept term. Defaults to `true`.
     use_intercept_term: bool,
     /// tolerance for determinant check on rank of data matrix X.
@@ -222,14 +216,29 @@ where
         self
     }
 
-    /// Weights each observation according to the given array
-    pub fn weight(mut self, weights: Array1<F>) -> Self {
-        if self.weights.is_some() {
+    /// Frequency weights (a.k.a. counts) for each observation. Traditionally these are positive
+    /// integers representing the number of times each observation appears identically.
+    pub fn freq_weights(mut self, freqs: Array1<F>) -> Self {
+        if self.freq_weights.is_some() {
             self.error = Some(RegressionError::BuildError(
-                "Weights specified multiple times".to_string(),
+                "Frequency weights specified multiple times".to_string(),
             ));
         }
-        self.weights = Some(weights);
+        // TODO: consider adding a check for non-negative weights
+        self.freq_weights = Some(freqs);
+        self
+    }
+
+    /// Variance weights (a.k.a. analytic weights) of each observation. These could represent the
+    /// inverse square of the uncertainties of each measurement.
+    pub fn var_weights(mut self, weights: Array1<F>) -> Self {
+        if self.var_weights.is_some() {
+            self.error = Some(RegressionError::BuildError(
+                "Variance weights specified multiple times".to_string(),
+            ));
+        }
+        // TODO: consider adding a check for non-negative weights
+        self.var_weights = Some(weights);
         self
     }
 
@@ -303,8 +312,8 @@ where
                 y: data_y,
                 x: data_x,
                 linear_offset: self.linear_offset,
-                weights: self.weights,
-                hat: RefCell::new(None),
+                weights: self.var_weights,
+                freqs: self.freq_weights,
             },
             use_intercept: self.use_intercept_term,
         })

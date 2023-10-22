@@ -17,6 +17,22 @@ write(model$deviance, file = "log_weights/deviance.csv", ncolumns = 1)
 
 write(model$null.deviance, file = "log_weights/null_dev.csv", ncolumns = 1)
 
+infl <- influence(model, do.coef = FALSE)
+# infl <- influence(model, do.coef = TRUE)
+print(infl)
+
+write(
+  infl$hat,
+  file = "log_weights/hat.csv", ncolumns = 1
+)
+
+# check unstandardized for consistency
+write(
+  infl$pear.res,
+  file = "log_weights/pearson_resid.csv", ncolumns = 1
+)
+write(mod_sum$deviance.resid, file = "log_weights/dev_resid.csv", ncolumns = 1)
+
 write(
   rstandard(model, type = "pearson"),
   file = "log_weights/standard_pearson_resid.csv", ncolumns = 1

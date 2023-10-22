@@ -99,6 +99,9 @@ where
         // both versions, with and without the linear offset, and we don't want
         // to repeat the matrix multiplication.
 
+        // Similarly, we don't use M::get_adjusted_variance(linear_predictor) because intermediate
+        // results are used as well, and we need to correct the error term too.
+
         // The prediction of y given the current model.
         // This does cause an unnecessary clone with an identity link, but we
         // need the linear predictor around for the future.
