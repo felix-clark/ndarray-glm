@@ -43,10 +43,10 @@ where
     pub n_iter: usize,
     /// The number of parameters
     n_par: usize,
-    /// The estimated covariance matrix of the parameters. Since the calculation
-    /// requires a matrix inversion, it is computed only when needed and the
-    /// value is cached. Access through the `covariance()` function.
-    cov: RefCell<Option<Array2<F>>>,
+    /// The unscaled covariance matrix of the parameters, otherwise known as the Fisher
+    /// information. Since the calculation requires a matrix inversion, it is computed only when
+    /// needed and the value is cached.
+    cov_unscaled: RefCell<Option<Array2<F>>>,
     /// The hat matrix of the data and fit. Since the calculation requires a matrix inversion of
     /// the fisher information, it is computed only when needed and the value is cached. Access
     /// through the `hat()` function.
@@ -82,19 +82,15 @@ where
     /// The covariance matrix estimated by the Fisher information and the dispersion parameter (for
     /// families with a free scale). The matrix is cached to avoid repeating the potentially
     /// expensive matrix inversion.
-    pub fn covariance(&self) -> RegressionResult<Ref<Array2<F>>> {
-        if self.cov.borrow().is_none() {
-            let fisher_reg = self.fisher(&self.result);
-            // The covariance must be multiplied by the dispersion parameter.
-            // For logistic/poisson regression, this is identically 1.
-            // For linear/gamma regression it is estimated from the data.
-            let phi: F = self.dispersion();
-            // NOTE: invh/invh_into() are bugged and incorrect!
-            let unscaled_cov: Array2<F> = fisher_reg.inv_into()?;
-            let cov = unscaled_cov * phi;
-            *self.cov.borrow_mut() = Some(cov);
-        }
-        Ok(Ref::map(self.cov.borrow(), |x| x.as_ref().unwrap()))
+    pub fn covariance(&self) -> RegressionResult<Array2<F>> {
+        // The covariance must be multiplied by the dispersion parameter.
+        // For logistic/poisson regression, this is identically 1.
+        // For linear/gamma regression it is estimated from the data.
+        let phi: F = self.dispersion();
+        // NOTE: invh/invh_into() are bugged and incorrect!
+        let unscaled_cov: Array2<F> = self.fisher_inv()?.to_owned();
+        let cov = unscaled_cov * phi;
+        Ok(cov)
     }
 
     /// Returns the deviance of the fit: twice the difference between the
@@ -161,6 +157,19 @@ where
         self.reg.as_ref().irls_mat(fisher, params)
     }
 
+    /// The inverse of the (regularized) fisher information matrix. This is used in some other
+    /// calculations (like the covariance and hat matrices) so it is cached.
+    fn fisher_inv(&self) -> RegressionResult<Ref<Array2<F>>> {
+        if self.cov_unscaled.borrow().is_none() {
+            let fisher_reg = self.fisher(&self.result);
+            // NOTE: invh/invh_into() are bugged and incorrect!
+            let unscaled_cov: Array2<F> = fisher_reg.inv_into()?;
+            *self.cov_unscaled.borrow_mut() = Some(unscaled_cov);
+        }
+        Ok(Ref::map(self.cov_unscaled.borrow(), |x| x.as_ref().unwrap()))
+    }
+
+
     /// Returns the hat matrix of fit, also known as the "projection" or "influence" matrix.
     /// The convention used corresponds to H = dE[y]/dy and is orthogonal to the response
     /// residuals. This version is not symmetric.
@@ -168,10 +177,7 @@ where
         if self.hat.borrow().is_none() {
             let lin_pred = self.data.linear_predictor(&self.result);
             let adj_var = M::adjusted_variance_diag(&lin_pred);
-            // regularized version of fisher info
-            let fisher = self.fisher(&self.result);
-            // the invh and invh_into methods are still wrong
-            let fisher_inv = fisher.inv_into()?;
+            let fisher_inv = self.fisher_inv()?;
 
             // the GLM variance and the data weights are put on different sides in this convention
             let left = adj_var.insert_axis(Axis(1)) * &self.data.x;
@@ -253,7 +259,7 @@ where
             reg,
             n_iter,
             n_par,
-            cov: RefCell::new(None),
+            cov_unscaled: RefCell::new(None),
             hat: RefCell::new(None),
             null_model: RefCell::new(None),
         }
@@ -326,7 +332,6 @@ where
                                 linear_offset: Some(off.clone()),
                                 weights: self.data.weights.clone(),
                                 freqs: self.data.freqs.clone(),
-                                hat: RefCell::new(None),
                             },
                             // If we are in this branch it is because an intercept is needed.
                             use_intercept: true,
@@ -405,6 +410,12 @@ where
         let ll_sat: Array1<F> = self.data.y.mapv(M::log_like_sat);
         let neg_two = F::from(-2.).unwrap();
         let ll_diff = (ll_terms - ll_sat) * neg_two;
+
+        let ll_diff = match &self.data.weights {
+            None => ll_diff,
+            Some(w) => ll_diff * w,
+        };
+
         let dev: Array1<F> = ll_diff.mapv_into(num_traits::Float::sqrt);
         signs * dev
     }
@@ -438,6 +449,10 @@ where
         let mu: Array1<F> = self.predict(&self.data.x, self.data.linear_offset.as_ref());
         let residuals = &self.data.y - &mu;
         let var_diag: Array1<F> = mu.mapv_into(M::variance);
+        let var_diag = match &self.data.weights {
+            None => var_diag,
+            Some(w) => var_diag / w,
+        };
         let std: Array1<F> = var_diag.mapv_into(num_traits::Float::sqrt);
         residuals / std
     }

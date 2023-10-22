@@ -28,7 +28,7 @@ fn logistic_weights() -> Result<()> {
     let n_par = fit.result.len();
     let r_flat_cov = array_from_csv::<f32>("tests/R/log_weights/covariance.csv")?;
     let r_cov = Array::from_shape_vec((n_par, n_par), r_flat_cov.into_raw_vec())?;
-    assert_abs_diff_eq!(*fit.covariance()?, r_cov, epsilon = eps);
+    assert_abs_diff_eq!(fit.covariance()?, r_cov, epsilon = eps);
 
     // total deviance uses the weights
     let r_dev = array_from_csv::<f32>("tests/R/log_weights/deviance.csv")?[0];

@@ -29,7 +29,7 @@ fn log_termination_0() -> Result<()> {
     assert_abs_diff_eq!(fit.resid_dev(), r_dev_resid, epsilon=1e-5);
     let r_flat_cov = array_from_csv::<f32>("tests/R/log_termination_0/covariance.csv")?;
     let r_cov = Array::from_shape_vec((n_par, n_par), r_flat_cov.into_raw_vec())?;
-    assert_abs_diff_eq!(*fit.covariance()?, r_cov, epsilon=1e-5);
+    assert_abs_diff_eq!(fit.covariance()?, r_cov, epsilon=1e-5);
 
     // We've already asserted that our fit is better according to our likelihood function, so the
     // epsilon doesn't have to be extremely strict.
