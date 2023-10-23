@@ -515,15 +515,17 @@ where
         Ok(signs * sum_quad_scaled.mapv_into(num_traits::Float::sqrt))
     }
 
-    /// Returns the working residuals `d\eta/d\mu * (y - E{y|x})`.
+    /// Returns the working residuals `dg(\mu)/d\mu * (y - E{y|x})`.
     /// This should be equal to the response residuals divided by the variance function (as
     /// opposed to the square root of the variance as in the Pearson residuals).
     pub fn resid_work(&self) -> Array1<F> {
         let lin_pred: Array1<F> = self.data.linear_predictor(&self.result);
         let mu: Array1<F> = lin_pred.mapv(M::Link::func_inv);
         let resid_response: Array1<F> = &self.data.y - &mu;
-        let d_eta: Array1<F> = M::Link::d_nat_param(&lin_pred);
-        d_eta * resid_response
+        let var: Array1<F> = mu.mapv(M::variance);
+        // adjust for non-canonical link functions; we want a total factor of 1/eta'
+        let (adj_response, adj_var) = M::Link::adjust_errors_variance(resid_response, var, &lin_pred);
+        adj_response / adj_var
     }
 
     /// Returns the score function (the gradient of the likelihood) at the
@@ -535,9 +537,7 @@ where
         let lin_pred: Array1<F> = self.data.linear_predictor(params);
         let mu: Array1<F> = M::mean(&lin_pred);
         let resid_response = &self.data.y - mu;
-        // adjust for non-canonical link functions.
-        let eta_d = M::Link::d_nat_param(&lin_pred);
-        let resid_working = eta_d * resid_response;
+        let resid_working = M::Link::adjust_errors(resid_response, &lin_pred);
         let score_unreg = self.data.x_conj().dot(&resid_working);
         self.reg.as_ref().gradient(score_unreg, params)
     }
