@@ -176,12 +176,21 @@ where
     pub fn hat(&self) -> RegressionResult<Ref<Array2<F>>> {
         if self.hat.borrow().is_none() {
             let lin_pred = self.data.linear_predictor(&self.result);
-            let adj_var = M::adjusted_variance_diag(&lin_pred);
+            // Apply the eta' terms manually instead of calling adjusted_variance_diag, because the
+            // adjusted variance method applies 2 powers to the variance, while we want one power
+            // to the variance and one to the weights.
+            // let adj_var = M::adjusted_variance_diag(&lin_pred);
+
+            let mu = M::mean(&lin_pred);
+            let var = mu.mapv_into(M::variance);
+            let eta_d = M::Link::d_nat_param(&lin_pred);
+
             let fisher_inv = self.fisher_inv()?;
 
             // the GLM variance and the data weights are put on different sides in this convention
-            let left = adj_var.insert_axis(Axis(1)) * &self.data.x;
-            let result = left.dot(&fisher_inv.dot(&self.data.x_conj()));
+            let left = (var * &eta_d).insert_axis(Axis(1)) * &self.data.x;
+            let right = self.data.x_conj() * &eta_d;
+            let result = left.dot(&fisher_inv.dot(&right));
 
             *self.hat.borrow_mut() = Some(result);
         }
