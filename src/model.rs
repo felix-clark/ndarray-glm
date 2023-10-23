@@ -59,11 +59,14 @@ where
 
     /// Returns the sum of the weights, or the number of data points if the weights are all equal
     /// to 1 (i.e. not explicit)
-    pub fn sum_weights(&self) -> F {
-        match &self.weights {
-            None => F::from(self.y.len()).unwrap(),
-            Some(w) => w.sum(),
+    // TODO: be more careful with the interface and distinguish between variance and frequency
+    // weights
+    pub(crate) fn sum_weights(&self) -> F {
+        if self.weights.is_none() {
+            return self.n_obs();
         }
+        let ones = Array1::<F>::ones(self.y.len());
+        self.apply_total_weights(ones).sum()
     }
 
     /// multiply the input vector element-wise by the weights, if they exist

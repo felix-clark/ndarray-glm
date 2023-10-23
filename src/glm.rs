@@ -55,9 +55,7 @@ pub trait Glm: Sized {
     /// Get the full adjusted variance diagonal from the linear predictors directly
     fn adjusted_variance_diag<F: Float>(lin_pred: &Array1<F>) -> Array1<F> {
         // The prediction of y given the current model.
-        // This does cause an unnecessary clone with an identity link, but we
-        // need the linear predictor around for the future.
-        let predictor: Array1<F> = Self::mean(&lin_pred);
+        let predictor: Array1<F> = Self::mean(lin_pred);
 
         // The variances predicted by the model.
         let var_diag: Array1<F> = predictor.mapv(Self::variance);
