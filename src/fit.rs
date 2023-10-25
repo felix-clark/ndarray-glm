@@ -198,6 +198,22 @@ where
         Ok(Ref::map(borrowed, |x| x.as_ref().unwrap()))
     }
 
+    /// A matrix where each row corresponds to the contribution to the coefficients incurred by
+    /// including the observation in that row. This is inexact for nonlinear models, as a one-step
+    /// approximation is used.
+    /// To approximate the coeficients that would result from excluding the ith observation, the
+    /// ith row of this matrix should be subtracted from the fit result.
+    pub fn infl_coef(&self) -> RegressionResult<Array2<F>> {
+        let lin_pred = self.data.linear_predictor(&self.result);
+        let resid_resp = self.resid_resp();
+        let omh = - self.leverage()? + F::one();
+        let resid_adj = M::Link::adjust_errors(resid_resp, &lin_pred) / omh;
+        let xte = self.data.x_conj() * resid_adj;
+        let fisher_inv = self.fisher_inv()?;
+        let delta_b = xte.t().dot(&*fisher_inv);
+        Ok(delta_b)
+    }
+
     /// Returns the leverage for each observation. This is given by the diagonal of the projection
     /// matrix and indicates the sensitivity of each prediction to its corresponding observation.
     pub fn leverage(&self) -> RegressionResult<Array1<F>> {
@@ -623,6 +639,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ndarray::{s, concatenate};
     use crate::{
         model::ModelBuilder,
         utility::{one_pad, standardize},
@@ -852,6 +869,35 @@ mod tests {
             target_null_like,
             epsilon = 4.0 * f64::EPSILON
         );
+        Ok(())
+    }
+
+    // check the leave-one-out one-step for the linear model
+    #[test]
+    fn loo_linear() -> Result<()> {
+        let data_y = array![0.1, -0.3, 0.7, 0.2, 1.2, -0.4];
+        let data_x = array![0.4, 0.1, 0.3, -0.1, 0.5, 0.6].insert_axis(Axis(1));
+        let weights = array![1.0, 1.2, 0.8, 1.1, 1.0, 0.7];
+        let model = ModelBuilder::<Linear>::data(&data_y, &data_x).var_weights(weights.clone()).build()?;
+        let fit = model.fit()?;
+
+        let loo_coef: Array2<f64> = fit.infl_coef()?;
+        let loo_results = &fit.result - loo_coef;
+        let n_data = data_y.len();
+        for i in 0..n_data {
+            let ya = data_y.slice(s![0..i]);
+            let yb = data_y.slice(s![i + 1..]);
+            let xa = data_x.slice(s![0..i, ..]);
+            let xb = data_x.slice(s![i + 1.., ..]);
+            let wa = weights.slice(s![0..i]);
+            let wb = weights.slice(s![i+1..]);
+            let y_loo = concatenate![Axis(0), ya, yb];
+            let x_loo = concatenate![Axis(0), xa, xb];
+            let w_loo = concatenate![Axis(0), wa, wb];
+            let model_i = ModelBuilder::<Linear>::data(&y_loo, &x_loo).var_weights(w_loo).build()?;
+            let fit_i = model_i.fit()?;
+            assert_abs_diff_eq!(loo_results.row(i), &fit_i.result, epsilon = f32::EPSILON as f64);
+        }
         Ok(())
     }
 
