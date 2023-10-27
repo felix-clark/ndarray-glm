@@ -16,6 +16,9 @@ fn logistic_weights() -> Result<()> {
 
     let eps: f32 = 1e-4;
 
+    let n_par = fit.result.len();
+    let n_obs = y.len();
+
     let r_result = array_from_csv::<f32>("tests/R/log_weights/coefficients.csv")?;
     // NOTE: R result only seems good to a few decimal points
     assert_abs_diff_eq!(&fit.result, &r_result, epsilon = eps);
@@ -25,7 +28,6 @@ fn logistic_weights() -> Result<()> {
     );
 
     // check parameter covariance function
-    let n_par = fit.result.len();
     let r_flat_cov = array_from_csv::<f32>("tests/R/log_weights/covariance.csv")?;
     let r_cov = Array::from_shape_vec((n_par, n_par), r_flat_cov.into_raw_vec())?;
     assert_abs_diff_eq!(fit.covariance()?, r_cov, epsilon = eps);
