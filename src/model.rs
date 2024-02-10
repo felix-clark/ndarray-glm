@@ -221,7 +221,7 @@ where
 
     /// Frequency weights (a.k.a. counts) for each observation. Traditionally these are positive
     /// integers representing the number of times each observation appears identically.
-    pub fn freq_weights(mut self, freqs: Array1<F>) -> Self {
+    pub fn freq_weights(mut self, freqs: Array1<usize>) -> Self {
         if self.freq_weights.is_some() {
             self.error = Some(RegressionError::BuildError(
                 "Frequency weights specified multiple times".to_string(),
