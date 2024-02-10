@@ -71,3 +71,44 @@ fn logistic_weights() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn counting_weights() -> Result<()> {
+    // This actually gets at the distinction between variance weights and frequency weights.
+    // The parameter results should be the same, but the covariance and other statistics will
+    // distinguish.
+
+    use ndarray::array;
+    let x_duped = array![
+        [-4.3, 0.2],
+        [2.3, 0.4],
+        [2.3, 0.4],
+        [-1.2, -0.1],
+        [2.3, 0.4],
+        [-4.3, 0.2],
+    ];
+    let y_duped = array![0.5, 1.2, 1.2, 0.3, 1.2, 0.5];
+    let x_red = array![[-4.3, 0.2], [2.3, 0.4], [-1.2, -0.1],];
+    let y_red = array![0.5, 1.2, 0.3];
+    let freqs_red = array![2, 3, 1];
+
+    let model_duped = ModelBuilder::<Linear>::data(&y_duped, &x_duped).build()?;
+    let fit_duped = model_duped.fit()?;
+
+    let model_red = ModelBuilder::<Linear>::data(&y_red, &x_red)
+        .freq_weights(freqs_red)
+        .build()?;
+    let fit_red = model_red.fit()?;
+
+    // let eps = f32::EPSILON as f64;
+    let eps = 64.0 * f64::EPSILON;
+
+    assert_abs_diff_eq!(fit_duped.result, fit_red.result, epsilon = eps);
+    assert_abs_diff_eq!(
+        fit_duped.covariance()?,
+        fit_red.covariance()?,
+        epsilon = eps
+    );
+
+    Ok(())
+}
