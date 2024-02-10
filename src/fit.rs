@@ -60,7 +60,8 @@ where
     M: Glm,
     F: 'static + Float,
 {
-    /// Returns the Akaike information criterion for the model fit.
+    /// Returns the Akaike information criterion for the model fit. It is unique only to an
+    /// additive constant, so only differences in AIC are meaningful.
     // TODO: Should an effective number of parameters that takes regularization
     // into acount be considered?
     pub fn aic(&self) -> F {
@@ -80,7 +81,7 @@ where
     }
 
     /// The covariance matrix estimated by the Fisher information and the dispersion parameter (for
-    /// families with a free scale). The matrix is cached to avoid repeating the potentially
+    /// families with a free scale). The Fisher matrix is cached to avoid repeating the potentially
     /// expensive matrix inversion.
     pub fn covariance(&self) -> RegressionResult<Array2<F>> {
         // The covariance must be multiplied by the dispersion parameter.
@@ -229,8 +230,7 @@ where
     /// Wilks' theorem this statistic is asymptotically chi-squared distributed
     /// with this number of degrees of freedom.
     // TODO: Should the effective number of degrees of freedom due to
-    // regularization be taken into account? Should the degrees of freedom be a
-    // float?
+    // regularization be taken into account?
     pub fn lr_test(&self) -> F {
         // The model likelihood should include regularization terms and there
         // shouldn't be any in the null model with all non-intercept parameters
