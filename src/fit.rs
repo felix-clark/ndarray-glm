@@ -65,7 +65,7 @@ where
     // TODO: Should an effective number of parameters that takes regularization
     // into acount be considered?
     pub fn aic(&self) -> F {
-        F::from(2 * self.n_par).unwrap() - F::from(2.).unwrap() * self.model_like
+        F::from(2 * self.n_par).unwrap() - F::two() * self.model_like
     }
 
     /// Returns the Bayesian information criterion for the model fit.
@@ -77,7 +77,7 @@ where
     // this package.
     pub fn bic(&self) -> F {
         let logn = num_traits::Float::ln(self.data.n_obs());
-        logn * F::from(self.n_par).unwrap() - F::from(2.).unwrap() * self.model_like
+        logn * F::from(self.n_par).unwrap() - F::two() * self.model_like
     }
 
     /// The covariance matrix estimated by the Fisher information and the dispersion parameter (for
@@ -108,7 +108,7 @@ where
             .data
             .apply_total_weights(self.data.y.mapv(M::log_like_sat))
             .sum();
-        F::from(2.).unwrap() * (sat_like - self.model_like)
+        F::two() * (sat_like - self.model_like)
     }
 
     /// The dispersion parameter(typically denoted `phi`)  which relates the variance of the `y`
@@ -246,7 +246,7 @@ where
     pub fn lr_test_against(&self, alternative: &Array1<F>) -> F {
         let alt_like = M::log_like(self.data, alternative);
         let alt_like_reg = alt_like + self.reg.likelihood(alternative);
-        F::from(2.).unwrap() * (self.model_like - alt_like_reg)
+        F::two() * (self.model_like - alt_like_reg)
     }
 
     /// Returns the residual degrees of freedom in the model, i.e. the number

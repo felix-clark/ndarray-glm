@@ -8,6 +8,9 @@ pub trait Float: Sized + num_traits::Float + Lapack + ScalarOperand {
     // Return 1/2 = 0.5
     fn half() -> Self;
 
+    // Return 2.0
+    fn two() -> Self;
+
     /// A more conventional sign function, because the built-in signum treats signed zeros as
     /// positive and negative: https://github.com/rust-lang/rust/issues/57543
     fn sign(self) -> Self {
@@ -27,6 +30,10 @@ impl Float for f32 {
         0.5
     }
 
+    fn two() -> Self {
+        2.0
+    }
+
     fn total_cmp(&self, other: &Self) -> cmp::Ordering {
         self.total_cmp(other)
     }
@@ -34,6 +41,10 @@ impl Float for f32 {
 impl Float for f64 {
     fn half() -> Self {
         0.5
+    }
+
+    fn two() -> Self {
+        2.0
     }
 
     fn total_cmp(&self, other: &Self) -> cmp::Ordering {
