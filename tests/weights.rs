@@ -86,11 +86,12 @@ fn counting_weights() -> Result<()> {
         [-1.2, -0.1],
         [2.3, 0.4],
         [-4.3, 0.2],
+        [0.5, -0.5],
     ];
-    let y_duped = array![0.5, 1.2, 1.2, 0.3, 1.2, 0.5];
-    let x_red = array![[-4.3, 0.2], [2.3, 0.4], [-1.2, -0.1],];
-    let y_red = array![0.5, 1.2, 0.3];
-    let freqs_red = array![2, 3, 1];
+    let y_duped = array![0.5, 1.2, 1.2, 0.3, 1.2, 0.5, 0.8];
+    let x_red = array![[-4.3, 0.2], [2.3, 0.4], [-1.2, -0.1], [0.5, -0.5]];
+    let y_red = array![0.5, 1.2, 0.3, 0.8];
+    let freqs_red = array![2, 3, 1, 1];
 
     let model_duped = ModelBuilder::<Linear>::data(&y_duped, &x_duped).build()?;
     let fit_duped = model_duped.fit()?;
