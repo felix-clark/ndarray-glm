@@ -17,9 +17,13 @@ write(model$deviance, file = "log_weights/deviance.csv", ncolumns = 1)
 
 write(model$null.deviance, file = "log_weights/null_dev.csv", ncolumns = 1)
 
-infl <- influence(model, do.coef = FALSE)
-# infl <- influence(model, do.coef = TRUE)
+infl <- influence(model, do.coef = TRUE)
 print(infl)
+# the leave-one-out coefficients
+write(
+  t(infl$coef),
+  file = "log_weights/loo_coef.csv", ncolumns = 1
+)
 
 write(
   infl$hat,
