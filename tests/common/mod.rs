@@ -40,10 +40,12 @@ where
     Ok((y, x))
 }
 
-/// Read y, x, and linear offsets from a CSV. Right now it's assumed that there is only one covariate.
+/// Read y, x, and linear offsets from a CSV. NX indicates the number of X columns.
 #[cfg(test)]
 #[allow(dead_code)]
-pub fn y_x_off_from_csv<Y, X>(file: &str) -> Result<(Array1<Y>, Array2<X>, Array1<X>)>
+pub fn y_x_off_from_csv<Y, X, const NX: usize>(
+    file: &str,
+) -> Result<(Array1<Y>, Array2<X>, Array1<X>)>
 where
     Y: FromStr,
     X: Float + FromStr,
@@ -55,21 +57,25 @@ where
     let mut y_vec: Vec<Y> = Vec::new();
     let mut x_vec: Vec<X> = Vec::new();
     let mut off_vec: Vec<X> = Vec::new();
+    let expected_cols = 2 + NX;
     for line_result in reader.lines() {
         let line = line_result?;
         let split_line: Vec<&str> = line.split(',').collect();
-        if split_line.len() != 3 {
-            return Err(anyhow!("Expected three entries in CSV"));
+        let n_cols = split_line.len();
+        if n_cols != expected_cols {
+            return Err(anyhow!("Expected {expected_cols} entries in CSV"));
         }
         let y_parsed: Y = split_line[0].parse()?;
-        let x_parsed: X = split_line[1].parse()?;
-        let off_parsed: X = split_line[2].parse()?;
         y_vec.push(y_parsed);
-        x_vec.push(x_parsed);
+        for x_str in split_line.iter().take(NX + 1).skip(1) {
+            let x_parsed: X = x_str.parse()?;
+            x_vec.push(x_parsed);
+        }
+        let off_parsed: X = split_line[NX + 1].parse()?;
         off_vec.push(off_parsed);
     }
     let y = Array1::<Y>::from(y_vec);
-    let x = Array2::<X>::from_shape_vec((y.len(), 1), x_vec)?;
+    let x = Array2::<X>::from_shape_vec((y.len(), x_vec.len() / y.len()), x_vec)?;
     let off = Array1::<X>::from(off_vec);
     Ok((y, x, off))
 }
@@ -112,8 +118,8 @@ pub fn y_x_from_iris() -> Result<(Array1<i32>, Array2<f32>)> {
         if split_line.len() != 5 {
             return Err(anyhow!("Expected five entries in CSV"));
         }
-        for i in 0..4 {
-            let x_val: f32 = split_line[i].parse()?;
+        for x_str in split_line.iter().take(4) {
+            let x_val = x_str.parse()?;
             x_vec.push(x_val);
         }
         let y_parsed = match split_line[4] {

@@ -9,6 +9,8 @@ pub enum RegressionError {
     BadInput(String),
     #[error("Invalid response data: {0}")]
     InvalidY(String),
+    #[error("Model build error: {0}")]
+    BuildError(String),
     #[error("Linear algebra")]
     LinalgError {
         #[from]

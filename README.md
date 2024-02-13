@@ -42,7 +42,7 @@ To use in your crate, add the following to the `Cargo.toml`:
 
 ```
 ndarray = { version = "0.15", features = ["blas"]}
-ndarray-glm = { version = "0.0.12", features = ["openblas-system"] }
+ndarray-glm = { version = "0.0.13", features = ["openblas-system"] }
 ```
 
 An example for linear regression is shown below.
@@ -88,7 +88,7 @@ for examples.
 - [X] Data standardization/normalization
   - [X] External utility function
   - [ ] Automatic internal transformation
-- [ ] Weighted (and correlated?) regressions
+- [X] Weighted regressions
 - [X] Non-canonical link functions
 - [X] Goodness-of-fit tests
 
