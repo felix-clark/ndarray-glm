@@ -639,7 +639,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::{s, concatenate};
     use crate::{
         model::ModelBuilder,
         utility::{one_pad, standardize},
@@ -648,6 +647,7 @@ mod tests {
     use anyhow::Result;
     use approx::assert_abs_diff_eq;
     use ndarray::Axis;
+    use ndarray::{concatenate, s};
 
     /// Checks if the test statistics are invariant based upon whether the data is standardized.
     #[test]
