@@ -433,8 +433,7 @@ where
         let signs = self.resid_resp().mapv_into(F::signum);
         let ll_terms: Array1<F> = M::log_like_terms(self.data, &self.result);
         let ll_sat: Array1<F> = self.data.y.mapv(M::log_like_sat);
-        let neg_two = F::from(-2.).unwrap();
-        let ll_diff = (ll_terms - ll_sat) * neg_two;
+        let ll_diff = (ll_sat - ll_terms) * F::two();
 
         let ll_diff = match &self.data.weights {
             None => ll_diff,
