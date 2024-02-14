@@ -539,7 +539,8 @@ where
         let resid_response: Array1<F> = &self.data.y - &mu;
         let var: Array1<F> = mu.mapv(M::variance);
         // adjust for non-canonical link functions; we want a total factor of 1/eta'
-        let (adj_response, adj_var) = M::Link::adjust_errors_variance(resid_response, var, &lin_pred);
+        let (adj_response, adj_var) =
+            M::Link::adjust_errors_variance(resid_response, var, &lin_pred);
         adj_response / adj_var
     }
 
