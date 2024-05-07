@@ -129,6 +129,28 @@ where
         }
     }
 
+    fn dispersion_loo(&self) -> RegressionResult<Array1<F>> {
+        use DispersionType::*;
+        match M::DISPERSED {
+            FreeDispersion => {
+                let pear_sq = self.resid_pear().mapv(|r| r * r);
+                let hat_rat = self.leverage()?.mapv(|h| h / (F::one() - h));
+                let terms = self.deviance_terms() + hat_rat * pear_sq;
+                let weighted_terms = self.data.apply_total_weights(terms);
+                let total: Array1<F> = -weighted_terms + self.deviance();
+                let scaled_total = match &self.data.freqs {
+                    Some(f) => {
+                        let adj_ndf: Array1<F> = -f.clone() + self.ndf();
+                        total / adj_ndf
+                    }
+                    None => total / (self.ndf() - F::one()),
+                };
+                Ok(scaled_total)
+            }
+            NoDispersion => Ok(Array1::<F>::ones(self.data.y.len())),
+        }
+    }
+
     /// Returns the errors in the response variables for the data passed as an
     /// argument given the current model fit.
     fn errors(&self, data: &Dataset<F>) -> Array1<F> {
@@ -167,9 +189,10 @@ where
             let unscaled_cov: Array2<F> = fisher_reg.inv_into()?;
             *self.cov_unscaled.borrow_mut() = Some(unscaled_cov);
         }
-        Ok(Ref::map(self.cov_unscaled.borrow(), |x| x.as_ref().unwrap()))
+        Ok(Ref::map(self.cov_unscaled.borrow(), |x| {
+            x.as_ref().unwrap()
+        }))
     }
-
 
     /// Returns the hat matrix of fit, also known as the "projection" or "influence" matrix.
     /// The convention used corresponds to H = dE[y]/dy and is orthogonal to the response
@@ -207,7 +230,7 @@ where
     pub fn infl_coef(&self) -> RegressionResult<Array2<F>> {
         let lin_pred = self.data.linear_predictor(&self.result);
         let resid_resp = self.resid_resp();
-        let omh = - self.leverage()? + F::one();
+        let omh = -self.leverage()? + F::one();
         let resid_adj = M::Link::adjust_errors(resid_resp, &lin_pred) / omh;
         let xte = self.data.x_conj() * resid_adj;
         let fisher_inv = self.fisher_inv()?;
@@ -431,9 +454,7 @@ where
     /// not checked or clipped right now.
     pub fn resid_dev(&self) -> Array1<F> {
         let signs = self.resid_resp().mapv_into(F::signum);
-        let ll_terms: Array1<F> = M::log_like_terms(self.data, &self.result);
-        let ll_sat: Array1<F> = self.data.y.mapv(M::log_like_sat);
-        let ll_diff = (ll_sat - ll_terms) * F::two();
+        let ll_diff = self.deviance_terms();
 
         let ll_diff = match &self.data.weights {
             None => ll_diff,
@@ -501,33 +522,25 @@ where
         self.errors(self.data)
     }
 
-    /// Return the studentized residuals, which are the changes in the fit likelihood resulting
-    /// from leaving each observation out. This is a robust and general method for outlier
-    /// detection, although a one-step approximation is used to avoid re-fitting the model
-    /// completely for each observation.
+    /// Return the studentized residuals, which are the deviance residuals at each point computed
+    /// as if the fit is leaving out the corresponding observation. For families with a free
+    /// dispersion parameter, the deviance is normalized by the one-step approximation to the
+    /// dispersion.
+    /// This is a robust and general method for outlier detection, although a one-step
+    /// approximation is used to avoid re-fitting the model completely for each observation.
     /// If the linear errors are standard normally distributed then this statistic should follow a
     /// t-distribution with `self.ndf() - 1` degrees of freedom.
     pub fn resid_student(&self) -> RegressionResult<Array1<F>> {
-        let r_dev = self.resid_dev();
-        let r_pear = self.resid_pear();
-        let signs = r_pear.mapv(F::signum);
-        let r_dev_sq = r_dev.mapv_into(|x| x * x);
-        let r_pear_sq = r_pear.mapv_into(|x| x * x);
-        let hat = self.leverage()?;
-        let omh = -hat.clone() + F::one();
-        let sum_quad = &r_dev_sq + hat * r_pear_sq / &omh;
-        let sum_quad_scaled = match M::DISPERSED {
+        let signs = self.resid_resp().mapv(F::signum);
+        let dev_terms_loo: Array1<F> = self.deviance_terms_loo()?;
+        // NOTE: This match could also be handled internally in dispersion_loo()
+        let dev_terms_scaled = match M::DISPERSED {
             // The dispersion is corrected for the contribution from each current point.
             // This is an approximation; the exact solution would perform a fit at each point.
-            DispersionType::FreeDispersion => {
-                let dev = self.deviance();
-                let dof = self.ndf() - F::one();
-                let phi_i: Array1<F> = (-r_dev_sq / &omh + dev) / dof;
-                sum_quad / phi_i
-            }
-            DispersionType::NoDispersion => sum_quad,
+            DispersionType::FreeDispersion => dev_terms_loo / self.dispersion_loo()?,
+            DispersionType::NoDispersion => dev_terms_loo,
         };
-        Ok(signs * sum_quad_scaled.mapv_into(num_traits::Float::sqrt))
+        Ok(signs * dev_terms_scaled.mapv_into(num_traits::Float::sqrt))
     }
 
     /// Returns the working residuals `dg(\mu)/d\mu * (y - E{y|x})`.
@@ -812,38 +825,34 @@ mod tests {
         assert_abs_diff_eq!(response, deviance);
         let pearson_std = fit.resid_pear_std()?;
         let deviance_std = fit.resid_dev_std()?;
-        let _student = fit.resid_student()?;
+        let student = fit.resid_student()?;
         assert_abs_diff_eq!(pearson_std, deviance_std, epsilon = 8. * f64::EPSILON);
 
-        // // NOTE: Studentization can't be checked directly because the method used is an
-        // approximation. Another approach will be needed to give exact values.
-        // let orig_dev = fit.deviance();
-        // let n_data = data_y.len();
-        // // Check that the leave-one-out stats hold literally
-        // let mut loo_dev: Vec<f64> = Vec::new();
-        // for i in 0..n_data {
-        //     let ya = data_y.slice(s![0..i]);
-        //     let yb = data_y.slice(s![i + 1..]);
-        //     let xa = data_x.slice(s![0..i, ..]);
-        //     let xb = data_x.slice(s![i + 1.., ..]);
-        //     let y_loo = concatenate![Axis(0), ya, yb];
-        //     let x_loo = concatenate![Axis(0), xa, xb];
-        //     let model_i = ModelBuilder::<Linear>::data(&y_loo, &x_loo).build()?;
-        //     let fit_i = model_i.fit()?;
-        //     let yi = data_y[i];
-        //     let xi = data_x.slice(s![i..i + 1, ..]);
-        //     let xi = crate::utility::one_pad(xi);
-        //     let yi_pred: f64 = fit_i.predict(&xi, None)[0];
-        //     let disp_i = fit_i.dispersion();
-        //     let pear_loo = (yi - yi_pred) / disp_i.sqrt();
-        //     let dev_i = fit_i.deviance();
-        //     let d_dev = 2. * (orig_dev - dev_i);
-        //     loo_dev.push(d_dev.sqrt() * (yi - yi_pred).signum());
-        // }
-        // let loo_dev: Array1<f64> = loo_dev.into();
+        // NOTE: Studentization can't be checked directly in general because the method used is an
+        // approximation, however it should be exact in the linear OLS case.
+        let n_data = data_y.len();
+        // Check that the leave-one-out stats hold literally
+        let mut loo_dev: Vec<f64> = Vec::new();
+        for i in 0..n_data {
+            let ya = data_y.slice(s![0..i]);
+            let yb = data_y.slice(s![i + 1..]);
+            let xa = data_x.slice(s![0..i, ..]);
+            let xb = data_x.slice(s![i + 1.., ..]);
+            let y_loo = concatenate![Axis(0), ya, yb];
+            let x_loo = concatenate![Axis(0), xa, xb];
+            let model_i = ModelBuilder::<Linear>::data(&y_loo, &x_loo).build()?;
+            let fit_i = model_i.fit()?;
+            let yi = data_y[i];
+            let xi = data_x.slice(s![i..i + 1, ..]);
+            let xi = crate::utility::one_pad(xi);
+            let yi_pred: f64 = fit_i.predict(&xi, None)[0];
+            let sigma_i = fit_i.dispersion().sqrt();
+            loo_dev.push((yi - yi_pred) / sigma_i)
+        }
+        let loo_dev: Array1<f64> = loo_dev.into();
         // This is off from 1 by a constant factor that depends on the data
         // This is only approximately true
-        // assert_abs_diff_eq!(student, loo_dev);
+        assert_abs_diff_eq!(student, loo_dev, epsilon = 8. * f64::EPSILON);
         Ok(())
     }
 
@@ -878,7 +887,9 @@ mod tests {
         let data_y = array![0.1, -0.3, 0.7, 0.2, 1.2, -0.4];
         let data_x = array![0.4, 0.1, 0.3, -0.1, 0.5, 0.6].insert_axis(Axis(1));
         let weights = array![1.0, 1.2, 0.8, 1.1, 1.0, 0.7];
-        let model = ModelBuilder::<Linear>::data(&data_y, &data_x).var_weights(weights.clone()).build()?;
+        let model = ModelBuilder::<Linear>::data(&data_y, &data_x)
+            .var_weights(weights.clone())
+            .build()?;
         let fit = model.fit()?;
 
         let loo_coef: Array2<f64> = fit.infl_coef()?;
@@ -890,13 +901,19 @@ mod tests {
             let xa = data_x.slice(s![0..i, ..]);
             let xb = data_x.slice(s![i + 1.., ..]);
             let wa = weights.slice(s![0..i]);
-            let wb = weights.slice(s![i+1..]);
+            let wb = weights.slice(s![i + 1..]);
             let y_loo = concatenate![Axis(0), ya, yb];
             let x_loo = concatenate![Axis(0), xa, xb];
             let w_loo = concatenate![Axis(0), wa, wb];
-            let model_i = ModelBuilder::<Linear>::data(&y_loo, &x_loo).var_weights(w_loo).build()?;
+            let model_i = ModelBuilder::<Linear>::data(&y_loo, &x_loo)
+                .var_weights(w_loo)
+                .build()?;
             let fit_i = model_i.fit()?;
-            assert_abs_diff_eq!(loo_results.row(i), &fit_i.result, epsilon = f32::EPSILON as f64);
+            assert_abs_diff_eq!(
+                loo_results.row(i),
+                &fit_i.result,
+                epsilon = f32::EPSILON as f64
+            );
         }
         Ok(())
     }
