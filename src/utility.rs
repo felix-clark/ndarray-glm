@@ -23,7 +23,7 @@ where
 /// has its mean subtracted and is then divided by the standard deviation.
 /// The normalization by the standard deviation is not performed if there is only 1
 /// observation, since such an operation is undefined.
-pub fn standardize<F: Float>(mut design: Array2<F>) -> Array2<F>
+pub fn standardize<F>(mut design: Array2<F>) -> Array2<F>
 where
     F: Float + FromPrimitive + std::ops::DivAssign,
 {
