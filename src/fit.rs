@@ -825,11 +825,13 @@ mod tests {
         assert_abs_diff_eq!(response, deviance);
         let pearson_std = fit.resid_pear_std()?;
         let deviance_std = fit.resid_dev_std()?;
-        let student = fit.resid_student()?;
         assert_abs_diff_eq!(pearson_std, deviance_std, epsilon = 8. * f64::EPSILON);
+        // The externally-studentized residuals aren't expected to match the internally-studentized
+        // ones.
+        let student = fit.resid_student()?;
 
-        // NOTE: Studentization can't be checked directly in general because the method used is an
-        // approximation, however it should be exact in the linear OLS case.
+        // NOTE: Studentization can't be checked directly in general because the method used is a
+        // one-step approximation, however it should be exact in the linear OLS case.
         let n_data = data_y.len();
         // Check that the leave-one-out stats hold literally
         let mut loo_dev: Vec<f64> = Vec::new();
@@ -847,11 +849,10 @@ mod tests {
             let xi = crate::utility::one_pad(xi);
             let yi_pred: f64 = fit_i.predict(&xi, None)[0];
             let sigma_i = fit_i.dispersion().sqrt();
-            loo_dev.push((yi - yi_pred) / sigma_i)
+            let dev_i = (yi - yi_pred) / sigma_i;
+            loo_dev.push(dev_i);
         }
         let loo_dev: Array1<f64> = loo_dev.into();
-        // This is off from 1 by a constant factor that depends on the data
-        // This is only approximately true
         assert_abs_diff_eq!(student, loo_dev, epsilon = 8. * f64::EPSILON);
         Ok(())
     }
