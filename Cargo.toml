@@ -24,7 +24,7 @@ intel-mkl-static = ["ndarray-linalg/intel-mkl-static"]
 intel-mkl-system = ["ndarray-linalg/intel-mkl-system"]
 
 [dependencies]
-itertools = "0.10"
+itertools = "0.12"
 ndarray = { version = "0.15", features = ["blas"] }
 ndarray-linalg = { version = "0.16" }
 num-traits = "0.2"
