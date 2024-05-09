@@ -53,7 +53,7 @@ where
     pub fn n_obs(&self) -> F {
         match &self.freqs {
             None => F::from(self.y.len()).unwrap(),
-            Some(w) => w.sum(),
+            Some(f) => f.sum(),
         }
     }
 
@@ -73,7 +73,7 @@ where
     pub(crate) fn apply_total_weights(&self, rhs: Array1<F>) -> Array1<F> {
         let rhs = match &self.freqs {
             None => rhs,
-            Some(w) => w * rhs,
+            Some(f) => f * rhs,
         };
         match &self.weights {
             None => rhs,
