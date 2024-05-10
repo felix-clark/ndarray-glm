@@ -111,8 +111,26 @@ where
         F::two() * (sat_like - self.model_like)
     }
 
-    /// The dispersion parameter(typically denoted `phi`)  which relates the variance of the `y`
-    /// values with the variance of the response distribution: `Var[y] = phi * Var[mu]`.
+    /// Returns the contribution to the deviance from each observation. The total deviance should
+    /// be the (possibly weighted) sum of all of these.
+    fn deviance_terms(&self) -> Array1<F> {
+        let ll_terms: Array1<F> = M::log_like_terms(self.data, &self.result);
+        let ll_sat: Array1<F> = self.data.y.mapv(M::log_like_sat);
+        (ll_sat - ll_terms) * F::two()
+    }
+
+    /// Returns the self-excluded deviance terms, i.e. the deviance of an observation as if the
+    /// model was fit without it. This is a one-step approximation.
+    fn deviance_terms_loo(&self) -> RegressionResult<Array1<F>> {
+        let dev_terms = self.deviance_terms();
+        let pear_sq = self.resid_pear().mapv(|r| r * r);
+        let hat_rat = self.leverage()?.mapv(|h| h / (F::one() - h));
+        let result = dev_terms + &hat_rat * (&hat_rat + F::two()) * pear_sq;
+        Ok(result)
+    }
+
+    /// The dispersion parameter (typically denoted `phi`)  which relates the variance of the `y`
+    /// values with the variance of the response distribution: `Var[y] = phi * V[mu]`.
     /// Identically one for logistic, binomial, and Poisson regression.
     /// For others (linear, gamma) the dispersion parameter is estimated from the data.
     /// This is equal to the total deviance divided by the degrees of freedom.  For OLS linear
@@ -123,7 +141,7 @@ where
         match M::DISPERSED {
             FreeDispersion => {
                 let dev = self.deviance();
-                dev / self.ndf()
+                dev / self.ndf_eff()
             }
             NoDispersion => F::one(),
         }
@@ -275,9 +293,24 @@ where
     /// Returns the residual degrees of freedom in the model, i.e. the number
     /// of data points minus the number of parameters. Not to be confused with
     /// `test_ndf()`, the degrees of freedom in the statistical tests of the
-    /// fit.
+    /// fit parameters.
     pub fn ndf(&self) -> F {
         self.data.n_obs() - F::from(self.n_par).unwrap()
+    }
+
+    /// Returns the effective residual degrees of freedom in the model, i.e. the number of data
+    /// points minus the number of parameters. It is corrected for the design effect that arises
+    /// from using variable weights. Not to be confused with `test_ndf()`, which represents the
+    /// degrees of freedom in the statistical tests of the fit parameters.
+    pub fn ndf_eff(&self) -> F {
+        let p = F::from(self.n_par).unwrap();
+        let n_eff = self.data.n_eff();
+        if p >= n_eff {
+            // This is the overparameterized regime, which is checked directly instead of allowing
+            // negative values. It's not clear what conditions result in this when p < N.
+            return F::zero();
+        }
+        self.data.sum_weights() * (F::one() - p / self.data.n_eff())
     }
 
     pub(crate) fn new(data: &'a Dataset<F>, use_intercept: bool, irls: Irls<M, F>) -> Self {
@@ -505,7 +538,7 @@ where
     /// Return the standardized Pearson residuals for every observation.
     /// Also known as the "internally studentized Pearson residuals".
     /// (y - E[y]) / (sqrt(Var[y] * (1 - h))) where h is a vector representing the leverage for
-    /// each observation.
+    /// each observation. These are meant to have a variance of 1.
     pub fn resid_pear_std(&self) -> RegressionResult<Array1<F>> {
         let pearson = self.resid_pear();
         let phi = self.dispersion();
@@ -807,6 +840,7 @@ mod tests {
         let dev = fit.deviance();
         let disp = fit.dispersion();
         let ndf = fit.ndf();
+        assert_abs_diff_eq!(ndf, fit.ndf_eff());
         assert_abs_diff_eq!(dev, disp * ndf, epsilon = 4. * f64::EPSILON);
         Ok(())
     }

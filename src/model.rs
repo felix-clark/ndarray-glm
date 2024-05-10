@@ -13,6 +13,7 @@ use fit::options::{FitConfig, FitOptions};
 use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, Data, Ix1, Ix2};
 use std::marker::PhantomData;
 
+#[derive(Clone)]
 pub struct Dataset<F>
 where
     F: Float,
@@ -57,16 +58,27 @@ where
         }
     }
 
-    /// Returns the sum of the weights, or the number of data points if the weights are all equal
-    /// to 1 (i.e. not explicit)
-    // TODO: be more careful with the interface and distinguish between variance and frequency
-    // weights
+    /// Returns the sum of the weights, or the number of observations if the weights are all equal
+    /// to 1.
     pub(crate) fn sum_weights(&self) -> F {
-        if self.weights.is_none() {
-            return self.n_obs();
+        match &self.weights {
+            None => self.n_obs(),
+            Some(w) => self.sum_freq(w),
         }
-        let ones = Array1::<F>::ones(self.y.len());
-        self.apply_total_weights(ones).sum()
+    }
+
+    /// Returns the effective sample size corrected for the design effect. This exposes the sum of
+    /// the squares of the variance weights.
+    pub(crate) fn n_eff(&self) -> F {
+        match &self.weights {
+            None => self.n_obs(),
+            Some(w) => {
+                let v1 = self.sum_freq(w);
+                let w2 = w * w;
+                let v2 = self.sum_freq(&w2);
+                v1 * v1 / v2
+            }
+        }
     }
 
     /// multiply the input vector element-wise by the weights, if they exist
@@ -78,6 +90,16 @@ where
         match &self.weights {
             None => rhs,
             Some(w) => w * rhs,
+        }
+    }
+
+    /// Sum over the input array using the frequencies (and not the variance weights) as weights.
+    /// This is a useful operation because the frequency weights fundamentally impact the sum
+    /// operator and nothing else.
+    fn sum_freq(&self, rhs: &Array1<F>) -> F {
+        match &self.freqs {
+            None => rhs.sum(),
+            Some(f) => (f * rhs).sum(),
         }
     }
 
@@ -227,8 +249,9 @@ where
                 "Frequency weights specified multiple times".to_string(),
             ));
         }
+        let ffreqs: Array1<F> = freqs.mapv(|c| F::from(c).unwrap());
         // TODO: consider adding a check for non-negative weights
-        self.freq_weights = Some(freqs);
+        self.freq_weights = Some(ffreqs);
         self
     }
 
