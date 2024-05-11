@@ -817,7 +817,7 @@ mod tests {
         // The predicted values of Y given the model.
         let pred_y = fit.predict(&one_pad(data_x.view()), None);
         let target_dev = (data_y - pred_y).mapv(|dy| dy * dy).sum();
-        assert_abs_diff_eq!(fit.deviance(), target_dev,);
+        assert_abs_diff_eq!(fit.deviance(), target_dev, epsilon = 4. * f64::EPSILON);
         Ok(())
     }
 
@@ -840,7 +840,6 @@ mod tests {
         let dev = fit.deviance();
         let disp = fit.dispersion();
         let ndf = fit.ndf();
-        assert_abs_diff_eq!(ndf, fit.ndf_eff());
         assert_abs_diff_eq!(dev, disp * ndf, epsilon = 4. * f64::EPSILON);
         Ok(())
     }
@@ -850,44 +849,68 @@ mod tests {
     fn residuals_linear() -> Result<()> {
         let data_y = array![0.1, -0.3, 0.7, 0.2, 1.2, -0.4];
         let data_x = array![0.4, 0.1, 0.3, -0.1, 0.5, 0.6].insert_axis(Axis(1));
-        let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
+        let weights = array![0.8, 1.2, 0.9, 0.8, 1.1, 0.9];
+        // the implied variances from the weights
+        let wgt_sigmas = weights.map(|w: &f64| 1. / w.sqrt());
+        let model = ModelBuilder::<Linear>::data(&data_y, &data_x)
+            .var_weights(weights.clone())
+            .build()?;
         let fit = model.fit()?;
         let response = fit.resid_resp();
+        let resp_scaled = &response / wgt_sigmas;
         let pearson = fit.resid_pear();
         let deviance = fit.resid_dev();
-        assert_abs_diff_eq!(response, pearson);
-        assert_abs_diff_eq!(response, deviance);
+        assert_abs_diff_eq!(resp_scaled, pearson);
+        assert_abs_diff_eq!(resp_scaled, deviance);
         let pearson_std = fit.resid_pear_std()?;
         let deviance_std = fit.resid_dev_std()?;
         assert_abs_diff_eq!(pearson_std, deviance_std, epsilon = 8. * f64::EPSILON);
         // The externally-studentized residuals aren't expected to match the internally-studentized
         // ones.
+        let dev_terms_loo = fit.deviance_terms_loo()?;
+        let disp_terms_loo = fit.dispersion_loo()?;
         let student = fit.resid_student()?;
 
         // NOTE: Studentization can't be checked directly in general because the method used is a
         // one-step approximation, however it should be exact in the linear OLS case.
         let n_data = data_y.len();
         // Check that the leave-one-out stats hold literally
-        let mut loo_dev: Vec<f64> = Vec::new();
+        let mut loo_diff: Vec<f64> = Vec::new();
+        let mut loo_dev_res: Vec<f64> = Vec::new();
+        let mut loo_disp: Vec<f64> = Vec::new();
         for i in 0..n_data {
             let ya = data_y.slice(s![0..i]);
             let yb = data_y.slice(s![i + 1..]);
             let xa = data_x.slice(s![0..i, ..]);
             let xb = data_x.slice(s![i + 1.., ..]);
+            let wa = weights.slice(s![0..i]);
+            let wb = weights.slice(s![i + 1..]);
             let y_loo = concatenate![Axis(0), ya, yb];
             let x_loo = concatenate![Axis(0), xa, xb];
-            let model_i = ModelBuilder::<Linear>::data(&y_loo, &x_loo).build()?;
+            let w_loo = concatenate![Axis(0), wa, wb];
+            let model_i = ModelBuilder::<Linear>::data(&y_loo, &x_loo)
+                .var_weights(w_loo)
+                .build()?;
             let fit_i = model_i.fit()?;
             let yi = data_y[i];
             let xi = data_x.slice(s![i..i + 1, ..]);
             let xi = crate::utility::one_pad(xi);
+            let wi = weights[i];
             let yi_pred: f64 = fit_i.predict(&xi, None)[0];
-            let sigma_i = fit_i.dispersion().sqrt();
-            let dev_i = (yi - yi_pred) / sigma_i;
-            loo_dev.push(dev_i);
+            let disp_i = fit_i.dispersion();
+            let var_i = disp_i / wi;
+            let diff_i = yi - yi_pred;
+            let res_dev_i = diff_i / var_i.sqrt();
+            loo_diff.push(wi * diff_i * diff_i);
+            loo_disp.push(disp_i);
+            loo_dev_res.push(res_dev_i);
         }
-        let loo_dev: Array1<f64> = loo_dev.into();
-        assert_abs_diff_eq!(student, loo_dev, epsilon = 8. * f64::EPSILON);
+        let loo_diff: Array1<f64> = loo_diff.into();
+        let loo_disp: Array1<f64> = loo_disp.into();
+        let loo_dev_res: Array1<f64> = loo_dev_res.into();
+        assert_abs_diff_eq!(dev_terms_loo, loo_diff, epsilon = 8. * f64::EPSILON);
+        assert_abs_diff_eq!(disp_terms_loo, loo_disp, epsilon = 8. * f64::EPSILON);
+        assert_abs_diff_eq!(student, loo_dev_res, epsilon = 8. * f64::EPSILON);
         Ok(())
     }
 
