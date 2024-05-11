@@ -97,26 +97,24 @@ where
     /// Returns the deviance of the fit: twice the difference between the
     /// saturated likelihood and the model likelihood. Asymptotically this fits
     /// a chi-squared distribution with `self.ndf()` degrees of freedom.
-    /// Note that the regularized likelihood is used here.
-    // TODO: This is likely sensitive to regularization because the saturated
-    // model is not regularized but the model likelihood is. Perhaps this can be
-    // accounted for with an effective number of degrees of freedom.
+    /// Note that the unregularized likelihood is used here.
     pub fn deviance(&self) -> F {
-        // Note that this must change if the GLM likelihood subtracts the
-        // saturated one already.
-        let sat_like = self
-            .data
-            .apply_total_weights(self.data.y.mapv(M::log_like_sat))
-            .sum();
-        F::two() * (sat_like - self.model_like)
+        let terms = self.deviance_terms();
+        self.data.freq_sum(&terms)
     }
 
     /// Returns the contribution to the deviance from each observation. The total deviance should
-    /// be the (possibly weighted) sum of all of these.
+    /// be the sum of all of these. Variance weights are already included, but not frequency
+    /// weights.
     fn deviance_terms(&self) -> Array1<F> {
         let ll_terms: Array1<F> = M::log_like_terms(self.data, &self.result);
         let ll_sat: Array1<F> = self.data.y.mapv(M::log_like_sat);
-        (ll_sat - ll_terms) * F::two()
+        let terms = (ll_sat - ll_terms) * F::two();
+        // apply the variance weights for scaling, but not any frequency weights.
+        match &self.data.weights {
+            Some(w) => w * terms,
+            None => terms,
+        }
     }
 
     /// Returns the self-excluded deviance terms, i.e. the deviance of an observation as if the
@@ -141,7 +139,17 @@ where
         match M::DISPERSED {
             FreeDispersion => {
                 let dev = self.deviance();
-                dev / self.ndf_eff()
+                let p = F::from(self.n_par).unwrap();
+                let n_eff = self.data.n_eff();
+                let scaling = if p >= n_eff {
+                    // This is the overparameterized regime, which is checked directly instead of
+                    // allowing negative values. It's not clear what conditions result in this when
+                    // p < N.
+                    F::zero()
+                } else {
+                    (F::one() - p / n_eff) * self.data.sum_weights()
+                };
+                dev / scaling
             }
             NoDispersion => F::one(),
         }
@@ -154,14 +162,29 @@ where
                 let pear_sq = self.resid_pear().mapv(|r| r * r);
                 let hat_rat = self.leverage()?.mapv(|h| h / (F::one() - h));
                 let terms = self.deviance_terms() + hat_rat * pear_sq;
-                let weighted_terms = self.data.apply_total_weights(terms);
-                let total: Array1<F> = -weighted_terms + self.deviance();
-                let scaled_total = match &self.data.freqs {
-                    Some(f) => {
-                        let adj_ndf: Array1<F> = -f.clone() + self.ndf();
-                        total / adj_ndf
-                    }
+                // Don't apply total weights since the variance weights are already
+                // included in the residual terms. However, we do need the frequency weights.
+                // NOTE: If we mean "LOO" to mean "reduce frequency at i by one" rather than
+                // "leave out all observations at i", then this weighted operation should not
+                // occur. In that case, all LOO methods would need to be re-evaluated.
+                let terms = match &self.data.freqs {
+                    None => terms,
+                    Some(f) => f * terms,
+                };
+                let total: Array1<F> = -terms + self.deviance();
+                let scaled_total: Array1<F> = match &self.data.weights {
                     None => total / (self.ndf() - F::one()),
+                    Some(w) => {
+                        let v1 = self.data.freq_sum(w);
+                        let w2 = w * w;
+                        let v2 = self.data.freq_sum(&w2);
+                        // the modifed sums from leaving out the ith observation
+                        let v1p = -w.clone() + v1;
+                        let v2p = -w2 + v2;
+                        let p = F::from(self.n_par).unwrap();
+                        let scale = &v1p - v2p / &v1p * p;
+                        total / scale
+                    }
                 };
                 Ok(scaled_total)
             }
@@ -488,12 +511,6 @@ where
     pub fn resid_dev(&self) -> Array1<F> {
         let signs = self.resid_resp().mapv_into(F::signum);
         let ll_diff = self.deviance_terms();
-
-        let ll_diff = match &self.data.weights {
-            None => ll_diff,
-            Some(w) => ll_diff * w,
-        };
-
         let dev: Array1<F> = ll_diff.mapv_into(num_traits::Float::sqrt);
         signs * dev
     }
