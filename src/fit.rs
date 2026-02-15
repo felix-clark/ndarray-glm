@@ -65,7 +65,10 @@ where
     // TODO: Should an effective number of parameters that takes regularization
     // into acount be considered?
     pub fn aic(&self) -> F {
-        F::from(2 * self.n_par).unwrap() - F::two() * self.model_like
+        let log_weights = self.data.get_variance_weights().mapv(num_traits::Float::ln);
+        let sum_log_weights = self.data.freq_sum(&log_weights);
+        // NOTE: This is now the unregularized deviance.
+        self.deviance() + F::two() * self.rank() - F::two() * sum_log_weights
     }
 
     /// Returns the Bayesian information criterion for the model fit.
@@ -77,7 +80,7 @@ where
     // this package.
     pub fn bic(&self) -> F {
         let logn = num_traits::Float::ln(self.data.n_obs());
-        logn * F::from(self.n_par).unwrap() - F::two() * self.model_like
+        logn * self.rank() - F::two() * self.model_like
     }
 
     /// The covariance matrix estimated by the Fisher information and the dispersion parameter (for
@@ -110,11 +113,7 @@ where
         let ll_terms: Array1<F> = M::log_like_terms(self.data, &self.result);
         let ll_sat: Array1<F> = self.data.y.mapv(M::log_like_sat);
         let terms = (ll_sat - ll_terms) * F::two();
-        // apply the variance weights for scaling, but not any frequency weights.
-        match &self.data.weights {
-            Some(w) => w * terms,
-            None => terms,
-        }
+        self.data.apply_var_weights(terms)
     }
 
     /// Returns the self-excluded deviance terms, i.e. the deviance of an observation as if the
@@ -139,7 +138,7 @@ where
         match M::DISPERSED {
             FreeDispersion => {
                 let dev = self.deviance();
-                let p = F::from(self.n_par).unwrap();
+                let p = self.rank();
                 let n_eff = self.data.n_eff();
                 let scaling = if p >= n_eff {
                     // This is the overparameterized regime, which is checked directly instead of
@@ -353,21 +352,6 @@ where
     /// fit parameters.
     pub fn ndf(&self) -> F {
         self.data.n_obs() - self.rank()
-    }
-
-    /// Returns the effective residual degrees of freedom in the model, i.e. the number of data
-    /// points minus the number of parameters. It is corrected for the design effect that arises
-    /// from using variable weights. Not to be confused with `test_ndf()`, which represents the
-    /// degrees of freedom in the statistical tests of the fit parameters.
-    pub fn ndf_eff(&self) -> F {
-        let p = F::from(self.n_par).unwrap();
-        let n_eff = self.data.n_eff();
-        if p >= n_eff {
-            // This is the overparameterized regime, which is checked directly instead of allowing
-            // negative values. It's not clear what conditions result in this when p < N.
-            return F::zero();
-        }
-        self.data.sum_weights() * (F::one() - p / self.data.n_eff())
     }
 
     pub(crate) fn new(data: &'a Dataset<F>, use_intercept: bool, irls: Irls<M, F>) -> Self {
