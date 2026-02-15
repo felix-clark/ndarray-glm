@@ -46,6 +46,7 @@ where
 }
 
 /// Specifies the fitting options
+#[derive(Clone)]
 pub struct FitOptions<F>
 where
     F: Float,
