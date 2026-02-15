@@ -9,7 +9,7 @@ use crate::{
     model::{Dataset, Model},
     num::Float,
 };
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, ArrayRef2};
 use ndarray_linalg::SolveH;
 
 /// Whether the model's response has a free dispersion parameter (e.g. linear) or if it is fixed to
@@ -121,7 +121,7 @@ pub trait Glm: Sized {
     fn init_guess<F>(data: &Dataset<F>) -> Array1<F>
     where
         F: Float,
-        Array2<F>: SolveH<F>,
+        ArrayRef2<F>: SolveH<F>,
     {
         let y_bar: F = data.y.mean().unwrap_or_else(F::zero);
         let mu_y: Array1<F> = data.y.mapv(|y| F::half() * (y + y_bar));
@@ -133,14 +133,13 @@ pub trait Glm: Sized {
             link_y
         };
         let x_mat: Array2<F> = data.x_conj().dot(&data.x);
-        let init_guess: Array1<F> =
-            x_mat
-                .solveh_into(data.x_conj().dot(&link_y))
-                .unwrap_or_else(|err| {
-                    eprintln!("WARNING: failed to get initial guess for IRLS. Will begin at zero.");
-                    eprintln!("{err}");
-                    Array1::<F>::zeros(data.x.ncols())
-                });
+        let init_guess: Array1<F> = x_mat
+            .solveh_into(data.x_conj().dot(&link_y))
+            .unwrap_or_else(|err| {
+                eprintln!("WARNING: failed to get initial guess for IRLS. Will begin at zero.");
+                eprintln!("{err}");
+                Array1::<F>::zeros(data.x.ncols())
+            });
         init_guess
     }
 
@@ -165,10 +164,6 @@ pub trait Glm: Sized {
             // TODO: Optionally track history
         }
 
-        Ok(Fit::new(
-            &model.data,
-            model.use_intercept,
-            irls,
-        ))
+        Ok(Fit::new(&model.data, model.use_intercept, irls))
     }
 }

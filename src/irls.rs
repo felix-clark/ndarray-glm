@@ -9,7 +9,7 @@ use crate::{
     num::Float,
     regularization::IrlsReg,
 };
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, ArrayRef2};
 use ndarray_linalg::SolveH;
 use std::marker::PhantomData;
 
@@ -19,7 +19,7 @@ pub(crate) struct Irls<'a, M, F>
 where
     M: Glm,
     F: Float,
-    Array2<F>: SolveH<F>,
+    ArrayRef2<F>: SolveH<F>,
 {
     model: PhantomData<M>,
     data: &'a Dataset<F>,
@@ -46,7 +46,7 @@ impl<'a, M, F> Irls<'a, M, F>
 where
     M: Glm,
     F: Float,
-    Array2<F>: SolveH<F>,
+    ArrayRef2<F>: SolveH<F>,
 {
     pub fn new(model: &'a Model<M, F>, initial: Array1<F>, options: FitOptions<F>) -> Self {
         let data = &model.data;
@@ -156,7 +156,7 @@ impl<'a, M, F> Iterator for Irls<'a, M, F>
 where
     M: Glm,
     F: Float,
-    Array2<F>: SolveH<F>,
+    ArrayRef2<F>: SolveH<F>,
 {
     type Item = RegressionResult<IrlsStep<F>>;
 
