@@ -28,7 +28,13 @@ OpenBLAS on Debian/Ubuntu:
 ```
 sudo apt update && sudo apt install -y libopenblas-dev
 ```
-Then use this crate with the `openblas-system` feature.
+or on Arch:
+```
+sudo pacman -Syu blas-openblas
+```
+(or perhaps just `openblas`, which is a dependency of `blas-openblas`).
+Regardless of the installation method, use this crate with the
+`openblas-system` feature.
 
 To use an alternative backend or to build a static BLAS implementation, refer to the
 `ndarray-linalg`
@@ -41,7 +47,7 @@ this crate with the appropriate feature flag and it will be forwarded to
 To use in your crate, add the following to the `Cargo.toml`:
 
 ```
-ndarray = { version = "0.15", features = ["blas"]}
+ndarray = { version = "0.17", features = ["blas"]}
 ndarray-glm = { version = "0.0.13", features = ["openblas-system"] }
 ```
 
