@@ -63,30 +63,45 @@ where
     pub(crate) fn sum_weights(&self) -> F {
         match &self.weights {
             None => self.n_obs(),
-            Some(w) => self.sum_freq(w),
+            Some(w) => self.freq_sum(w),
         }
     }
 
     /// Returns the effective sample size corrected for the design effect. This exposes the sum of
     /// the squares of the variance weights.
-    pub(crate) fn n_eff(&self) -> F {
+    pub fn n_eff(&self) -> F {
         match &self.weights {
             None => self.n_obs(),
             Some(w) => {
-                let v1 = self.sum_freq(w);
+                let v1 = self.freq_sum(w);
                 let w2 = w * w;
-                let v2 = self.sum_freq(&w2);
+                let v2 = self.freq_sum(&w2);
                 v1 * v1 / v2
             }
         }
     }
 
-    /// multiply the input vector element-wise by the weights, if they exist
-    pub(crate) fn apply_total_weights(&self, rhs: Array1<F>) -> Array1<F> {
-        let rhs = match &self.freqs {
+    pub(crate) fn get_variance_weights(&self) -> Array1<F> {
+        match &self.weights {
+            Some(w) => w.clone(),
+            None => Array1::<F>::ones(self.y.len()),
+        }
+    }
+
+    /// Multiply the input by the frequency weights
+    pub(crate) fn apply_freq_weights(&self, rhs: Array1<F>) -> Array1<F> {
+        match &self.freqs {
             None => rhs,
             Some(f) => f * rhs,
-        };
+        }
+    }
+
+    /// multiply the input vector element-wise by the weights, if they exist
+    pub(crate) fn apply_total_weights(&self, rhs: Array1<F>) -> Array1<F> {
+        self.apply_freq_weights(self.apply_var_weights(rhs))
+    }
+
+    pub(crate) fn apply_var_weights(&self, rhs: Array1<F>) -> Array1<F> {
         match &self.weights {
             None => rhs,
             Some(w) => w * rhs,
@@ -96,10 +111,18 @@ where
     /// Sum over the input array using the frequencies (and not the variance weights) as weights.
     /// This is a useful operation because the frequency weights fundamentally impact the sum
     /// operator and nothing else.
-    fn sum_freq(&self, rhs: &Array1<F>) -> F {
-        match &self.freqs {
-            None => rhs.sum(),
-            Some(f) => (f * rhs).sum(),
+    pub(crate) fn freq_sum(&self, rhs: &Array1<F>) -> F {
+        self.apply_freq_weights(rhs.clone()).sum()
+    }
+
+    /// Return the weighted sum of the RHS, where both frequency and variance weights are used.
+    pub(crate) fn weighted_sum(&self, rhs: &Array1<F>) -> F {
+        match &self.weights {
+            None => self.freq_sum(rhs),
+            Some(w) => {
+                let weighted_terms = w * rhs;
+                self.freq_sum(&weighted_terms)
+            }
         }
     }
 

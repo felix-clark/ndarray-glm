@@ -155,6 +155,7 @@ where
         }
     }
 
+    /// Return the dispersion terms with the observation(s) at each point excluded from the fit.
     fn dispersion_loo(&self) -> RegressionResult<Array1<F>> {
         use DispersionType::*;
         match M::DISPERSED {
@@ -164,24 +165,24 @@ where
                 let terms = self.deviance_terms() + hat_rat * pear_sq;
                 // Don't apply total weights since the variance weights are already
                 // included in the residual terms. However, we do need the frequency weights.
-                // NOTE: If we mean "LOO" to mean "reduce frequency at i by one" rather than
-                // "leave out all observations at i", then this weighted operation should not
-                // occur. In that case, all LOO methods would need to be re-evaluated.
-                let terms = match &self.data.freqs {
-                    None => terms,
-                    Some(f) => f * terms,
-                };
+                let terms = self.data.apply_freq_weights(terms);
                 let total: Array1<F> = -terms + self.deviance();
                 let scaled_total: Array1<F> = match &self.data.weights {
-                    None => total / (self.ndf() - F::one()),
+                    None => match &self.data.freqs {
+                        Some(f) => total / -(f - self.ndf()),
+                        None => total / (self.ndf() - F::one()),
+                    },
                     Some(w) => {
                         let v1 = self.data.freq_sum(w);
                         let w2 = w * w;
                         let v2 = self.data.freq_sum(&w2);
+                        // The subtracted out terms need the frequency terms as well
+                        let f_w = self.data.apply_freq_weights(w.clone());
+                        let f_w2 = self.data.apply_freq_weights(w2);
                         // the modifed sums from leaving out the ith observation
-                        let v1p = -w.clone() + v1;
-                        let v2p = -w2 + v2;
-                        let p = F::from(self.n_par).unwrap();
+                        let v1p = -f_w + v1;
+                        let v2p = -f_w2 + v2;
+                        let p = self.rank();
                         let scale = &v1p - v2p / &v1p * p;
                         total / scale
                     }
@@ -286,6 +287,39 @@ where
         Ok(hat.diag().to_owned())
     }
 
+    /// Returns exact coefficients from leaving each observation out, one-at-a-time.
+    /// This is a much more expensive operation than the original regression because a new one is
+    /// performed for each observation.
+    pub fn loo_exact(&self) -> RegressionResult<Array2<F>> {
+        let loo_coef: Array2<F> = self.infl_coef()?;
+        // NOTE: could also use the result itself as the initial guess
+        let loo_initial = &self.result - loo_coef;
+        let mut loo_result = loo_initial.clone();
+        let n_obs = self.data.y.len();
+        for i in 0..n_obs {
+            let data_i: Dataset<F> = {
+                let mut data_i: Dataset<F> = self.data.clone();
+                let mut freqs: Array1<F> = data_i.freqs.unwrap_or(Array1::<F>::ones(n_obs));
+                freqs[i] = F::zero();
+                data_i.freqs = Some(freqs);
+                data_i
+            };
+            let model_i = Model {
+                model: PhantomData::<M>,
+                data: data_i,
+                use_intercept: self.use_intercept,
+            };
+            let options = {
+                let mut options = self.options.clone();
+                options.init_guess = Some(self.result.clone());
+                options
+            };
+            let fit_i = model_i.with_options(options).fit()?;
+            loo_result.row_mut(i).assign(&fit_i.result);
+        }
+        Ok(loo_result)
+    }
+
     /// Perform a likelihood-ratio test, returning the statistic -2*ln(L_0/L)
     /// where L_0 is the likelihood of the best-fit null model (with no
     /// parameters but the intercept) and L is the likelihood of the fit result.
@@ -318,7 +352,7 @@ where
     /// `test_ndf()`, the degrees of freedom in the statistical tests of the
     /// fit parameters.
     pub fn ndf(&self) -> F {
-        self.data.n_obs() - F::from(self.n_par).unwrap()
+        self.data.n_obs() - self.rank()
     }
 
     /// Returns the effective residual degrees of freedom in the model, i.e. the number of data
@@ -503,6 +537,11 @@ where
         lin_pred.mapv_into(M::Link::func_inv)
     }
 
+    /// Returns the rank of the model (i.e. the number of parameters)
+    fn rank(&self) -> F {
+        F::from(self.n_par).unwrap()
+    }
+
     /// Return the deviance residuals for each point in the training data.
     /// Equal to `sign(y-E[y|x])*sqrt(-2*(L[y|x] - L_sat[y]))`.
     /// This is usually a better choice for non-linear models.
@@ -543,13 +582,13 @@ where
     pub fn resid_pear(&self) -> Array1<F> {
         let mu: Array1<F> = self.predict(&self.data.x, self.data.linear_offset.as_ref());
         let residuals = &self.data.y - &mu;
-        let var_diag: Array1<F> = mu.mapv_into(M::variance);
-        let var_diag = match &self.data.weights {
-            None => var_diag,
-            Some(w) => var_diag / w,
-        };
-        let std: Array1<F> = var_diag.mapv_into(num_traits::Float::sqrt);
-        residuals / std
+        let inv_var_diag: Array1<F> = mu.mapv_into(M::variance).mapv_into(F::recip);
+        // the variance weights are the reciprocal of the corresponding variance
+        let scales = self
+            .data
+            .apply_var_weights(inv_var_diag)
+            .mapv_into(num_traits::Float::sqrt);
+        scales * residuals
     }
 
     /// Return the standardized Pearson residuals for every observation.
