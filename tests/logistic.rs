@@ -86,7 +86,7 @@ fn log_regularization() -> Result<()> {
     let model = ModelBuilder::<Logistic>::data(&y, &x)
         .linear_offset(off)
         .build()?;
-    let fit = model.fit_options().l2_reg(2e-6).fit()?;
+    let fit = model.fit_options().l2_reg(2e-6).max_iter(48).fit()?;
     dbg!(fit.result);
     dbg!(fit.n_iter);
     Ok(())
