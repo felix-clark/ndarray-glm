@@ -104,7 +104,9 @@ where
 /// Load the linear_weights dataset: y, x1, x2, x3, var_wt, freq_wt (with header row)
 #[cfg(test)]
 #[allow(dead_code)]
-pub fn load_linear_weights_data() -> Result<(Array1<f64>, Array2<f64>, Array1<f64>, Array1<usize>)> {
+#[allow(clippy::type_complexity)]
+pub fn load_linear_weights_data() -> Result<(Array1<f64>, Array2<f64>, Array1<f64>, Array1<usize>)>
+{
     let file = File::open("tests/data/linear_weights.csv")?;
     let reader = BufReader::new(file);
     let mut y_vec = Vec::new();
