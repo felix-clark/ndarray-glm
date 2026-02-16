@@ -33,7 +33,7 @@
 //! following into your crate's `Cargo.toml`:
 //! ```text
 //! ndarray = { version = "0.17", features = ["blas"]}
-//! ndarray-glm = { version = "0.0.13", features = ["openblas-system"] }
+//! ndarray-glm = { version = "0.0.14", features = ["openblas-system"] }
 //! ```
 //!
 //! ## Compile OpenBLAS from source
@@ -43,7 +43,7 @@
 //! `Cargo.toml`.
 //! ```text
 //! ndarray = { version = "0.17", features = ["blas"]}
-//! ndarray-glm = { version = "0.0.13", features = ["openblas-static"] }
+//! ndarray-glm = { version = "0.0.14", features = ["openblas-static"] }
 //! ```
 //!
 //! # Examples:
