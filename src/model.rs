@@ -11,12 +11,9 @@ use crate::{
 };
 use fit::options::{FitConfig, FitOptions};
 use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, Data, Ix1, Ix2};
-use ndarray_linalg::InverseInto;
-use std::{
-    cell::{Ref, RefCell},
-    marker::PhantomData,
-};
+use std::marker::PhantomData;
 
+#[derive(Clone)]
 pub struct Dataset<F>
 where
     F: Float,
@@ -29,11 +26,10 @@ where
     /// to fix the effect of control variables.
     // TODO: Consider making this an option of a reference.
     pub linear_offset: Option<Array1<F>>,
-    /// The weight of each observation
+    /// The variance weight of each observation (a.k.a. analytic weights)
     pub weights: Option<Array1<F>>,
-    /// The cached projection matrix
-    // crate-public only so that a null dataset can be created.
-    pub(crate) hat: RefCell<Option<Array2<F>>>,
+    /// The frequency of each observation (traditionally positive integers)
+    pub freqs: Option<Array1<F>>,
 }
 
 impl<F> Dataset<F>
@@ -54,28 +50,87 @@ where
         }
     }
 
-    /// Returns the hat matrix of the dataset of covariate data, also known as the "projection" or
-    /// "influence" matrix.
-    pub fn hat(&self) -> RegressionResult<Ref<Array2<F>>> {
-        if self.hat.borrow().is_none() {
-            if self.weights.is_some() {
-                unimplemented!("Weights must be accounted for in the hat matrix")
-            }
-            let xt = self.x.t();
-            let xtx: Array2<F> = xt.dot(&self.x);
-            // NOTE: invh/invh_into() are bugged and incorrect!
-            let xtx_inv = xtx.inv_into().map_err(|_| RegressionError::ColinearData)?;
-            *self.hat.borrow_mut() = Some(self.x.dot(&xtx_inv).dot(&xt));
+    /// Total number of observations as given by the sum of the frequencies of observations
+    pub fn n_obs(&self) -> F {
+        match &self.freqs {
+            None => F::from(self.y.len()).unwrap(),
+            Some(f) => f.sum(),
         }
-        let borrowed: Ref<Option<Array2<F>>> = self.hat.borrow();
-        Ok(Ref::map(borrowed, |x| x.as_ref().unwrap()))
     }
 
-    /// Returns the leverage for each observation. This is given by the diagonal of the projection
-    /// matrix and indicates the sensitivity of each prediction to its corresponding observation.
-    pub fn leverage(&self) -> RegressionResult<Array1<F>> {
-        let hat = self.hat()?;
-        Ok(hat.diag().to_owned())
+    /// Returns the sum of the weights, or the number of observations if the weights are all equal
+    /// to 1.
+    pub(crate) fn sum_weights(&self) -> F {
+        match &self.weights {
+            None => self.n_obs(),
+            Some(w) => self.freq_sum(w),
+        }
+    }
+
+    /// Returns the effective sample size corrected for the design effect. This exposes the sum of
+    /// the squares of the variance weights.
+    pub fn n_eff(&self) -> F {
+        match &self.weights {
+            None => self.n_obs(),
+            Some(w) => {
+                let v1 = self.freq_sum(w);
+                let w2 = w * w;
+                let v2 = self.freq_sum(&w2);
+                v1 * v1 / v2
+            }
+        }
+    }
+
+    pub(crate) fn get_variance_weights(&self) -> Array1<F> {
+        match &self.weights {
+            Some(w) => w.clone(),
+            None => Array1::<F>::ones(self.y.len()),
+        }
+    }
+
+    /// Multiply the input by the frequency weights
+    pub(crate) fn apply_freq_weights(&self, rhs: Array1<F>) -> Array1<F> {
+        match &self.freqs {
+            None => rhs,
+            Some(f) => f * rhs,
+        }
+    }
+
+    /// multiply the input vector element-wise by the weights, if they exist
+    pub(crate) fn apply_total_weights(&self, rhs: Array1<F>) -> Array1<F> {
+        self.apply_freq_weights(self.apply_var_weights(rhs))
+    }
+
+    pub(crate) fn apply_var_weights(&self, rhs: Array1<F>) -> Array1<F> {
+        match &self.weights {
+            None => rhs,
+            Some(w) => w * rhs,
+        }
+    }
+
+    /// Sum over the input array using the frequencies (and not the variance weights) as weights.
+    /// This is a useful operation because the frequency weights fundamentally impact the sum
+    /// operator and nothing else.
+    pub(crate) fn freq_sum(&self, rhs: &Array1<F>) -> F {
+        self.apply_freq_weights(rhs.clone()).sum()
+    }
+
+    /// Return the weighted sum of the RHS, where both frequency and variance weights are used.
+    pub(crate) fn weighted_sum(&self, rhs: &Array1<F>) -> F {
+        self.freq_sum(&self.apply_var_weights(rhs.clone()))
+    }
+
+    /// Returns the weighted transpose of the feature data
+    pub(crate) fn x_conj(&self) -> Array2<F> {
+        let xt = self.x.t().to_owned();
+        let xt = match &self.freqs {
+            None => xt,
+            Some(f) => xt * f,
+        };
+        match &self.weights {
+            None => xt,
+            Some(w) => xt * w,
+        }
     }
 }
 
@@ -98,12 +153,12 @@ where
     F: Float,
 {
     /// Perform the regression and return a fit object holding the results.
-    pub fn fit(&self) -> RegressionResult<Fit<M, F>> {
+    pub fn fit(&self) -> RegressionResult<Fit<'_, M, F>> {
         self.fit_options().fit()
     }
 
     /// Fit options builder interface
-    pub fn fit_options(&self) -> FitConfig<M, F> {
+    pub fn fit_options(&self) -> FitConfig<'_, M, F> {
         FitConfig {
             model: self,
             options: FitOptions::default(),
@@ -111,7 +166,7 @@ where
     }
 
     /// An experimental interface that would allow fit options to be set externally.
-    pub fn with_options(&self, options: FitOptions<F>) -> FitConfig<M, F> {
+    pub fn with_options(&self, options: FitOptions<F>) -> FitConfig<'_, M, F> {
         FitConfig {
             model: self,
             options,
@@ -144,9 +199,11 @@ impl<M: Glm> ModelBuilder<M> {
             data_y: data_y.view(),
             data_x: data_x.view(),
             linear_offset: None,
-            weights: None,
+            var_weights: None,
+            freq_weights: None,
             use_intercept_term: true,
             colin_tol: F::epsilon(),
+            error: None,
         }
     }
 }
@@ -170,12 +227,16 @@ where
     // TODO: consider making this a reference/ArrayView. Y and X are effectively
     // cloned so perhaps this isn't a big deal.
     linear_offset: Option<Array1<F>>,
-    /// The weights for each observation.
-    weights: Option<Array1<F>>,
+    /// The variance/analytic weights for each observation.
+    var_weights: Option<Array1<F>>,
+    /// The frequency/count of each observation.
+    freq_weights: Option<Array1<F>>,
     /// Whether to use an intercept term. Defaults to `true`.
     use_intercept_term: bool,
     /// tolerance for determinant check on rank of data matrix X.
     colin_tol: F,
+    /// An error that has come up in the build compilation.
+    error: Option<RegressionError>,
 }
 
 /// A builder to generate a Model object
@@ -188,7 +249,39 @@ where
     /// Represents an offset added to the linear predictor for each data point.
     /// This can be used to control for fixed effects or in multi-level models.
     pub fn linear_offset(mut self, linear_offset: Array1<F>) -> Self {
+        if self.linear_offset.is_some() {
+            self.error = Some(RegressionError::BuildError(
+                "Offsets specified multiple times".to_string(),
+            ));
+        }
         self.linear_offset = Some(linear_offset);
+        self
+    }
+
+    /// Frequency weights (a.k.a. counts) for each observation. Traditionally these are positive
+    /// integers representing the number of times each observation appears identically.
+    pub fn freq_weights(mut self, freqs: Array1<usize>) -> Self {
+        if self.freq_weights.is_some() {
+            self.error = Some(RegressionError::BuildError(
+                "Frequency weights specified multiple times".to_string(),
+            ));
+        }
+        let ffreqs: Array1<F> = freqs.mapv(|c| F::from(c).unwrap());
+        // TODO: consider adding a check for non-negative weights
+        self.freq_weights = Some(ffreqs);
+        self
+    }
+
+    /// Variance weights (a.k.a. analytic weights) of each observation. These could represent the
+    /// inverse square of the uncertainties of each measurement.
+    pub fn var_weights(mut self, weights: Array1<F>) -> Self {
+        if self.var_weights.is_some() {
+            self.error = Some(RegressionError::BuildError(
+                "Variance weights specified multiple times".to_string(),
+            ));
+        }
+        // TODO: consider adding a check for non-negative weights
+        self.var_weights = Some(weights);
         self
     }
 
@@ -210,6 +303,10 @@ where
         M: Glm,
         F: Float,
     {
+        if let Some(err) = self.error {
+            return Err(err);
+        }
+
         let n_data = self.data_y.len();
         if n_data != self.data_x.nrows() {
             return Err(RegressionError::BadInput(
@@ -258,8 +355,8 @@ where
                 y: data_y,
                 x: data_x,
                 linear_offset: self.linear_offset,
-                weights: self.weights,
-                hat: RefCell::new(None),
+                weights: self.var_weights,
+                freqs: self.freq_weights,
             },
             use_intercept: self.use_intercept_term,
         })

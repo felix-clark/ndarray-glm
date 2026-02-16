@@ -34,6 +34,30 @@ pub trait Transform {
     /// zero in a region that the IRLS is in the algorithm may have difficulty
     /// converging.
     fn d_nat_param<F: Float>(lin_pred: &Array1<F>) -> Array1<F>;
+    /// Adjust the error/residual terms of the likelihood function based on the first derivative of
+    /// the transformation. The linear predictor must be un-transformed, i.e. it must be X*beta
+    /// without the transformation applied.
+    fn adjust_errors<F: Float>(
+        errors: Array1<F>,
+        lin_pred: &Array1<F>,
+    ) -> Array1<F> {
+        let eta_d = Self::d_nat_param(lin_pred);
+        eta_d * errors
+    }
+    /// Adjust the variance terms of the likelihood function based on the first and second
+    /// derivatives of the transformation. The linear predictor must be un-transformed, i.e. it
+    /// must be X*beta without the transformation applied.
+    fn adjust_variance<F: Float>(
+        variance: Array1<F>,
+        lin_pred: &Array1<F>,
+    ) -> Array1<F> {
+        let eta_d = Self::d_nat_param(lin_pred);
+        // The second-derivative term in the variance matrix can lead it to not
+        // be positive-definite. In fact, the second term should vanish when
+        // taking the expecation of Y to give the Fisher information.
+        // let var_adj = &eta_d * &variance * eta_d - eta_dd * errors;
+        &eta_d * &variance * eta_d
+    }
     /// Adjust the error and variance terms of the likelihood function based on
     /// the first and second derivatives of the transformation. The adjustment
     /// is performed simultaneously. The linear predictor must be
@@ -74,6 +98,20 @@ where
         Array1::<F>::ones(lin_pred.len())
     }
     /// The canonical link function requires no transformation of the error and variance terms.
+    #[inline]
+    fn adjust_errors<F: Float>(
+        errors: Array1<F>,
+        _lin_pred: &Array1<F>,
+    ) -> Array1<F> {
+        errors
+    }
+    #[inline]
+    fn adjust_variance<F: Float>(
+        variance: Array1<F>,
+        _lin_pred: &Array1<F>,
+    ) -> Array1<F> {
+        variance
+    }
     #[inline]
     fn adjust_errors_variance<F: Float>(
         errors: Array1<F>,

@@ -1,6 +1,7 @@
 //! Trait defining a generalized linear model for common functionality.
 //! Models are fit such that <Y> = g^-1(X*B) where g is the link function.
 
+use crate::irls::IrlsStep;
 use crate::link::{Link, Transform};
 use crate::{
     error::RegressionResult,
@@ -9,7 +10,7 @@ use crate::{
     model::{Dataset, Model},
     num::Float,
 };
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, ArrayRef2};
 use ndarray_linalg::SolveH;
 
 /// Whether the model's response has a free dispersion parameter (e.g. linear) or if it is fixed to
@@ -52,13 +53,26 @@ pub trait Glm: Sized {
     /// to each response function, but should not depend on the link function.
     fn variance<F: Float>(mean: F) -> F;
 
+    /// Get the full adjusted variance diagonal from the linear predictors directly
+    fn adjusted_variance_diag<F: Float>(lin_pred: &Array1<F>) -> Array1<F> {
+        // The prediction of y given the current model.
+        let predictor: Array1<F> = Self::mean(lin_pred);
+
+        // The variances predicted by the model.
+        let var_diag: Array1<F> = predictor.mapv(Self::variance);
+
+        Self::Link::adjust_variance(var_diag, lin_pred)
+    }
+
     /// Returns the likelihood function summed over all observations.
     fn log_like<F>(data: &Dataset<F>, regressors: &Array1<F>) -> F
     where
         F: Float,
     {
         // the total likelihood prior to regularization
-        Self::log_like_terms(data, regressors).sum()
+        let terms = Self::log_like_terms(data, regressors);
+        let weighted_terms = data.apply_total_weights(terms);
+        weighted_terms.sum()
     }
 
     /// Returns the likelihood function of the response distribution as a
@@ -105,14 +119,13 @@ pub trait Glm: Sized {
     /// X * beta_0 ~ g(0.5*(y + y_avg))
     /// This is equivalent to minimizing half the sum of squared differences
     /// between X*beta and g(0.5*(y + y_avg)).
-    // TODO: consider incorporating weights and/or correlations.
     fn init_guess<F>(data: &Dataset<F>) -> Array1<F>
     where
         F: Float,
-        Array2<F>: SolveH<F>,
+        ArrayRef2<F>: SolveH<F>,
     {
         let y_bar: F = data.y.mean().unwrap_or_else(F::zero);
-        let mu_y: Array1<F> = data.y.mapv(|y| F::from(0.5).unwrap() * (y + y_bar));
+        let mu_y: Array1<F> = data.y.mapv(|y| F::half() * (y + y_bar));
         let link_y = mu_y.mapv(Self::Link::func);
         // Compensate for linear offsets if they are present
         let link_y: Array1<F> = if let Some(off) = &data.linear_offset {
@@ -120,15 +133,14 @@ pub trait Glm: Sized {
         } else {
             link_y
         };
-        let x_mat: Array2<F> = data.x.t().dot(&data.x);
-        let init_guess: Array1<F> =
-            x_mat
-                .solveh_into(data.x.t().dot(&link_y))
-                .unwrap_or_else(|err| {
-                    eprintln!("WARNING: failed to get initial guess for IRLS. Will begin at zero.");
-                    eprintln!("{err}");
-                    Array1::<F>::zeros(data.x.ncols())
-                });
+        let x_mat: Array2<F> = data.x_conj().dot(&data.x);
+        let init_guess: Array1<F> = x_mat
+            .solveh_into(data.x_conj().dot(&link_y))
+            .unwrap_or_else(|err| {
+                eprintln!("WARNING: failed to get initial guess for IRLS. Will begin at zero.");
+                eprintln!("{err}");
+                Array1::<F>::zeros(data.x.ncols())
+            });
         init_guess
     }
 
@@ -136,7 +148,7 @@ pub trait Glm: Sized {
     fn regression<F>(
         model: &Model<Self, F>,
         options: FitOptions<F>,
-    ) -> RegressionResult<Fit<Self, F>>
+    ) -> RegressionResult<Fit<'_, Self, F>>
     where
         F: Float,
         Self: Sized,
@@ -148,15 +160,13 @@ pub trait Glm: Sized {
 
         let mut irls: Irls<Self, F> = Irls::new(model, initial, options);
 
-        for iteration in irls.by_ref() {
-            let _it_result = iteration?;
-            // TODO: Optionally track history
-        }
+        let fit_history: Vec<IrlsStep<F>> = irls.by_ref().collect::<Result<Vec<_>, _>>()?;
 
         Ok(Fit::new(
             &model.data,
             model.use_intercept,
             irls,
+            fit_history,
         ))
     }
 }

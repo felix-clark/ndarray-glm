@@ -9,7 +9,7 @@ use crate::{
     num::Float,
     regularization::IrlsReg,
 };
-use ndarray::{Array1, Array2};
+use ndarray::{Array1, Array2, ArrayRef2};
 use ndarray_linalg::SolveH;
 use std::marker::PhantomData;
 
@@ -19,7 +19,7 @@ pub(crate) struct Irls<'a, M, F>
 where
     M: Glm,
     F: Float,
-    Array2<F>: SolveH<F>,
+    ArrayRef2<F>: SolveH<F>,
 {
     model: PhantomData<M>,
     data: &'a Dataset<F>,
@@ -46,7 +46,7 @@ impl<'a, M, F> Irls<'a, M, F>
 where
     M: Glm,
     F: Float,
-    Array2<F>: SolveH<F>,
+    ArrayRef2<F>: SolveH<F>,
 {
     pub fn new(model: &'a Model<M, F>, initial: Array1<F>, options: FitOptions<F>) -> Self {
         let data = &model.data;
@@ -99,6 +99,9 @@ where
         // both versions, with and without the linear offset, and we don't want
         // to repeat the matrix multiplication.
 
+        // Similarly, we don't use M::get_adjusted_variance(linear_predictor) because intermediate
+        // results are used as well, and we need to correct the error term too.
+
         // The prediction of y given the current model.
         // This does cause an unnecessary clone with an identity link, but we
         // need the linear predictor around for the future.
@@ -107,44 +110,38 @@ where
         // The variances predicted by the model. This should have weights with
         // it and must be non-zero.
         // This could become a full covariance with weights.
-        // TODO: allow the variance conditioning to be a configurable parameter.
         let var_diag: Array1<F> = predictor.mapv(M::variance);
 
         // The errors represent the difference between observed and predicted.
         let errors = &self.data.y - &predictor;
 
         // Adjust the errors and variance using the appropriate derivatives of
-        // the link function.
+        // the link function. With the canonical link function, this is a no-op.
         let (errors, var_diag) =
             M::Link::adjust_errors_variance(errors, var_diag, &linear_predictor);
-        // Try adjusting only the variance as if the derivative will cancel.
-        // This might not be quite right due to the matrix multiplications.
-        // let var_diag = M::Link::d_nat_param(&linear_predictor) * var_diag;
 
         // condition after the adjustment in case the derivatives are zero. Or
         // should the Hessian itself be conditioned?
+        // TODO: allow the variance conditioning to be a configurable parameter.
         let var_diag: Array1<F> = var_diag.mapv_into(|v| v + F::epsilon());
 
         // X weighted by the model variance for each observation
         // This is really the negative Hessian of the likelihood.
-        // When adding correlations between observations this statement will
-        // need to be modified.
-        let neg_hessian: Array2<F> = (&self.data.x.t() * &var_diag).dot(&self.data.x);
+        let neg_hessian: Array2<F> = (self.data.x_conj() * &var_diag).dot(&self.data.x);
 
         // This isn't quite the jacobian because the H*beta_old term is subtracted out.
         let rhs: Array1<F> = {
             // NOTE: This w*X should not include the linear offset, because it
             // comes from the Hessian times the last guess.
             let target: Array1<F> = (var_diag * linear_predictor_no_control) + errors;
-            let target: Array1<F> = self.data.x.t().dot(&target);
+            let target: Array1<F> = self.data.x_conj().dot(&target);
             target
         };
         (neg_hessian, rhs)
     }
 }
 
-/// Represents a step in the IRLS. Holds the current guess, likelihood, and the
-/// number of steps taken this iteration.
+/// Represents a step in the IRLS. Holds the current guess and likelihood.
 pub struct IrlsStep<F> {
     /// The current parameter guess.
     pub guess: Array1<F>,
@@ -158,7 +155,7 @@ impl<'a, M, F> Iterator for Irls<'a, M, F>
 where
     M: Glm,
     F: Float,
-    Array2<F>: SolveH<F>,
+    ArrayRef2<F>: SolveH<F>,
 {
     type Item = RegressionResult<IrlsStep<F>>;
 

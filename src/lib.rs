@@ -33,7 +33,7 @@
 //! following into your crate's `Cargo.toml`:
 //! ```text
 //! ndarray = { version = "0.15", features = ["blas"]}
-//! ndarray-glm = { version = "0.0.12", features = ["openblas-system"] }
+//! ndarray-glm = { version = "0.0.13", features = ["openblas-system"] }
 //! ```
 //!
 //! ## Compile OpenBLAS from source
@@ -43,7 +43,7 @@
 //! `Cargo.toml`.
 //! ```text
 //! ndarray = { version = "0.15", features = ["blas"]}
-//! ndarray-glm = { version = "0.0.12", features = ["openblas-static"] }
+//! ndarray-glm = { version = "0.0.13", features = ["openblas-static"] }
 //! ```
 //!
 //! # Examples:
@@ -75,14 +75,15 @@
 //! println!("Fit result: {}", fit.result);
 //! ```
 //!
-//! Logistic regression with a non-canonical link function:
+//! Logistic regression with a non-canonical link function. The fit options may need adjusting as
+//! these are typically more difficult to converge:
 //! ```
 //! use ndarray_glm::{array, Logistic, logistic_link::Cloglog, ModelBuilder};
 //!
 //! let data_y = array![true, false, false, true, true];
 //! let data_x = array![[0.5, 0.2], [0.1, 0.3], [0.2, 0.6], [0.6, 0.3], [0.4, 0.4]];
 //! let model = ModelBuilder::<Logistic<Cloglog>>::data(&data_y, &data_x).build().unwrap();
-//! let fit = model.fit_options().l2_reg(1e-5).fit().unwrap();
+//! let fit = model.fit_options().max_iter(64).l2_reg(1e-3).fit().unwrap();
 //! println!("Fit result: {}", fit.result);
 //! ```
 
