@@ -88,6 +88,29 @@ export_scenario(m_freq, "linear_weights/freq", orig_idx)
 m_both <- glm(y ~ x1 + x2 + x3, data = df_exp, family = gaussian(), weights = var_wt)
 export_scenario(m_both, "linear_weights/both", orig_idx)
 
+# --- Offset + no-intercept scenarios ---
+# These exercise the null model code path where offset is present and use_intercept is false.
+# Use 0.3*x1 as the offset, fit y ~ x2 + x3 - 1 (no intercept).
+off <- 0.3 * x1
+
+# Scenario: offset + no intercept, no weights
+m_off_none <- glm(y ~ x2 + x3 - 1, offset = off, family = gaussian())
+export_scenario(m_off_none, "linear_weights/off_none")
+
+# Scenario: offset + no intercept, variance weights
+m_off_var <- glm(y ~ x2 + x3 - 1, offset = off, family = gaussian(), weights = var_wt)
+export_scenario(m_off_var, "linear_weights/off_var")
+
+# Scenario: offset + no intercept, frequency weights (expanded)
+# The offset must be expanded to match the expanded data frame
+off_exp <- 0.3 * df_exp$x1
+m_off_freq <- glm(y ~ x2 + x3 - 1, offset = off_exp, data = df_exp, family = gaussian())
+export_scenario(m_off_freq, "linear_weights/off_freq", orig_idx)
+
+# Scenario: offset + no intercept, both weights
+m_off_both <- glm(y ~ x2 + x3 - 1, offset = off_exp, data = df_exp, family = gaussian(), weights = var_wt)
+export_scenario(m_off_both, "linear_weights/off_both", orig_idx)
+
 # --- Ridge scenarios via glmnet ---
 library(glmnet)
 

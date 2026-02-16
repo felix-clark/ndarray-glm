@@ -326,6 +326,71 @@ fn linear_ridge_var_weights() -> Result<()> {
     Ok(())
 }
 
+// --- Linear model with offset and no intercept ---
+// These test the null model code path where linear_offset is Some and use_intercept is false.
+
+/// Compute the offset vector matching the R script: off = 0.3 * x1
+fn offset_from_x(x: &ndarray::Array2<f64>) -> ndarray::Array1<f64> {
+    x.column(0).mapv(|v| 0.3 * v)
+}
+
+#[test]
+fn linear_offset_noint_no_weights() -> Result<()> {
+    let (y, x, _var_wt, _freq_wt) = load_linear_weights_data()?;
+    let off = offset_from_x(&x);
+    // Fit y ~ x2 + x3 - 1 with offset = 0.3*x1
+    let x_sub = x.slice(ndarray::s![.., 1..]).to_owned();
+    let model = ModelBuilder::<Linear>::data(&y, &x_sub)
+        .linear_offset(off)
+        .no_constant()
+        .build()?;
+    let fit = model.fit()?;
+    check_linear_scenario(&fit, "off_none", 1e-10, false, false)
+}
+
+#[test]
+fn linear_offset_noint_var_weights() -> Result<()> {
+    let (y, x, var_wt, _freq_wt) = load_linear_weights_data()?;
+    let off = offset_from_x(&x);
+    let x_sub = x.slice(ndarray::s![.., 1..]).to_owned();
+    let model = ModelBuilder::<Linear>::data(&y, &x_sub)
+        .linear_offset(off)
+        .no_constant()
+        .var_weights(var_wt)
+        .build()?;
+    let fit = model.fit()?;
+    check_linear_scenario(&fit, "off_var", 1e-10, true, false)
+}
+
+#[test]
+fn linear_offset_noint_freq_weights() -> Result<()> {
+    let (y, x, _var_wt, freq_wt) = load_linear_weights_data()?;
+    let off = offset_from_x(&x);
+    let x_sub = x.slice(ndarray::s![.., 1..]).to_owned();
+    let model = ModelBuilder::<Linear>::data(&y, &x_sub)
+        .linear_offset(off)
+        .no_constant()
+        .freq_weights(freq_wt)
+        .build()?;
+    let fit = model.fit()?;
+    check_linear_scenario(&fit, "off_freq", 1e-10, false, true)
+}
+
+#[test]
+fn linear_offset_noint_both_weights() -> Result<()> {
+    let (y, x, var_wt, freq_wt) = load_linear_weights_data()?;
+    let off = offset_from_x(&x);
+    let x_sub = x.slice(ndarray::s![.., 1..]).to_owned();
+    let model = ModelBuilder::<Linear>::data(&y, &x_sub)
+        .linear_offset(off)
+        .no_constant()
+        .var_weights(var_wt)
+        .freq_weights(freq_wt)
+        .build()?;
+    let fit = model.fit()?;
+    check_linear_scenario(&fit, "off_both", 1e-10, true, true)
+}
+
 #[test]
 fn linear_lasso() -> Result<()> {
     let (y, x, _var_wt, _freq_wt) = load_linear_weights_data()?;

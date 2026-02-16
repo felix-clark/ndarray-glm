@@ -486,8 +486,7 @@ where
                         let null_like_terms = ndarray::Zip::from(&self.data.y)
                             .and(&nat_par)
                             .map_collect(|&y, &eta| M::log_like_natural(y, eta));
-                        let null_like = self.data.apply_total_weights(null_like_terms).sum()
-                            / self.data.sum_weights();
+                        let null_like = self.data.apply_total_weights(null_like_terms).sum();
                         let null_params = Array1::<F>::zeros(self.n_par);
                         (null_like, null_params)
                     }
