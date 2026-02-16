@@ -10,7 +10,7 @@
 //!
 //! * Linear, logistic, Poisson, and binomial regression (more to come)
 //! * Generic over floating-point type
-//! * L2 (ridge) regularization
+//! * L1 (lasso), L2 (ridge), and elastic net regularization
 //! * Statistical tests of fit result
 //! * Alternative and custom link functions
 //!
@@ -32,7 +32,7 @@
 //! Debian/Ubuntu, for instance, this means installing `libopenblas-dev`. Then, put the
 //! following into your crate's `Cargo.toml`:
 //! ```text
-//! ndarray = { version = "0.15", features = ["blas"]}
+//! ndarray = { version = "0.17", features = ["blas"]}
 //! ndarray-glm = { version = "0.0.13", features = ["openblas-system"] }
 //! ```
 //!
@@ -42,7 +42,7 @@
 //! initial compile time will be very long. Use the folling lines in your crate's
 //! `Cargo.toml`.
 //! ```text
-//! ndarray = { version = "0.15", features = ["blas"]}
+//! ndarray = { version = "0.17", features = ["blas"]}
 //! ndarray-glm = { version = "0.0.13", features = ["openblas-static"] }
 //! ```
 //!

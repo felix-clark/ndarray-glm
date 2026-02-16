@@ -20,7 +20,7 @@ where
 {
     /// the observation of response data by event
     pub y: Array1<F>,
-    /// the design matrix with events in rows and instances in columns
+    /// the design matrix with observations in rows and covariates in columns
     pub x: Array2<F>,
     /// The offset in the linear predictor for each data point. This can be used
     /// to fix the effect of control variables.
@@ -220,7 +220,7 @@ where
     /// Observed response variable data where each entry is a new observation.
     data_y: ArrayView1<'a, Y>,
     /// Design matrix of observed covariate data where each row is a new
-    /// observation and each column represents a different dependent variable.
+    /// observation and each column represents a different independent variable.
     data_x: ArrayView2<'a, F>,
     /// The offset in the linear predictor for each data point. This can be used
     /// to incorporate control terms.

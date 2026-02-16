@@ -87,7 +87,7 @@ where
         yt * xt - num_traits::Float::exp(xt).ln_1p()
     }
 
-    /// The saturated likelihood is zero for logistic regression when y = 0 or 1 but is greater
+    /// The saturated log-likelihood is zero for logistic regression when y = 0 or 1 but is less
     /// than zero for 0 < y < 1.
     fn log_like_sat<F: Float>(y: F) -> F {
         prod_log(y) + prod_log(F::one() - y)

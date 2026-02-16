@@ -47,10 +47,10 @@ pub trait Glm: Sized {
     /// This can be used to calculate the normalized likelihood.
     fn log_partition<F: Float>(nat_par: F) -> F;
 
-    /// The variance as a function of the mean. This should be related to the
-    /// Laplacian of the log-partition function, or in other words, the
-    /// derivative of the inverse link function mu = g^{-1}(eta). This is unique
-    /// to each response function, but should not depend on the link function.
+    /// The variance as a function of the mean. This is the second derivative of
+    /// the log-partition function with respect to the natural parameter. This is
+    /// unique to each response function, but should not depend on the link
+    /// function.
     fn variance<F: Float>(mean: F) -> F;
 
     /// Get the full adjusted variance diagonal from the linear predictors directly

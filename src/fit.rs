@@ -45,7 +45,7 @@ where
     pub history: Vec<IrlsStep<F>>,
     /// The number of parameters
     n_par: usize,
-    /// The unscaled covariance matrix of the parameters, otherwise known as the Fisher
+    /// The unscaled covariance matrix of the parameters, i.e. the inverse of the Fisher
     /// information. Since the calculation requires a matrix inversion, it is computed only when
     /// needed and the value is cached.
     cov_unscaled: RefCell<Option<Array2<F>>>,
