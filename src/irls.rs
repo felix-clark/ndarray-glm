@@ -141,8 +141,7 @@ where
     }
 }
 
-/// Represents a step in the IRLS. Holds the current guess, likelihood, and the
-/// number of steps taken this iteration.
+/// Represents a step in the IRLS. Holds the current guess and likelihood.
 pub struct IrlsStep<F> {
     /// The current parameter guess.
     pub guess: Array1<F>,

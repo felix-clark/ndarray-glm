@@ -5,7 +5,7 @@ pub mod options;
 use crate::{
     error::RegressionResult,
     glm::{DispersionType, Glm},
-    irls::Irls,
+    irls::{Irls, IrlsStep},
     link::{Link, Transform},
     model::{Dataset, Model},
     num::Float,
@@ -41,6 +41,8 @@ where
     reg: Box<dyn IrlsReg<F>>,
     /// The number of overall iterations taken in the IRLS.
     pub n_iter: usize,
+    /// The history of guesses and likelihoods over the IRLS iterations.
+    pub history: Vec<IrlsStep<F>>,
     /// The number of parameters
     n_par: usize,
     /// The unscaled covariance matrix of the parameters, otherwise known as the Fisher
@@ -354,7 +356,12 @@ where
         self.data.n_obs() - self.rank()
     }
 
-    pub(crate) fn new(data: &'a Dataset<F>, use_intercept: bool, irls: Irls<M, F>) -> Self {
+    pub(crate) fn new(
+        data: &'a Dataset<F>,
+        use_intercept: bool,
+        irls: Irls<M, F>,
+        history: Vec<IrlsStep<F>>,
+    ) -> Self {
         let Irls {
             guess: result,
             options,
@@ -380,6 +387,7 @@ where
             model_like,
             reg,
             n_iter,
+            history,
             n_par,
             cov_unscaled: RefCell::new(None),
             hat: RefCell::new(None),

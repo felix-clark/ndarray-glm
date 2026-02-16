@@ -1,6 +1,7 @@
 //! Trait defining a generalized linear model for common functionality.
 //! Models are fit such that <Y> = g^-1(X*B) where g is the link function.
 
+use crate::irls::IrlsStep;
 use crate::link::{Link, Transform};
 use crate::{
     error::RegressionResult,
@@ -159,11 +160,13 @@ pub trait Glm: Sized {
 
         let mut irls: Irls<Self, F> = Irls::new(model, initial, options);
 
-        for iteration in irls.by_ref() {
-            let _it_result = iteration?;
-            // TODO: Optionally track history
-        }
+        let fit_history: Vec<IrlsStep<F>> = irls.by_ref().collect::<Result<Vec<_>, _>>()?;
 
-        Ok(Fit::new(&model.data, model.use_intercept, irls))
+        Ok(Fit::new(
+            &model.data,
+            model.use_intercept,
+            irls,
+            fit_history,
+        ))
     }
 }
