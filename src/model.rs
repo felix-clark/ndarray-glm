@@ -159,12 +159,12 @@ where
     F: Float,
 {
     /// Perform the regression and return a fit object holding the results.
-    pub fn fit(&self) -> RegressionResult<Fit<M, F>> {
+    pub fn fit(&self) -> RegressionResult<Fit<'_, M, F>> {
         self.fit_options().fit()
     }
 
     /// Fit options builder interface
-    pub fn fit_options(&self) -> FitConfig<M, F> {
+    pub fn fit_options(&self) -> FitConfig<'_, M, F> {
         FitConfig {
             model: self,
             options: FitOptions::default(),
@@ -172,7 +172,7 @@ where
     }
 
     /// An experimental interface that would allow fit options to be set externally.
-    pub fn with_options(&self, options: FitOptions<F>) -> FitConfig<M, F> {
+    pub fn with_options(&self, options: FitOptions<F>) -> FitConfig<'_, M, F> {
         FitConfig {
             model: self,
             options,

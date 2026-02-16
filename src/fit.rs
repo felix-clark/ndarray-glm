@@ -223,7 +223,7 @@ where
 
     /// The inverse of the (regularized) fisher information matrix. This is used in some other
     /// calculations (like the covariance and hat matrices) so it is cached.
-    fn fisher_inv(&self) -> RegressionResult<Ref<Array2<F>>> {
+    fn fisher_inv(&self) -> RegressionResult<Ref<'_, Array2<F>>> {
         if self.cov_unscaled.borrow().is_none() {
             let fisher_reg = self.fisher(&self.result);
             // NOTE: invh/invh_into() are bugged and incorrect!
@@ -238,7 +238,7 @@ where
     /// Returns the hat matrix of fit, also known as the "projection" or "influence" matrix.
     /// The convention used corresponds to H = dE[y]/dy and is orthogonal to the response
     /// residuals. This version is not symmetric.
-    pub fn hat(&self) -> RegressionResult<Ref<Array2<F>>> {
+    pub fn hat(&self) -> RegressionResult<Ref<'_, Array2<F>>> {
         if self.hat.borrow().is_none() {
             let lin_pred = self.data.linear_predictor(&self.result);
             // Apply the eta' terms manually instead of calling adjusted_variance_diag, because the
