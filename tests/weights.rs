@@ -212,6 +212,10 @@ fn check_linear_scenario(
             // comparison here.
             let _r_resid_student = r("resid_student")?;
             let _our_resid_student = fit.resid_student()?;
+
+            // --- Cook's distance ---
+            let r_cooks = r("cooks")?;
+            assert_abs_diff_eq!(fit.cooks()?, r_cooks, epsilon = eps);
         }
 
         // --- LOO influence coefficients ---

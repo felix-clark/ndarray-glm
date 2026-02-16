@@ -55,6 +55,9 @@ export_scenario <- function(model, dir_name, orig_idx = NULL) {
   # influence coefficients: write column-major via t()
   write(t(sub_mat(infl$coefficients)), file.path(dir_name, "loo_coef.csv"), ncolumns = 1)
 
+  # Cook's distance
+  write(sub(cooks.distance(model)), file.path(dir_name, "cooks.csv"), ncolumns = 1)
+
   # Wald t-values
   write(ms$coefficients[, "t value"], file.path(dir_name, "wald_z.csv"), ncolumns = 1)
 

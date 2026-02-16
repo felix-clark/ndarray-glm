@@ -85,6 +85,19 @@ where
         logn * self.rank() - F::two() * self.model_like
     }
 
+    /// The Cook's distance for each observation, which measures how much the regression changes
+    /// when leaving out each observation.
+    pub fn cooks(&self) -> RegressionResult<Array1<F>> {
+        let hat = self.leverage()?;
+        let pear_sq = self.resid_pear().mapv(|r| r * r);
+        let h_terms: Array1<F> = hat.mapv_into(|h| {
+            let omh = F::one() - h;
+            h / (omh * omh)
+        });
+        let denom: F = self.rank() * self.dispersion();
+        Ok(pear_sq * h_terms / denom)
+    }
+
     /// The covariance matrix estimated by the Fisher information and the dispersion parameter (for
     /// families with a free scale). The Fisher matrix is cached to avoid repeating the potentially
     /// expensive matrix inversion.
