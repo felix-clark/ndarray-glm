@@ -25,6 +25,7 @@ intel-mkl-system = ["ndarray-linalg/intel-mkl-system"]
 
 [dependencies]
 itertools = "0.14"
+katex-doc = "0.1.0"
 ndarray = { version = "0.17", features = ["blas"] }
 ndarray-linalg = { version = "0.18" }
 num-traits = "0.2"
@@ -36,6 +37,5 @@ approx = "0.5"
 ndarray = { version = "0.17", features = ["blas", "approx"] }
 ndarray-linalg = { version = "0.18", default-features = false, features = ["openblas-system"]}
 
-# [package.metadata.docs.rs]
-# TODO: use ndarray-linalg example for katex in docs. This HTML file needs to be added.
-# rustdoc-args = ["--html-in-header", "katex-header.html"]
+[package.metadata.docs.rs]
+rustdoc-args = ["--html-in-header", "katex-header.html"]
