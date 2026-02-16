@@ -117,13 +117,7 @@ where
 
     /// Return the weighted sum of the RHS, where both frequency and variance weights are used.
     pub(crate) fn weighted_sum(&self, rhs: &Array1<F>) -> F {
-        match &self.weights {
-            None => self.freq_sum(rhs),
-            Some(w) => {
-                let weighted_terms = w * rhs;
-                self.freq_sum(&weighted_terms)
-            }
-        }
+        self.freq_sum(&self.apply_var_weights(rhs.clone()))
     }
 
     /// Returns the weighted transpose of the feature data

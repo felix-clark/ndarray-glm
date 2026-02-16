@@ -407,8 +407,7 @@ where
                     // calculate the null likelihood for a single point with y equal
                     // to the average.
                     // The average y
-                    let y_bar: F = self.data.apply_total_weights(self.data.y.clone()).sum()
-                        / self.data.sum_weights();
+                    let y_bar: F = self.data.weighted_sum(&self.data.y) / self.data.sum_weights();
                     // This approach assumes that the likelihood is in the natural
                     // exponential form as calculated by Glm::log_like_natural(). If that
                     // function is overridden and the values differ significantly, this
@@ -486,7 +485,7 @@ where
                         let null_like_terms = ndarray::Zip::from(&self.data.y)
                             .and(&nat_par)
                             .map_collect(|&y, &eta| M::log_like_natural(y, eta));
-                        let null_like = self.data.apply_total_weights(null_like_terms).sum();
+                        let null_like = self.data.weighted_sum(&null_like_terms);
                         let null_params = Array1::<F>::zeros(self.n_par);
                         (null_like, null_params)
                     }
