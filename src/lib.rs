@@ -75,7 +75,8 @@
 //! println!("Fit result: {}", fit.result);
 //! ```
 //!
-//! Logistic regression with a non-canonical link function:
+//! Logistic regression with a non-canonical link function (fit may need adjusting as these are
+//! typically more difficult):
 //! ```
 //! use ndarray_glm::{array, Logistic, logistic_link::Cloglog, ModelBuilder};
 //!
