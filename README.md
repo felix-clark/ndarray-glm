@@ -33,8 +33,8 @@ or on Arch:
 sudo pacman -Syu blas-openblas
 ```
 (or perhaps just `openblas`, which is a dependency of `blas-openblas`).
-Regardless of the installation method, use this crate with the
-`openblas-system` feature.
+Regardless of the installation method, these libraries permit use of this crate
+with the `openblas-system` feature.
 
 To use an alternative backend or to build a static BLAS implementation, refer to the
 `ndarray-linalg`
