@@ -375,9 +375,24 @@ where
             M::log_like(data, &result),
             "Unregularized likelihoods should match exactly."
         );
+        assert_eq!(
+            n_iter,
+            history.len(),
+            "Number of iterations should match history length"
+        );
+        assert_eq!(
+            result,
+            history.last().unwrap().guess,
+            "Last guess should be the same"
+        );
         // Cache some of these variables that will be used often.
         let n_par = result.len();
         let model_like = data_like + reg.likelihood(&result);
+        assert_eq!(
+            model_like,
+            history.last().unwrap().like,
+            "Last data likelihood should be the same"
+        );
         Self {
             model: PhantomData,
             data,
