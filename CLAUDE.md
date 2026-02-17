@@ -61,6 +61,46 @@ https://felix-clark.github.io/src/tex/glm-math/main.pdf
 
 It can be downloaded and read locally (e.g. `curl -sL -o /tmp/glm-math.pdf <url>` then use the Read tool on the PDF).
 
+## KaTeX Formulas in Documentation
+
+Doc comments throughout `src/` use KaTeX for rendering math in rustdoc output. The rendering is powered by `katex-header.html` which is injected into rustdoc's HTML.
+
+### Building docs with math rendering
+
+```bash
+RUSTDOCFLAGS="--html-in-header katex-header.html" cargo doc --no-deps --open
+```
+
+### Syntax
+
+**Block math** (display mode) — use a fenced code block with language `math`:
+
+````
+```math
+\text{AIC} = D + 2K
+```
+````
+
+**Inline math** — wrap a backtick-quoted expression in `$...$`:
+
+```
+$`\boldsymbol{\beta}`$
+```
+
+This renders as an inline code element with class `language-inline-math`, which the KaTeX header script picks up.
+
+### Common notation conventions
+
+- Matrices/vectors: `\mathbf{X}`, `\boldsymbol{\beta}`, `\mathbf{W}`
+- Transpose: `\mathsf{T}` (e.g. `\mathbf{X}^\mathsf{T}`)
+- Text labels in formulas: `\text{AIC}`, `\text{Var}`
+- Estimates: `\hat\phi`, `\hat\mu`
+- Greek letters for model quantities: `\eta` (linear predictor), `\mu` (mean), `\omega` (weights)
+
+### Files with math documentation
+
+`src/lib.rs`, `src/fit.rs`, `src/glm.rs`, `src/link.rs`
+
 ## Conventions
 
 - Tests comparing against R's `glm()` output are in `tests/` with R scripts generating reference data in `tests/R/`.

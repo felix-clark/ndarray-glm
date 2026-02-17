@@ -11,12 +11,13 @@ iteratively reweighted least squares, using the
 
 ## Status
 
-This package is in alpha and the interface could undergo changes. Even the
-return value of certain functions may change from one release to the next.
-Correctness is not guaranteed.
+This package is in beta and the interface could undergo changes, as could the
+numerical value of some functions. The tests include several checks against R's
+`glmnet` package, but some edge cases may be excluded and others may involve
+inherent ambiguities or imprecisions.
 
 The regression algorithm uses iteratively re-weighted least squares (IRLS) with
-a step-halving procedure applied when the next iteration of guesses does not
+a line-search procedure applied when the next iteration of guesses does not
 increase the likelihood.
 
 Suggestions (via issues) and pull requests are welcome.
@@ -33,8 +34,8 @@ or on Arch:
 sudo pacman -Syu blas-openblas
 ```
 (or perhaps just `openblas`, which is a dependency of `blas-openblas`).
-Regardless of the installation method, use this crate with the
-`openblas-system` feature.
+Regardless of the installation method, these libraries permit use of this crate
+with the `openblas-system` feature.
 
 To use an alternative backend or to build a static BLAS implementation, refer to the
 `ndarray-linalg`
@@ -48,7 +49,7 @@ To use in your crate, add the following to the `Cargo.toml`:
 
 ```
 ndarray = { version = "0.17", features = ["blas"]}
-ndarray-glm = { version = "0.0.13", features = ["openblas-system"] }
+ndarray-glm = { version = "0.0.14", features = ["openblas-system"] }
 ```
 
 An example for linear regression is shown below.
@@ -113,6 +114,15 @@ generally, but are more likely to be necessary in a L1 regularization problem.
 
 If you encounter problems that persist even after these techniques are applied,
 please file an issue so the algorithm can be improved.
+
+## Rendering equations in docs
+
+To render the docs from source with the equations properly rendered, the KaTeX
+header must be included explicitly.
+
+```
+RUSTDOCFLAGS="--html-in-header katex-header.html" cargo doc --no-deps --open
+```
 
 ## References
 

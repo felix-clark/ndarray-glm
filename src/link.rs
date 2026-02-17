@@ -3,9 +3,12 @@
 use crate::{glm::Glm, num::Float};
 use ndarray::Array1;
 
-/// Describes the functions to map to and from the linear predictors and the
-/// expectation of the response. It is constrained mathematically by the
-/// response distribution and the transformation of the linear predictor.
+/// Describes the link function $`g`$ that maps between the expected response $`\mu`$ and
+/// the linear predictor $`\omega = \mathbf{x}^\mathsf{T}\boldsymbol{\beta}`$:
+///
+/// ```math
+/// g(\mu) = \omega, \qquad \mu = g^{-1}(\omega)
+/// ```
 // TODO: The link function and its inverse are independent of the response
 // distribution. This could be refactored to separate the function itself from
 // the transformation that works with the distribution.
@@ -24,14 +27,12 @@ pub trait Link<M: Glm>: Transform {
 }
 
 pub trait Transform {
-    /// The natural parameter(s) of the response distribution as a function
-    /// of the linear predictor. For canonical link functions this is the
-    /// identity. It must be monotonic, invertible, and twice-differentiable.
-    /// For link function g and canonical link function g_0 it is equal to
-    /// g_0 ( g^{-1}(lin_pred) ) .
+    /// The natural parameter of the response distribution as a function
+    /// of the linear predictor: $`\eta(\omega) = g_0(g^{-1}(\omega))`$ where $`g_0`$ is the
+    /// canonical link. For canonical links this is the identity.
     fn nat_param<F: Float>(lin_pred: Array1<F>) -> Array1<F>;
-    /// The derivative of the transformation to the natural parameter. If it is
-    /// zero in a region that the IRLS is in the algorithm may have difficulty
+    /// The derivative $`\eta'(\omega)`$ of the transformation to the natural parameter.
+    /// If it is zero in a region that the IRLS is in, the algorithm may have difficulty
     /// converging.
     fn d_nat_param<F: Float>(lin_pred: &Array1<F>) -> Array1<F>;
     /// Adjust the error/residual terms of the likelihood function based on the first derivative of

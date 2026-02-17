@@ -1,11 +1,12 @@
 //! Trait defining a generalized linear model for common functionality.
-//! Models are fit such that <Y> = g^-1(X*B) where g is the link function.
+//! Models are fit such that $`<\mathbf{y}> = g^-1(\mathbf{X}*\mathfb{\beta})`$ where g is the link
+//! function.
 
 use crate::irls::IrlsStep;
 use crate::link::{Link, Transform};
 use crate::{
     error::RegressionResult,
-    fit::{options::FitOptions, Fit},
+    fit::{Fit, options::FitOptions},
     irls::Irls,
     model::{Dataset, Model},
     num::Float,
@@ -43,14 +44,18 @@ pub trait Glm: Sized {
         lin_pred.mapv(Self::Link::func_inv)
     }
 
-    /// The logarithm of the partition function in terms of the natural parameter.
+    /// The logarithm of the partition function $`A(\eta)`$ in terms of the natural parameter.
     /// This can be used to calculate the normalized likelihood.
     fn log_partition<F: Float>(nat_par: F) -> F;
 
-    /// The variance as a function of the mean. This should be related to the
-    /// Laplacian of the log-partition function, or in other words, the
-    /// derivative of the inverse link function mu = g^{-1}(eta). This is unique
-    /// to each response function, but should not depend on the link function.
+    /// The variance function $`V(\mu)`$, the second derivative of the log-partition function
+    /// with respect to the natural parameter:
+    ///
+    /// ```math
+    /// V(\mu) = \left.\frac{\partial^2 A(\eta)}{\partial \eta^2}\right|_{\eta = \eta(\mu)}
+    /// ```
+    ///
+    /// This is unique to each response family and does not depend on the link function.
     fn variance<F: Float>(mean: F) -> F;
 
     /// Get the full adjusted variance diagonal from the linear predictors directly
@@ -75,13 +80,16 @@ pub trait Glm: Sized {
         weighted_terms.sum()
     }
 
-    /// Returns the likelihood function of the response distribution as a
-    /// function of the response variable y and the natural parameters of each
-    /// observation. Terms that depend only on the response variable `y` are
-    /// dropped. This dispersion parameter is taken to be 1, as it does not
-    /// affect the IRLS steps.
-    /// The default implementation can be overwritten for performance or numerical
-    /// accuracy, but should be mathematically equivalent to the default implementation.
+    /// Per-observation log-likelihood as a function of the response $`y`$ and natural
+    /// parameter $`\eta`$:
+    ///
+    /// ```math
+    /// l(y, \eta) = y\eta - A(\eta)
+    /// ```
+    ///
+    /// Terms depending only on $`y`$ are dropped. The dispersion parameter is taken to be 1, as
+    /// it does not affect the IRLS steps. The default implementation can be overwritten for
+    /// performance or numerical accuracy, but should be mathematically equivalent.
     fn log_like_natural<F>(y: F, nat: F) -> F
     where
         F: Float,
