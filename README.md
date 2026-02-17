@@ -121,7 +121,7 @@ To render the docs from source with the equations properly rendered, the KaTeX
 header must be included explicitly.
 
 ```
-RUSTDOCFLAGS="--html-in-header katex-header.html" cargo doc --open
+RUSTDOCFLAGS="--html-in-header katex-header.html" cargo doc --no-deps --open
 ```
 
 ## References
