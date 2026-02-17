@@ -76,8 +76,8 @@
 //! println!("Fit result: {}", fit.result);
 //! ```
 //!
-//! Logistic regression with a non-canonical link function. The fit options may need adjusting as
-//! these are typically more difficult to converge:
+//! Logistic regression with a non-canonical link function. The fit options may need adjusting
+//! as these are typically more difficult to converge:
 //! ```
 //! use ndarray_glm::{array, Logistic, logistic_link::Cloglog, ModelBuilder};
 //!
@@ -87,6 +87,116 @@
 //! let fit = model.fit_options().max_iter(64).l2_reg(1e-3).fit().unwrap();
 //! println!("Fit result: {}", fit.result);
 //! ```
+//!
+//! # Generalized linear models
+//!
+//! A generalized linear model (GLM) describes the expected value of a response
+//! variable $`y`$ through a *link function* $`g`$ applied to a linear combination of
+//! $`K-1`$ feature variables $`x_k`$ (plus an intercept term):
+//!
+//! ```math
+//! g(\text{E}[y]) = \beta_0 + \beta_1 x_1 + \ldots + \beta_{K-1} x_{K-1}
+//! ```
+//!
+//! The right-hand side is the *linear predictor* $`\omega = \mathbf{x}^\top \boldsymbol{\beta}`$.
+//! With $`N`$ observations the data matrix $`\mathbf{X}`$ has a leading column of
+//! ones (for the intercept) and the model relates the response vector
+//! $`\mathbf{y}`$ to $`\mathbf{X}`$ and parameters $`\boldsymbol{\beta}`$.
+//!
+//! ## Exponential family
+//!
+//! GLMs assume the response follows a distribution from the exponential family.
+//! In canonical form the density is
+//!
+//! ```math
+//! f(y;\eta) = \exp\!\bigl[\eta\, y - A(\eta) + B(y)\bigr]
+//! ```
+//!
+//! where $`\eta`$ is the *natural parameter*, $`A(\eta)`$ is the *log-partition
+//! function*, and $`B(y)`$ depends only on the observation.
+//! The expected value and variance of $`y`$ follow directly from $`A`$:
+//!
+//! ```math
+//! \text{E}[y] = A'(\eta), \qquad \text{Var}[y] = \phi\, A''(\eta)
+//! ```
+//!
+//! where $`\phi`$ is the *dispersion parameter* (fixed to 1 for logistic and
+//! Poisson families, estimated for the linear/Gaussian family).
+//!
+//! ## Link and variance functions
+//!
+//! The *link function* $`g`$ maps the expected response $`\mu = \text{E}[y]`$ to
+//! the linear predictor:
+//!
+//! ```math
+//! g(\mu) = \omega, \qquad \mu = g^{-1}(\omega)
+//! ```
+//!
+//! The *canonical link* is the one for which $`\eta = \omega`$, i.e. the natural
+//! parameter equals the linear predictor. Non-canonical links are also supported
+//! (see [`link`]).
+//!
+//! The *variance function* $`V(\mu)`$ characterizes how the variance of $`y`$
+//! depends on the mean, independent of the choice of link:
+//!
+//! ```math
+//! \text{Var}[y] = \phi\, V(\mu)
+//! ```
+//!
+//! ## Supported families
+//!
+//! | Family | Canonical link | $`V(\mu)`$ | $`\phi`$ |
+//! |--------|---------------|-----------|---------|
+//! | [`Linear`] (Gaussian) | Identity | $`1`$ | estimated |
+//! | [`Logistic`] (Bernoulli) | Logit | $`\mu(1-\mu)`$ | $`1`$ |
+//! | [`Poisson`] | Log | $`\mu`$ | $`1`$ |
+//! | [`Binomial`] (fixed $`n`$) | Logit | $`\mu(n-\mu)/n`$ | $`1`$ |
+//!
+//! ## Fitting via IRLS
+//!
+//! Parameters are estimated by maximum likelihood using iteratively reweighted
+//! least squares (IRLS). Each step solves for the update
+//! $`\Delta\boldsymbol{\beta}`$:
+//!
+//! ```math
+//! -\mathbf{H}(\boldsymbol{\beta}) \cdot \Delta\boldsymbol{\beta} = \mathbf{J}(\boldsymbol{\beta})
+//! ```
+//!
+//! where $`\mathbf{J}`$ and $`\mathbf{H}`$ are the gradient and Hessian of the
+//! log-likelihood. With the canonical link and a diagonal variance matrix
+//! $`\mathbf{S}`$ ($`S_{ii} = \text{Var}[y^{(i)} | \eta]`$) this simplifies to:
+//!
+//! ```math
+//! (\mathbf{X}^\top \mathbf{S} \mathbf{X})\, \Delta\boldsymbol{\beta}
+//!   = \mathbf{X}^\top \bigl[\mathbf{y} - g^{-1}(\mathbf{X}\boldsymbol{\beta})\bigr]
+//! ```
+//!
+//! Observation weights $`\mathbf{W}`$ (inverse dispersion per observation)
+//! generalize this to:
+//!
+//! ```math
+//! (\mathbf{X}^\top \mathbf{W} \mathbf{S} \mathbf{X})\, \Delta\boldsymbol{\beta}
+//!   = \mathbf{X}^\top \mathbf{W} \bigl[\mathbf{y} - g^{-1}(\mathbf{X}\boldsymbol{\beta})\bigr]
+//! ```
+//!
+//! The iteration converges when the log-likelihood is concave, which is
+//! guaranteed with the canonical link.
+//!
+//! ## Regularization
+//!
+//! Optional penalty terms discourage large parameter values:
+//!
+//! - **L2 (ridge):** adds $`\frac{\lambda_2}{2} \sum |\beta_k|^2`$ to the
+//!   negative log-likelihood, equivalent to a Gaussian prior on the
+//!   coefficients.
+//! - **L1 (lasso):** adds $`\lambda_1 \sum |\beta_k|`$, implemented via ADMM,
+//!   which drives small coefficients to exactly zero.
+//! - **Elastic net:** combines both L1 and L2 penalties.
+//!
+//! In all cases the intercept ($`\beta_0`$) is excluded from the penalty.
+//!
+//! For a more complete mathematical reference, see the
+//! [derivation notes](https://felix-clark.github.io/src/tex/glm-math/main.pdf).
 
 #![doc(html_root_url = "https://docs.rs/crate/ndarray-glm")]
 pub mod error;

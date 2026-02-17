@@ -65,10 +65,10 @@ where
     /// Returns the Akaike information criterion for the model fit.
     ///
     /// ```math
-    /// \text{AIC} = D + 2p - 2\sum_{i} \ln w_{i}
+    /// \text{AIC} = D + 2K - 2\sum_{i} \ln w_{i}
     /// ```
     ///
-    /// where $`D`$ is the deviance, $`p`$ is the number of parameters, and $`w_i`$ are the
+    /// where $`D`$ is the deviance, $`K`$ is the number of parameters, and $`w_i`$ are the
     /// variance weights.
     /// This is unique only to an additive constant, so only differences in AIC are meaningful.
     pub fn aic(&self) -> F {
@@ -81,10 +81,10 @@ where
     /// Returns the Bayesian information criterion for the model fit.
     ///
     /// ```math
-    /// \text{BIC} = p \ln(n) - 2l - s\sum_{i} \ln w_{i}
+    /// \text{BIC} = K \ln(n) - 2l - s\sum_{i} \ln w_{i}
     /// ```
     ///
-    /// where $`p`$ is the number of parameters, $`n`$ is the number of observations, and $`l`$ is
+    /// where $`K`$ is the number of parameters, $`n`$ is the number of observations, and $`l`$ is
     /// the log-likelihood (including the variance weight normalization terms).
     // TODO: Also consider the effect of regularization on this statistic.
     // TODO: Wikipedia suggests that the variance should included in the number
@@ -103,10 +103,10 @@ where
     /// change when leaving out each observation.
     ///
     /// ```math
-    /// C_i = \frac{r_i^2 \, h_i}{p \, \hat\phi \, (1 - h_i)^2}
+    /// C_i = \frac{r_i^2 \, h_i}{K \, \hat\phi \, (1 - h_i)^2}
     /// ```
     ///
-    /// where $`r_i`$ is the Pearson residual, $`h_i`$ is the leverage, $`p`$ is the rank
+    /// where $`r_i`$ is the Pearson residual, $`h_i`$ is the leverage, $`K`$ is the rank
     /// (number of parameters), and $`\hat\phi`$ is the estimated dispersion.
     pub fn cooks(&self) -> RegressionResult<Array1<F>> {
         let hat = self.leverage()?;
@@ -178,10 +178,10 @@ where
     /// For families with a free dispersion (linear, gamma), estimated as:
     ///
     /// ```math
-    /// \hat\phi = \frac{D}{\left(1 - \frac{p}{n_\text{eff}}\right) \sum_i w_i}
+    /// \hat\phi = \frac{D}{\left(1 - \frac{K}{n_\text{eff}}\right) \sum_i w_i}
     /// ```
     ///
-    /// which reduces to $`D / (N - p)`$ without variance weights.
+    /// which reduces to $`D / (N - K)`$ without variance weights.
     pub fn dispersion(&self) -> F {
         use DispersionType::*;
         match M::DISPERSED {
@@ -608,7 +608,7 @@ where
         lin_pred.mapv_into(M::Link::func_inv)
     }
 
-    /// Returns the rank of the model (i.e. the number of parameters)
+    /// Returns the rank $`K`$ of the model (i.e. the number of parameters)
     fn rank(&self) -> F {
         F::from(self.n_par).unwrap()
     }
@@ -702,7 +702,7 @@ where
     ///
     /// where $`D_i^{(-i)}`$ and $`\hat\phi^{(-i)}`$ are the LOO deviance and dispersion
     /// approximated via one-step deletion. Under normality, $`t`$-distributed with
-    /// $`n - p - 1`$ degrees of freedom. This is a robust and general method for outlier
+    /// $`N - K - 1`$ degrees of freedom. This is a robust and general method for outlier
     /// detection.
     pub fn resid_student(&self) -> RegressionResult<Array1<F>> {
         let signs = self.resid_resp().mapv(F::signum);
