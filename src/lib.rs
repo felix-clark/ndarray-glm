@@ -3,8 +3,9 @@
 //! The [`ndarray-linalg`](https://docs.rs/ndarray-linalg/) crate is used to allow
 //! optimization of linear algebra operations with BLAS.
 //!
-//! This crate is early alpha and may change rapidly. No guarantees can be made about
-//! the accuracy of the fits.
+//! This crate is in beta and the interface may change significantly. The tests include several
+//! comparisons with R's `glmnet` package, but some cases may not be covered directly or involve
+//! inherent ambiguities or imprecisions.
 //!
 //! # Feature summary:
 //!
@@ -109,4 +110,4 @@ pub use {
 };
 
 // re-export common structs from ndarray
-pub use ndarray::{array, Array1, Array2, ArrayView1, ArrayView2};
+pub use ndarray::{Array1, Array2, ArrayView1, ArrayView2, array};

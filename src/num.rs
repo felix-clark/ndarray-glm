@@ -12,7 +12,7 @@ pub trait Float: Sized + num_traits::Float + Lapack + ScalarOperand {
     fn two() -> Self;
 
     /// A more conventional sign function, because the built-in signum treats signed zeros as
-    /// positive and negative: https://github.com/rust-lang/rust/issues/57543
+    /// positive and negative: <https://github.com/rust-lang/rust/issues/57543>
     fn sign(self) -> Self {
         if self == Self::zero() {
             Self::zero()
