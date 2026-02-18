@@ -81,7 +81,6 @@ for examples.
 - [X] Generalized linear model IRLS
 - [X] Linear offsets
 - [X] Generic over floating point type
-- [X] Non-float domain types
 - [X] Regularization
   - [X] L2 (ridge)
   - [X] L1 (lasso)
@@ -95,9 +94,10 @@ for examples.
 - [X] Data standardization/normalization
   - [X] External utility function
   - [ ] Automatic internal transformation
-- [X] Weighted regressions
+- [X] Weighted regressions (frequency and variance weights)
 - [X] Non-canonical link functions
 - [X] Goodness-of-fit tests
+- [X] P-values for model and covariates (with the `stats` feature)
 
 ## Troubleshooting
 
