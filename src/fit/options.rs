@@ -1,6 +1,6 @@
 //! Fit-specific configuration and fit builder
 use super::Fit;
-use crate::{error::RegressionResult, glm::Glm, model::Model, num::Float, Array1};
+use crate::{Array1, error::RegressionResult, glm::Glm, model::Model, num::Float};
 
 /// A builder struct for fit configuration
 pub struct FitConfig<'a, M, F>

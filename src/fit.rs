@@ -850,6 +850,154 @@ where
     }
 }
 
+/// Methods that require the `stats` feature for distribution CDF evaluation.
+#[cfg(feature = "stats")]
+impl<'a, M, F> Fit<'a, M, F>
+where
+    M: Glm,
+    F: 'static + Float,
+{
+    /// Perform a full re-fit of the model excluding the ith data column.
+    /// NOTE: Ideally we could return a full Fit object, but as it stands the source data must
+    /// outlive the Fit result. It would be nice if we could get around this with some COW
+    /// shenanigans but this will probably require a big change. To get around this for now, just
+    /// return the deviance, which is all we're using this function for at the moment.
+    fn dev_without_covariate(&self, i: usize) -> RegressionResult<F> {
+        use ndarray::{Axis, concatenate, s};
+
+        let x_reduced: Array2<F> = concatenate![
+            Axis(1),
+            self.data.x.slice(s![.., ..i]),
+            self.data.x.slice(s![.., i + 1..])
+        ];
+        let data_reduced = Dataset::<F> {
+            y: self.data.y.clone(),
+            x: x_reduced,
+            linear_offset: self.data.linear_offset.clone(),
+            weights: self.data.weights.clone(),
+            freqs: self.data.freqs.clone(),
+        };
+        let model_reduced = Model {
+            model: PhantomData::<M>,
+            data: data_reduced,
+            use_intercept: self.use_intercept && (i != 0),
+        };
+        // Start with the non-excluded parameters at the values from the main fit.
+        let init_guess = Some(concatenate![
+            Axis(0),
+            self.result.slice(s![..i]),
+            self.result.slice(s![i + 1..])
+        ]);
+        let fit_options = {
+            let mut fit_options = self.options.clone();
+            fit_options.init_guess = init_guess;
+            fit_options
+        };
+        let fit_reduced = model_reduced.with_options(fit_options).fit()?;
+        Ok(fit_reduced.deviance())
+    }
+
+    /// Returns the p-value for the omnibus likelihood-ratio test (full model vs. null/intercept-only
+    /// model).
+    ///
+    /// The LR statistic is asymptotically $`\chi^2`$-distributed with
+    /// [`test_ndf()`](Self::test_ndf) degrees of freedom, so the p-value is the upper-tail
+    /// probability:
+    ///
+    /// ```math
+    /// p = 1 - F_{\chi^2}(\Lambda;\, \text{test\_ndf})
+    /// ```
+    pub fn pvalue_lr_test(&self) -> F {
+        use statrs::distribution::{ChiSquared, ContinuousCDF};
+        let stat = self.lr_test().to_f64().unwrap();
+        let ndf = self.test_ndf() as f64;
+        if ndf == 0.0 {
+            return F::one();
+        }
+        let chi2 = ChiSquared::new(ndf).unwrap();
+        F::from(chi2.sf(stat)).unwrap()
+    }
+
+    /// Returns per-parameter p-values from the Wald $`z`$-statistics.
+    ///
+    /// The reference distribution depends on whether the family has a free dispersion parameter:
+    ///
+    /// - **No dispersion** (logistic, Poisson): standard normal — two-tailed
+    ///   $`p_k = 2\bigl[1 - \Phi(|z_k|)\bigr]`$
+    /// - **Free dispersion** (linear): Student-$`t`$ with [`ndf()`](Self::ndf) degrees of
+    ///   freedom — two-tailed $`p_k = 2\bigl[1 - F_t(|z_k|;\, \text{ndf})\bigr]`$
+    ///
+    /// IMPORTANT: Note that this test is an approximation for non-linear models and is known to
+    /// sometimes yield misleading values compared to an exact test. It is not hard to find it
+    /// give p-values that may imply significantly different conclusions for your analysis (e.g.
+    /// p<0.07 vs. p<0.02 in one of our tests).
+    pub fn pvalue_wald(&self) -> RegressionResult<Array1<F>> {
+        use statrs::distribution::ContinuousCDF;
+        let z = self.wald_z()?;
+        let pvals = match M::DISPERSED {
+            DispersionType::NoDispersion => {
+                use statrs::distribution::Normal;
+                let norm = Normal::standard();
+                z.mapv(|zi| {
+                    let abs_z = num_traits::Float::abs(zi).to_f64().unwrap();
+                    F::from(2.0 * norm.sf(abs_z)).unwrap()
+                })
+            }
+            DispersionType::FreeDispersion => {
+                use statrs::distribution::StudentsT;
+                let df = self.ndf().to_f64().unwrap();
+                let t_dist = StudentsT::new(0.0, 1.0, df).unwrap();
+                z.mapv(|zi| {
+                    let abs_z = num_traits::Float::abs(zi).to_f64().unwrap();
+                    F::from(2.0 * t_dist.sf(abs_z)).unwrap()
+                })
+            }
+        };
+        Ok(pvals)
+    }
+
+    /// Returns per-parameter p-values from drop-one analysis of deviance (exact, expensive).
+    ///
+    /// For each parameter $`k`$, a reduced model is fit with that parameter removed and the
+    /// deviance difference $`\Delta D = D_{\text{reduced}} - D_{\text{full}}`$ is used:
+    ///
+    /// - **No dispersion**: $`p = 1 - F_{\chi^2}(\Delta D;\, 1)`$
+    /// - **Free dispersion**: $`F = \Delta D / \hat\phi`$, $`p = 1 - F_F(F;\, 1,\,
+    ///   \text{ndf})`$
+    ///
+    /// For the intercept (if present), the reduced model is fit without an intercept. For all
+    /// other parameters, the reduced model is fit with that column removed from the design matrix.
+    pub fn pvalue_exact(&self) -> RegressionResult<Array1<F>> {
+        use statrs::distribution::ContinuousCDF;
+        let n_par = self.n_par;
+        let dev_full = self.deviance();
+        let phi_full = self.dispersion();
+        let ndf_f64 = self.ndf().to_f64().unwrap();
+        let mut pvals = Array1::<F>::zeros(n_par);
+        for k in 0..n_par {
+            let dev_reduced = self.dev_without_covariate(k)?;
+            let delta_d = dev_reduced - dev_full;
+
+            let p = match M::DISPERSED {
+                DispersionType::NoDispersion => {
+                    use statrs::distribution::ChiSquared;
+                    let chi2 = ChiSquared::new(1.0).unwrap();
+                    1.0 - chi2.cdf(delta_d.to_f64().unwrap())
+                }
+                DispersionType::FreeDispersion => {
+                    use statrs::distribution::FisherSnedecor;
+                    let f_stat = delta_d / phi_full;
+                    let f_dist = FisherSnedecor::new(1.0, ndf_f64).unwrap();
+                    f_dist.sf(f_stat.to_f64().unwrap())
+                }
+            };
+            pvals[k] = F::from(p).unwrap();
+        }
+
+        Ok(pvals)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1187,6 +1335,72 @@ mod tests {
         let score = fit.score_test()?;
         assert_abs_diff_eq!(lr, wald, epsilon = 32.0 * f64::EPSILON);
         assert_abs_diff_eq!(lr, score, epsilon = 32.0 * f64::EPSILON);
+        Ok(())
+    }
+
+    /// Test that `pvalue_exact` computes a valid intercept p-value by comparing against R's
+    /// `anova(glm(y ~ x - 1), glm(y ~ x), test=...)`.
+    ///
+    /// R reference (linear):
+    /// ```r
+    /// y  <- c(0.3, 1.5, 0.8, 2.1, 1.7, 3.2, 2.5, 0.9)
+    /// x1 <- c(0.1, 0.5, 0.2, 0.8, 0.6, 1.1, 0.9, 0.3)
+    /// x2 <- c(0.4, 0.1, 0.3, 0.7, 0.2, 0.5, 0.8, 0.6)
+    /// anova(glm(y ~ x1 + x2 - 1), glm(y ~ x1 + x2), test = "F")
+    /// # Pr(>F) = 0.1203156
+    /// ```
+    ///
+    /// R reference (logistic):
+    /// ```r
+    /// y <- c(1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1)
+    /// x <- c(0.5, -0.3, 0.2, 0.8, 0.1, 0.6, -0.1, -0.4, 0.3, 0.4, 0.7, -0.2)
+    /// anova(glm(y ~ x - 1, family=binomial()), glm(y ~ x, family=binomial()), test = "Chisq")
+    /// # Pr(>Chi) = 0.6042003
+    ///
+    /// NOTE: This test was generated by claude code, hence the ugly hard-coded values.
+    /// ```
+    #[cfg(feature = "stats")]
+    #[test]
+    fn pvalue_exact_intercept() -> Result<()> {
+        use crate::Logistic;
+
+        // Linear: intercept F-test should match R's anova() result.
+        // For Gaussian the exact (F-test) intercept p-value equals the Wald t-test p-value.
+        let y = array![0.3_f64, 1.5, 0.8, 2.1, 1.7, 3.2, 2.5, 0.9];
+        let x = array![
+            [0.1_f64, 0.4],
+            [0.5, 0.1],
+            [0.2, 0.3],
+            [0.8, 0.7],
+            [0.6, 0.2],
+            [1.1, 0.5],
+            [0.9, 0.8],
+            [0.3, 0.6]
+        ];
+        let model = ModelBuilder::<Linear>::data(&y, &x).build()?;
+        let fit = model.fit()?;
+        let exact_p = fit.pvalue_exact()?;
+        assert!(
+            exact_p[0].is_finite() && exact_p[0] >= 0.0 && exact_p[0] <= 1.0,
+            "intercept p-value must be in [0, 1]"
+        );
+        // R: anova(glm(y ~ x1+x2-1), glm(y ~ x1+x2), test="F") Pr(>F) = 0.1203156
+        assert_abs_diff_eq!(exact_p[0], 0.1203156, epsilon = 1e-5);
+
+        // Logistic: intercept chi-squared test.
+        let y_bin = array![
+            true, false, true, true, false, true, false, false, true, false, true, true
+        ];
+        let x_bin = array![
+            0.5_f64, -0.3, 0.2, 0.8, 0.1, 0.6, -0.1, -0.4, 0.3, 0.4, 0.7, -0.2
+        ]
+        .insert_axis(Axis(1));
+        let model_bin = ModelBuilder::<Logistic>::data(&y_bin, &x_bin).build()?;
+        let fit_bin = model_bin.fit()?;
+        let exact_p_bin = fit_bin.pvalue_exact()?;
+        // R: anova(..., test="Chisq") Pr(>Chi) = 0.6042003
+        assert_abs_diff_eq!(exact_p_bin[0], 0.6042003, epsilon = 1e-4);
+
         Ok(())
     }
 }

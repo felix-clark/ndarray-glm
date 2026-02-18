@@ -1,0 +1,6 @@
+[cargo]
+features = ["stats", "openblas-system"]
+allTargets = true
+
+[check]
+features = ["stats", "openblas-system"]
