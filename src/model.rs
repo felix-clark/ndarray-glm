@@ -314,12 +314,12 @@ where
             ));
         }
         // If they are provided, check that the offsets have the correct number of entries
-        if let Some(lin_off) = &self.linear_offset {
-            if n_data != lin_off.len() {
-                return Err(RegressionError::BadInput(
-                    "Offsets must have same dimension as observations".to_string(),
-                ));
-            }
+        if let Some(lin_off) = &self.linear_offset
+            && n_data != lin_off.len()
+        {
+            return Err(RegressionError::BadInput(
+                "Offsets must have same dimension as observations".to_string(),
+            ));
         }
 
         // add constant term to X data

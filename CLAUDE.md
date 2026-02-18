@@ -8,14 +8,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Build (requires system OpenBLAS: libopenblas-dev on Debian, openblas on Arch)
 cargo build --features openblas-system
 
-# Run all tests
-cargo test --features openblas-system
+# Run all tests (include stats to run p-value tests)
+cargo test --features openblas-system,stats
 
 # Run a single test
-cargo test --features openblas-system <test_name>
+cargo test --features openblas-system,stats <test_name>
 
 # Run tests in a specific file
-cargo test --features openblas-system --test <file_name>
+cargo test --features openblas-system,stats --test <file_name>
 
 # Check without building (faster feedback)
 cargo check --features openblas-system

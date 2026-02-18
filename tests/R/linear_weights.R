@@ -20,7 +20,7 @@ write.csv(data.frame(y, x1, x2, x3, var_wt, freq_wt),
 
 # Helper: export all quantities for a glm fit.
 # If orig_idx is provided, only export quantities at those indices (for freq-expanded scenarios).
-export_scenario <- function(model, dir_name, orig_idx = NULL) {
+export_scenario <- function(model, dir_name, orig_idx = NULL, model_no_int = NULL) {
   dir.create(dir_name, showWarnings = FALSE, recursive = TRUE)
   ms <- summary(model)
 
@@ -61,16 +61,39 @@ export_scenario <- function(model, dir_name, orig_idx = NULL) {
   # Wald t-values
   write(ms$coefficients[, "t value"], file.path(dir_name, "wald_z.csv"), ncolumns = 1)
 
+  # --- P-values ---
+
+  # pvalue_lr_test: chi-squared omnibus test (null model vs. full model)
+  lr_df <- model$df.null - model$df.residual
+  pvalue_lr <- pchisq(model$null.deviance - model$deviance, df = lr_df, lower.tail = FALSE)
+  write(pvalue_lr, file.path(dir_name, "pvalue_lr_test.csv"), ncolumns = 1)
+
+  # pvalue_wald: Pr(>|t|) from summary for all parameters
+  write(ms$coefficients[, "Pr(>|t|)"], file.path(dir_name, "pvalue_wald.csv"), ncolumns = 1)
+
+  # pvalue_exact: drop-one F-test per parameter.
+  # drop1() covers all non-intercept terms; the intercept (if present) needs anova().
+  d1 <- drop1(model, test = "F")
+  pred_p <- d1[["Pr(>F)"]][-1]  # drop the <none> row
+  if (!is.null(model_no_int)) {
+    intercept_p <- anova(model_no_int, model, test = "F")[["Pr(>F)"]][2]
+    write(c(intercept_p, pred_p), file.path(dir_name, "pvalue_exact.csv"), ncolumns = 1)
+  } else {
+    write(pred_p, file.path(dir_name, "pvalue_exact.csv"), ncolumns = 1)
+  }
+
   cat("Exported scenario:", dir_name, "\n")
 }
 
 # Scenario: no weights
 m_none <- glm(y ~ x1 + x2 + x3, family = gaussian())
-export_scenario(m_none, "linear_weights/none")
+m_none_noint <- glm(y ~ x1 + x2 + x3 - 1, family = gaussian())
+export_scenario(m_none, "linear_weights/none", model_no_int = m_none_noint)
 
 # Scenario: variance weights only
 m_var <- glm(y ~ x1 + x2 + x3, family = gaussian(), weights = var_wt)
-export_scenario(m_var, "linear_weights/var")
+m_var_noint <- glm(y ~ x1 + x2 + x3 - 1, family = gaussian(), weights = var_wt)
+export_scenario(m_var, "linear_weights/var", model_no_int = m_var_noint)
 
 # Expand rows by frequency for freq-weight scenarios
 expand_by_freq <- function(df, freq_col) {
@@ -85,11 +108,13 @@ orig_idx <- exp_result$orig_idx
 
 # Scenario: frequency weights only
 m_freq <- glm(y ~ x1 + x2 + x3, data = df_exp, family = gaussian())
-export_scenario(m_freq, "linear_weights/freq", orig_idx)
+m_freq_noint <- glm(y ~ x1 + x2 + x3 - 1, data = df_exp, family = gaussian())
+export_scenario(m_freq, "linear_weights/freq", orig_idx, model_no_int = m_freq_noint)
 
 # Scenario: both weights
 m_both <- glm(y ~ x1 + x2 + x3, data = df_exp, family = gaussian(), weights = var_wt)
-export_scenario(m_both, "linear_weights/both", orig_idx)
+m_both_noint <- glm(y ~ x1 + x2 + x3 - 1, data = df_exp, family = gaussian(), weights = var_wt)
+export_scenario(m_both, "linear_weights/both", orig_idx, model_no_int = m_both_noint)
 
 # --- Offset + no-intercept scenarios ---
 # These exercise the null model code path where offset is present and use_intercept is false.

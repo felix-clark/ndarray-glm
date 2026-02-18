@@ -233,6 +233,25 @@ fn check_linear_scenario(
         assert_abs_diff_eq!(infl, infl_exact, epsilon = eps);
     }
 
+    // --- P-values (stats feature) ---
+    #[cfg(feature = "stats")]
+    {
+        // pvalue_lr_test: chi-squared omnibus test — valid under all weight configurations.
+        let r_lr_p = r("pvalue_lr_test")?[0];
+        assert_abs_diff_eq!(fit.pvalue_lr_test(), r_lr_p, epsilon = eps);
+
+        // pvalue_wald and pvalue_exact both use the dispersion estimate in the denominator,
+        // so they only match R when our dispersion agrees with R's (i.e. no variance weights).
+        if !has_var_weights {
+            let r_wald_p = r("pvalue_wald")?;
+            assert_abs_diff_eq!(fit.pvalue_wald()?, r_wald_p, epsilon = eps);
+
+            // pvalue_exact: drop-one F-test (intercept via anova, predictors via drop1 in R).
+            let r_exact_p = r("pvalue_exact")?;
+            assert_abs_diff_eq!(fit.pvalue_exact()?, r_exact_p, epsilon = 10. * eps);
+        }
+    }
+
     Ok(())
 }
 
