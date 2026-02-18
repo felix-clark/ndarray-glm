@@ -41,4 +41,5 @@ ndarray = { version = "0.17", features = ["blas", "approx"] }
 ndarray-linalg = { version = "0.18", default-features = false, features = ["openblas-system"]}
 
 [package.metadata.docs.rs]
+features = ["openblas-system", "stats"]
 rustdoc-args = ["--html-in-header", "katex-header.html"]
