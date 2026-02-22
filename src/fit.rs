@@ -4,11 +4,12 @@
 pub mod options;
 use crate::{
     Linear,
+    data::{Dataset, one_pad},
     error::RegressionResult,
     glm::{DispersionType, Glm},
     irls::{Irls, IrlsStep},
     link::{Link, Transform},
-    model::{Dataset, Model},
+    model::Model,
     num::Float,
     regularization::IrlsReg,
 };
@@ -29,10 +30,13 @@ where
     model: PhantomData<M>,
     /// The data and model specification used in the fit.
     data: &'a Dataset<F>,
-    /// Whether the intercept covariate is used
-    use_intercept: bool,
-    /// The parameter values that maximize the likelihood as given by the IRLS regression.
+    /// The parameter values that maximize the likelihood as given by the IRLS regression. If the
+    /// dataset was internally standardized, this is transformed back
     pub result: Array1<F>,
+    /// The parameter values used internally for the standardized data.
+    result_std: Array1<F>,
+    /// The predicted y-values for the training data.
+    y_hat: Array1<F>,
     /// The options used for this fit.
     pub options: FitOptions<F>,
     /// The value of the likelihood function for the fit result.
@@ -47,7 +51,9 @@ where
     n_par: usize,
     /// The unscaled covariance matrix of the parameters, i.e. the inverse of the Fisher
     /// information. Since the calculation requires a matrix inversion, it is computed only when
-    /// needed and the value is cached.
+    /// needed and the value is cached. NOTE: This is "unscaled" in that it's not multiplied by
+    /// the dispersion, but it is represented in terms of the external non-standardized
+    /// parameters.
     cov_unscaled: RefCell<Option<Array2<F>>>,
     /// The hat matrix of the data and fit. Since the calculation requires a matrix inversion of
     /// the fisher information, it is computed only when needed and the value is cached. Access
@@ -155,7 +161,7 @@ where
     /// be the sum of all of these. Variance weights are already included, but not frequency
     /// weights.
     fn deviance_terms(&self) -> Array1<F> {
-        let ll_terms: Array1<F> = M::log_like_terms(self.data, &self.result);
+        let ll_terms: Array1<F> = M::log_like_terms(self.data, &self.result_std);
         let ll_sat: Array1<F> = self.data.y.mapv(M::log_like_sat);
         let terms = (ll_sat - ll_terms) * F::two();
         self.data.apply_var_weights(terms)
@@ -241,24 +247,6 @@ where
         }
     }
 
-    /// Returns the errors in the response variables for the data passed as an
-    /// argument given the current model fit.
-    fn errors(&self, data: &Dataset<F>) -> Array1<F> {
-        &data.y - &self.predict(&data.x, data.linear_offset.as_ref())
-    }
-
-    #[deprecated(since = "0.0.10", note = "use predict() instead")]
-    pub fn expectation<S>(
-        &self,
-        data_x: &ArrayBase<S, Ix2>,
-        lin_off: Option<&Array1<F>>,
-    ) -> Array1<F>
-    where
-        S: Data<Elem = F>,
-    {
-        self.predict(data_x, lin_off)
-    }
-
     /// Returns the Fisher information (the negative Hessian of the log-likelihood) at the
     /// parameter values given:
     ///
@@ -272,16 +260,17 @@ where
     /// functions.
     /// The regularization is included.
     pub fn fisher(&self, params: &Array1<F>) -> Array2<F> {
-        let lin_pred: Array1<F> = self.data.linear_predictor(params);
-        let adj_var: Array1<F> = M::adjusted_variance_diag(&lin_pred);
-        // calculate the fisher matrix
-        let fisher: Array2<F> = (self.data.x_conj() * &adj_var).dot(&self.data.x);
-        // Regularize the fisher matrix
-        self.reg.as_ref().irls_mat(fisher, params)
+        // Note that fisher() is a public function so it should take the external parameters.
+        let params = self.data.transform_beta(params.clone());
+        // We actually need to futher apply the transformation beyond this, so that *arrays
+        // multiplying this resulting matrix* are hit the right way.
+        let fish_std = self.fisher_std(&params);
+        self.data.inverse_transform_fisher(fish_std)
     }
 
-    /// The inverse of the (regularized) fisher information matrix. This is used in some other
-    /// calculations (like the covariance and hat matrices) so it is cached.
+    /// The inverse of the (regularized) fisher information matrix, in the basis of internal
+    /// standardized parameters. This is used in some other calculations (like the covariance and
+    /// hat matrices) so it is cached.
     fn fisher_inv(&self) -> RegressionResult<Ref<'_, Array2<F>>> {
         if self.cov_unscaled.borrow().is_none() {
             let fisher_reg = self.fisher(&self.result);
@@ -292,6 +281,18 @@ where
         Ok(Ref::map(self.cov_unscaled.borrow(), |x| {
             x.as_ref().unwrap()
         }))
+    }
+
+    /// Compute the fisher information in terms of the internal (likely standardized)
+    /// coefficients. The regularization is included here.
+    fn fisher_std(&self, params: &Array1<F>) -> Array2<F> {
+        let lin_pred: Array1<F> = self.data.linear_predictor_std(params);
+        let adj_var: Array1<F> = M::adjusted_variance_diag(&lin_pred);
+        // calculate the fisher matrix
+        let fisher: Array2<F> = (self.data.x_conj() * &adj_var).dot(&self.data.x);
+        // Regularize the fisher matrix. It must be done in terms of the internal standardized
+        // coefficients.
+        self.reg.as_ref().irls_mat(fisher, params)
     }
 
     /// Returns the hat matrix, also known as the "projection" or "influence" matrix:
@@ -305,7 +306,9 @@ where
     /// This version is not symmetric, but the diagonal is invariant to this choice of convention.
     pub fn hat(&self) -> RegressionResult<Ref<'_, Array2<F>>> {
         if self.hat.borrow().is_none() {
-            let lin_pred = self.data.linear_predictor(&self.result);
+            // NOTE: The other quantities are in terms of the external beta, but the linear
+            // predictor should be the same either way.
+            let lin_pred = self.data.linear_predictor_std(&self.result_std);
             // Apply the eta' terms manually instead of calling adjusted_variance_diag, because the
             // adjusted variance method applies 2 powers to the variance, while we want one power
             // to the variance and one to the weights.
@@ -318,8 +321,8 @@ where
             let fisher_inv = self.fisher_inv()?;
 
             // the GLM variance and the data weights are put on different sides in this convention
-            let left = (var * &eta_d).insert_axis(Axis(1)) * &self.data.x;
-            let right = self.data.x_conj() * &eta_d;
+            let left = (var * &eta_d).insert_axis(Axis(1)) * &self.data.x_ext();
+            let right = self.data.x_conj_ext() * &eta_d;
             let result = left.dot(&fisher_inv.dot(&right));
 
             *self.hat.borrow_mut() = Some(result);
@@ -370,20 +373,23 @@ where
                 let mut freqs: Array1<F> = data_i.freqs.unwrap_or(Array1::<F>::ones(n_obs));
                 freqs[i] = F::zero();
                 data_i.freqs = Some(freqs);
+                data_i.standardizer = None;
                 data_i
             };
             let model_i = Model {
                 model: PhantomData::<M>,
                 data: data_i,
-                use_intercept: self.use_intercept,
             };
             let options = {
                 let mut options = self.options.clone();
-                options.init_guess = Some(self.result.clone());
+                // Use the standardized result as this dataset has already been scaled.
+                options.init_guess = Some(self.result_std.clone());
                 options
             };
             let fit_i = model_i.with_options(options).fit()?;
-            loo_result.row_mut(i).assign(&fit_i.result);
+            // Use this fit's re-mapping to put back on the external scale
+            let result_i = self.data.inverse_transform_beta(fit_i.result);
+            loo_result.row_mut(i).assign(&result_i);
         }
         Ok(loo_result)
     }
@@ -425,14 +431,9 @@ where
         self.data.n_obs() - self.rank()
     }
 
-    pub(crate) fn new(
-        data: &'a Dataset<F>,
-        use_intercept: bool,
-        irls: Irls<M, F>,
-        history: Vec<IrlsStep<F>>,
-    ) -> Self {
+    pub(crate) fn new(data: &'a Dataset<F>, irls: Irls<M, F>, history: Vec<IrlsStep<F>>) -> Self {
         let Irls {
-            guess: result,
+            guess: result_std,
             options,
             reg,
             n_iter,
@@ -441,7 +442,7 @@ where
         } = irls;
         assert_eq!(
             data_like,
-            M::log_like(data, &result),
+            M::log_like(data, &result_std),
             "Unregularized likelihoods should match exactly."
         );
         assert_eq!(
@@ -450,23 +451,28 @@ where
             "Number of iterations should match history length"
         );
         assert_eq!(
-            result,
+            result_std,
             history.last().unwrap().guess,
             "Last guess should be the same"
         );
         // Cache some of these variables that will be used often.
-        let n_par = result.len();
-        let model_like = data_like + reg.likelihood(&result);
+        let n_par = result_std.len();
+        let model_like = data_like + reg.likelihood(&result_std);
         assert_eq!(
             model_like,
             history.last().unwrap().like,
             "Last data likelihood should be the same"
         );
+        // NOTE: This necessarily uses the coefficients directly from the standardized data.
+        // Store these predictions as they are commonly used.
+        let y_hat = data.predict_with::<M>(&result_std);
+        let result_ext = data.inverse_transform_beta(result_std.clone());
         Self {
             model: PhantomData,
             data,
-            use_intercept,
-            result,
+            result: result_ext,
+            result_std,
+            y_hat,
             options,
             model_like,
             reg,
@@ -509,7 +515,7 @@ where
                     // If the intercept is allowed to maximize the likelihood, the natural
                     // parameter is equal to the link of the expectation. Otherwise it is
                     // the transformation function of zero.
-                    let intercept: F = if self.use_intercept {
+                    let intercept: F = if self.data.has_intercept {
                         M::Link::func(y_bar)
                     } else {
                         F::zero()
@@ -529,7 +535,7 @@ where
                     (null_like_total, null_params)
                 }
                 Some(off) => {
-                    if self.use_intercept {
+                    if self.data.has_intercept {
                         // If there are linear offsets and the intercept is allowed
                         // to be free, there is not a major simplification and the
                         // model needs to be re-fit.
@@ -545,9 +551,11 @@ where
                                 linear_offset: Some(off.clone()),
                                 weights: self.data.weights.clone(),
                                 freqs: self.data.freqs.clone(),
+                                // If we are in this branch it is because an intercept is needed.
+                                has_intercept: true,
+                                // We don't use standardization for the null model.
+                                standardizer: None,
                             },
-                            // If we are in this branch it is because an intercept is needed.
-                            use_intercept: true,
                         };
                         // TODO: Make this function return an error, although it's
                         // difficult to imagine this case happening.
@@ -563,8 +571,9 @@ where
                             .expect("Could not fit null model!");
                         let null_params: Array1<F> = {
                             let mut par = Array1::<F>::zeros(self.n_par);
-                            // there is only one parameter in this fit.
-                            par[0] = null_fit.result[0];
+                            // there is only one parameter in this fit. It should be the same as
+                            // the external result since this model doesn't have standardization.
+                            par[0] = null_fit.result_std[0];
                             par
                         };
                         (null_fit.model_like, null_params)
@@ -599,13 +608,18 @@ where
     where
         S: Data<Elem = F>,
     {
-        let lin_pred: Array1<F> = data_x.dot(&self.result);
+        let lin_pred = if self.data.has_intercept {
+            one_pad(data_x.view())
+        } else {
+            data_x.to_owned()
+        }
+        .dot(&self.result);
         let lin_pred: Array1<F> = if let Some(off) = &lin_off {
             lin_pred + *off
         } else {
             lin_pred
         };
-        lin_pred.mapv_into(M::Link::func_inv)
+        M::mean(&lin_pred)
     }
 
     /// Returns the rank $`K`$ of the model (i.e. the number of parameters)
@@ -649,7 +663,7 @@ where
     pub fn resid_part(&self) -> Array1<F> {
         let x_mean = self.data.x.mean_axis(Axis(0)).expect("empty dataset");
         let x_centered = &self.data.x - x_mean.insert_axis(Axis(0));
-        self.resid_work() + x_centered.dot(&self.result)
+        self.resid_work() + x_centered.dot(&self.result_std)
     }
 
     /// Return the Pearson residuals for each point in the training data:
@@ -661,9 +675,12 @@ where
     /// where $`V`$ is the variance function and $`w_i`$ are the variance weights.
     /// Not scaled by the dispersion for families with a free dispersion parameter.
     pub fn resid_pear(&self) -> Array1<F> {
-        let mu: Array1<F> = self.predict(&self.data.x, self.data.linear_offset.as_ref());
-        let residuals = &self.data.y - &mu;
-        let inv_var_diag: Array1<F> = mu.mapv_into(M::variance).mapv_into(F::recip);
+        let residuals = self.resid_resp();
+        let inv_var_diag: Array1<F> = self
+            .y_hat
+            .clone()
+            .mapv_into(M::variance)
+            .mapv_into(F::recip);
         // the variance weights are the reciprocal of the corresponding variance
         let scales = self
             .data
@@ -691,7 +708,7 @@ where
 
     /// Return the response residuals: $`e_i^\text{resp} = y_i - \hat\mu_i`$.
     pub fn resid_resp(&self) -> Array1<F> {
-        self.errors(self.data)
+        &self.data.y - &self.y_hat
     }
 
     /// Return the externally studentized residuals:
@@ -726,8 +743,8 @@ where
     /// Equal to the response residuals divided by the variance function (as
     /// opposed to the square root of the variance as in the Pearson residuals).
     pub fn resid_work(&self) -> Array1<F> {
-        let lin_pred: Array1<F> = self.data.linear_predictor(&self.result);
-        let mu: Array1<F> = lin_pred.mapv(M::Link::func_inv);
+        let lin_pred: Array1<F> = self.data.linear_predictor_std(&self.result_std);
+        let mu: Array1<F> = self.y_hat.clone();
         let resid_response: Array1<F> = &self.data.y - &mu;
         let var: Array1<F> = mu.mapv(M::variance);
         // adjust for non-canonical link functions; we want a total factor of 1/eta'
@@ -741,11 +758,11 @@ where
     pub fn score(&self, params: &Array1<F>) -> Array1<F> {
         // This represents the predictions given the input parameters, not the
         // fit parameters.
-        let lin_pred: Array1<F> = self.data.linear_predictor(params);
+        let lin_pred: Array1<F> = self.data.linear_predictor_ext(params.clone());
         let mu: Array1<F> = M::mean(&lin_pred);
         let resid_response = &self.data.y - mu;
         let resid_working = M::Link::adjust_errors(resid_response, &lin_pred);
-        let score_unreg = self.data.x_conj().dot(&resid_working);
+        let score_unreg = self.data.x_conj_ext().dot(&resid_working);
         self.reg.as_ref().gradient(score_unreg, params)
     }
 
@@ -780,7 +797,7 @@ where
     /// and the Wald test. Not to be confused with `ndf()`, the degrees of
     /// freedom in the model fit.
     pub fn test_ndf(&self) -> usize {
-        if self.use_intercept {
+        if self.data.has_intercept {
             self.n_par - 1
         } else {
             self.n_par
@@ -806,9 +823,15 @@ where
     /// instead of the null model. The degrees of freedom cannot be generally
     /// inferred.
     pub fn wald_test_against(&self, alternative: &Array1<F>) -> F {
-        let d_params: Array1<F> = &self.result - alternative;
-        let fisher_alt: Array2<F> = self.fisher(alternative);
-        d_params.t().dot(&fisher_alt.dot(&d_params))
+        let alt_std = self.data.transform_beta(alternative.clone());
+        // This is a linear transformation, so it should still work on the difference.
+        // It's simpler to work in the standardized parameters.
+        // let d_params_std = self.data.transform_beta(d_params);
+        let d_params_std = &self.result_std - &alt_std;
+        // Get the fisher matrix at the *other* result, since this is a test of this fit's
+        // parameters under a model given by the other.
+        let fisher_std: Array2<F> = self.fisher_std(&alt_std);
+        d_params_std.t().dot(&fisher_std.dot(&d_params_std))
     }
 
     /// Returns the per-parameter Wald $`z`$-statistic:
@@ -865,32 +888,48 @@ where
     fn dev_without_covariate(&self, i: usize) -> RegressionResult<F> {
         use ndarray::{Axis, concatenate, s};
 
-        let x_reduced: Array2<F> = concatenate![
-            Axis(1),
-            self.data.x.slice(s![.., ..i]),
-            self.data.x.slice(s![.., i + 1..])
-        ];
+        let is_intercept = self.data.has_intercept && (i == 0);
+        let x_reduced: Array2<F> = if is_intercept {
+            // If this is the intercept term, we need to use the original unscaled data to avoid
+            // mixing
+            self.data.x_ext().slice(s![.., 1..]).to_owned()
+        } else {
+            concatenate![
+                Axis(1),
+                self.data.x.slice(s![.., ..i]),
+                self.data.x.slice(s![.., i + 1..])
+            ]
+        };
+        // NOTE: This data has been standardized already. Since we are fully dropping a covariate,
+        // each data column should still be standardized if the full external set is.
         let data_reduced = Dataset::<F> {
             y: self.data.y.clone(),
             x: x_reduced,
             linear_offset: self.data.linear_offset.clone(),
             weights: self.data.weights.clone(),
             freqs: self.data.freqs.clone(),
+            has_intercept: !is_intercept,
+            // It shouldn't be necessary to standardize again. Each individual column should
+            // already be standardized, if the full dataset was.
+            standardizer: None,
         };
         let model_reduced = Model {
             model: PhantomData::<M>,
             data: data_reduced,
-            use_intercept: self.use_intercept && (i != 0),
         };
         // Start with the non-excluded parameters at the values from the main fit.
-        let init_guess = Some(concatenate![
-            Axis(0),
-            self.result.slice(s![..i]),
-            self.result.slice(s![i + 1..])
-        ]);
+        let init_guess = if is_intercept {
+            self.result.slice(s![1..]).to_owned()
+        } else {
+            concatenate![
+                Axis(0),
+                self.result_std.slice(s![..i]),
+                self.result_std.slice(s![i + 1..])
+            ]
+        };
         let fit_options = {
             let mut fit_options = self.options.clone();
-            fit_options.init_guess = init_guess;
+            fit_options.init_guess = Some(init_guess);
             fit_options
         };
         let fit_reduced = model_reduced.with_options(fit_options).fit()?;
@@ -1001,11 +1040,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        Linear, Logistic,
-        model::ModelBuilder,
-        utility::{one_pad, standardize},
-    };
+    use crate::{Linear, Logistic, model::ModelBuilder};
     use anyhow::Result;
     use approx::assert_abs_diff_eq;
     use ndarray::Axis;
@@ -1017,40 +1052,56 @@ mod tests {
         let data_y = array![true, false, false, true, true, true, true, false, true];
         let data_x = array![-0.5, 0.3, -0.6, 0.2, 0.3, 1.2, 0.8, 0.6, -0.2].insert_axis(Axis(1));
         let lin_off = array![0.1, 0.0, -0.1, 0.2, 0.1, 0.3, 0.4, -0.1, 0.1];
-        let data_x_std = standardize(data_x.clone());
         let model = ModelBuilder::<Logistic>::data(&data_y, &data_x)
+            .no_standardize()
             .linear_offset(lin_off.clone())
             .build()?;
         let fit = model.fit()?;
-        let model_std = ModelBuilder::<Logistic>::data(&data_y, &data_x_std)
+        let model_std = ModelBuilder::<Logistic>::data(&data_y, &data_x)
             .linear_offset(lin_off)
             .build()?;
         let fit_std = model_std.fit()?;
         let lr = fit.lr_test();
         let lr_std = fit_std.lr_test();
-        assert_abs_diff_eq!(lr, lr_std);
-        eprintln!("about to try score test");
+        assert_abs_diff_eq!(lr, lr_std, epsilon = 4.0 * f64::EPSILON);
         assert_abs_diff_eq!(
             fit.score_test()?,
             fit_std.score_test()?,
             epsilon = f32::EPSILON as f64
         );
-        eprintln!("about to try wald test");
         assert_abs_diff_eq!(
             fit.wald_test(),
             fit_std.wald_test(),
             epsilon = 4.0 * f64::EPSILON
         );
-        assert_abs_diff_eq!(fit.aic(), fit_std.aic());
-        assert_abs_diff_eq!(fit.bic(), fit_std.bic());
-        eprintln!("about to try deviance");
-        assert_abs_diff_eq!(fit.deviance(), fit_std.deviance());
-        // The Wald Z-score of the intercept term is not invariant under a
-        // linear transformation of the data, but the parameter part seems to
-        // be, at least for single-component data.
+        assert_abs_diff_eq!(fit.aic(), fit_std.aic(), epsilon = 4.0 * f64::EPSILON);
+        assert_abs_diff_eq!(fit.bic(), fit_std.bic(), epsilon = 4.0 * f64::EPSILON);
         assert_abs_diff_eq!(
-            fit.wald_z()?[1],
-            fit_std.wald_z()?[1],
+            fit.deviance(),
+            fit_std.deviance(),
+            epsilon = 4.0 * f64::EPSILON
+        );
+        // The Wald Z-score of the intercept term is also invariant, with the new scaling
+        // approach, so we can compare the full vectors.
+        assert_abs_diff_eq!(
+            fit.wald_z()?,
+            fit_std.wald_z()?,
+            epsilon = 0.01 * f32::EPSILON as f64
+        );
+        // try p-values
+        assert_abs_diff_eq!(
+            fit.pvalue_lr_test(),
+            fit_std.pvalue_lr_test(),
+            epsilon = 0.01 * f32::EPSILON as f64
+        );
+        assert_abs_diff_eq!(
+            fit.pvalue_wald()?,
+            fit_std.pvalue_wald()?,
+            epsilon = 0.01 * f32::EPSILON as f64
+        );
+        assert_abs_diff_eq!(
+            fit.pvalue_exact()?,
+            fit_std.pvalue_exact()?,
             epsilon = 0.01 * f32::EPSILON as f64
         );
 
@@ -1133,7 +1184,7 @@ mod tests {
         let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
         let fit = model.fit()?;
         // The predicted values of Y given the model.
-        let pred_y = fit.predict(&one_pad(data_x.view()), None);
+        let pred_y = fit.predict(&data_x, None);
         let target_dev = (data_y - pred_y).mapv(|dy| dy * dy).sum();
         assert_abs_diff_eq!(fit.deviance(), target_dev, epsilon = 4. * f64::EPSILON);
         Ok(())
@@ -1212,7 +1263,6 @@ mod tests {
             let fit_i = model_i.fit()?;
             let yi = data_y[i];
             let xi = data_x.slice(s![i..i + 1, ..]);
-            let xi = crate::utility::one_pad(xi);
             let wi = weights[i];
             let yi_pred: f64 = fit_i.predict(&xi, None)[0];
             let disp_i = fit_i.dispersion();

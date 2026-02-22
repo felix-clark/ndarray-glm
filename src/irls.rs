@@ -1,13 +1,13 @@
 //! Iteratively re-weighed least squares algorithm
-use crate::glm::Glm;
-use crate::link::Transform;
-use crate::model::{Dataset, Model};
-use crate::regularization::{ElasticNet, Lasso, Null, Ridge};
 use crate::{
+    data::Dataset,
     error::{RegressionError, RegressionResult},
     fit::options::FitOptions,
+    glm::Glm,
+    link::Transform,
+    model::Model,
     num::Float,
-    regularization::IrlsReg,
+    regularization::*,
 };
 use ndarray::{Array1, Array2, ArrayRef2};
 use ndarray_linalg::SolveH;
@@ -50,7 +50,7 @@ where
 {
     pub fn new(model: &'a Model<M, F>, initial: Array1<F>, options: FitOptions<F>) -> Self {
         let data = &model.data;
-        let reg = get_reg(&options, data.x.ncols(), model.use_intercept);
+        let reg = get_reg(&options, data.x.ncols(), data.has_intercept);
         let initial_like_data: F = M::log_like(data, &initial);
         Self {
             model: PhantomData,

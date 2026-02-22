@@ -1,138 +1,17 @@
 //! Collect data for and configure a model
 
 use crate::{
+    data::Dataset,
     error::{RegressionError, RegressionResult},
     fit::{self, Fit},
     glm::Glm,
     math::is_rank_deficient,
     num::Float,
     response::Response,
-    utility::one_pad,
 };
 use fit::options::{FitConfig, FitOptions};
 use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, Data, Ix1, Ix2};
 use std::marker::PhantomData;
-
-#[derive(Clone)]
-pub struct Dataset<F>
-where
-    F: Float,
-{
-    /// the observation of response data by event
-    pub y: Array1<F>,
-    /// the design matrix with observations in rows and covariates in columns
-    pub x: Array2<F>,
-    /// The offset in the linear predictor for each data point. This can be used
-    /// to fix the effect of control variables.
-    // TODO: Consider making this an option of a reference.
-    pub linear_offset: Option<Array1<F>>,
-    /// The variance weight of each observation (a.k.a. analytic weights)
-    pub weights: Option<Array1<F>>,
-    /// The frequency of each observation (traditionally positive integers)
-    pub freqs: Option<Array1<F>>,
-}
-
-impl<F> Dataset<F>
-where
-    F: Float,
-{
-    /// Returns the linear predictors, i.e. the design matrix multiplied by the
-    /// regression parameters. Each entry in the resulting array is the linear
-    /// predictor for a given observation. If linear offsets for each
-    /// observation are provided, these are added to the linear predictors
-    pub fn linear_predictor(&self, regressors: &Array1<F>) -> Array1<F> {
-        let linear_predictor: Array1<F> = self.x.dot(regressors);
-        // Add linear offsets to the predictors if they are set
-        if let Some(lin_offset) = &self.linear_offset {
-            linear_predictor + lin_offset
-        } else {
-            linear_predictor
-        }
-    }
-
-    /// Total number of observations as given by the sum of the frequencies of observations
-    pub fn n_obs(&self) -> F {
-        match &self.freqs {
-            None => F::from(self.y.len()).unwrap(),
-            Some(f) => f.sum(),
-        }
-    }
-
-    /// Returns the sum of the weights, or the number of observations if the weights are all equal
-    /// to 1.
-    pub(crate) fn sum_weights(&self) -> F {
-        match &self.weights {
-            None => self.n_obs(),
-            Some(w) => self.freq_sum(w),
-        }
-    }
-
-    /// Returns the effective sample size corrected for the design effect. This exposes the sum of
-    /// the squares of the variance weights.
-    pub fn n_eff(&self) -> F {
-        match &self.weights {
-            None => self.n_obs(),
-            Some(w) => {
-                let v1 = self.freq_sum(w);
-                let w2 = w * w;
-                let v2 = self.freq_sum(&w2);
-                v1 * v1 / v2
-            }
-        }
-    }
-
-    pub(crate) fn get_variance_weights(&self) -> Array1<F> {
-        match &self.weights {
-            Some(w) => w.clone(),
-            None => Array1::<F>::ones(self.y.len()),
-        }
-    }
-
-    /// Multiply the input by the frequency weights
-    pub(crate) fn apply_freq_weights(&self, rhs: Array1<F>) -> Array1<F> {
-        match &self.freqs {
-            None => rhs,
-            Some(f) => f * rhs,
-        }
-    }
-
-    /// multiply the input vector element-wise by the weights, if they exist
-    pub(crate) fn apply_total_weights(&self, rhs: Array1<F>) -> Array1<F> {
-        self.apply_freq_weights(self.apply_var_weights(rhs))
-    }
-
-    pub(crate) fn apply_var_weights(&self, rhs: Array1<F>) -> Array1<F> {
-        match &self.weights {
-            None => rhs,
-            Some(w) => w * rhs,
-        }
-    }
-
-    /// Sum over the input array using the frequencies (and not the variance weights) as weights.
-    /// This is a useful operation because the frequency weights fundamentally impact the sum
-    /// operator and nothing else.
-    pub(crate) fn freq_sum(&self, rhs: &Array1<F>) -> F {
-        self.apply_freq_weights(rhs.clone()).sum()
-    }
-
-    /// Return the weighted sum of the RHS, where both frequency and variance weights are used.
-    pub(crate) fn weighted_sum(&self, rhs: &Array1<F>) -> F {
-        self.freq_sum(&self.apply_var_weights(rhs.clone()))
-    }
-
-    /// Returns the weighted transpose of the feature data
-    pub(crate) fn x_conj(&self) -> Array2<F> {
-        let xt = self.x.t().to_owned();
-        let xt = match &self.freqs {
-            None => xt,
-            Some(f) => xt * f,
-        };
-        match &self.weights {
-            None => xt,
-            Some(w) => xt * w,
-        }
-    }
-}
 
 /// Holds the data and configuration settings for a regression.
 pub struct Model<M, F>
@@ -143,8 +22,6 @@ where
     pub(crate) model: PhantomData<M>,
     /// The dataset
     pub data: Dataset<F>,
-    /// Whether the intercept term is used (commonly true)
-    pub use_intercept: bool,
 }
 
 impl<M, F> Model<M, F>
@@ -202,6 +79,7 @@ impl<M: Glm> ModelBuilder<M> {
             var_weights: None,
             freq_weights: None,
             use_intercept_term: true,
+            standardize: true,
             colin_tol: F::epsilon(),
             error: None,
         }
@@ -231,6 +109,8 @@ where
     var_weights: Option<Array1<F>>,
     /// The frequency/count of each observation.
     freq_weights: Option<Array1<F>>,
+    /// Whether to standardize the input data. Defaults to `true`.
+    standardize: bool,
     /// Whether to use an intercept term. Defaults to `true`.
     use_intercept_term: bool,
     /// tolerance for determinant check on rank of data matrix X.
@@ -285,9 +165,21 @@ where
         self
     }
 
-    /// Do not add a constant term to the design matrix
+    /// Do not add a constant intercept term of `1`s to the design matrix. This is rarely
+    /// recommended, so you probably don't want to use this option unless you have a very clear
+    /// sense of why. Note that you can supply uniform or per-observation constant terms using
+    /// [`ModelBuilderData::linear_offset`].
     pub fn no_constant(mut self) -> Self {
         self.use_intercept_term = false;
+        self
+    }
+
+    /// Don't perform standarization (i.e. scale to 0-mean and 1-variance) of the design matrix.
+    /// Note that the standardization is handled internally, so the reported result coefficients
+    /// should be compatible with the input data directly, meaning the user shouldn't have to
+    /// interact with them.
+    pub fn no_standardize(mut self) -> Self {
+        self.standardize = false;
         self
     }
 
@@ -322,43 +214,47 @@ where
             ));
         }
 
-        // add constant term to X data
-        let data_x = if self.use_intercept_term {
-            one_pad(self.data_x)
-        } else {
-            self.data_x.to_owned()
-        };
         // Check if the data is under-constrained
-        if n_data < data_x.ncols() {
+        if n_data < self.data_x.ncols() {
             // The regression can find a solution if n_data == ncols, but there will be
             // no estimate for the uncertainty. Regularization can solve this, so keep
             // it to a warning.
             // return Err(RegressionError::Underconstrained);
             eprintln!("Warning: data is underconstrained");
         }
+
         // Check for co-linearity up to a tolerance
-        let xtx: Array2<F> = data_x.t().dot(&data_x);
+        // NOTE: Should this use the weights? If so, it should be checked after the
+        // unpadded Dataset is built so we can use x_conj(). The weights might not impact the
+        // collinearity check, though, since they are applied to each column equally.
+        let xtx: Array2<F> = self.data_x.t().dot(&self.data_x);
         if is_rank_deficient(xtx, self.colin_tol)? {
             return Err(RegressionError::ColinearData);
         }
 
-        // convert to floating-point
+        // convert y-values to floating-point
         let data_y: Array1<F> = self
             .data_y
             .iter()
             .map(|&y| y.into_float())
             .collect::<Result<_, _>>()?;
 
+        // Build the Dataset object
+        let mut data = Dataset {
+            y: data_y,
+            x: self.data_x.to_owned(),
+            linear_offset: self.linear_offset,
+            weights: self.var_weights,
+            freqs: self.freq_weights,
+            has_intercept: false,
+            standardizer: None,
+        };
+
+        data.finalize_design_matrix(self.standardize, self.use_intercept_term);
+
         Ok(Model {
             model: PhantomData,
-            data: Dataset {
-                y: data_y,
-                x: data_x,
-                linear_offset: self.linear_offset,
-                weights: self.var_weights,
-                freqs: self.freq_weights,
-            },
-            use_intercept: self.use_intercept_term,
+            data,
         })
     }
 }

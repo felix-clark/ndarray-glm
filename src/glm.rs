@@ -5,10 +5,11 @@
 use crate::irls::IrlsStep;
 use crate::link::{Link, Transform};
 use crate::{
+    data::Dataset,
     error::RegressionResult,
     fit::{Fit, options::FitOptions},
     irls::Irls,
-    model::{Dataset, Model},
+    model::Model,
     num::Float,
 };
 use ndarray::{Array1, Array2, ArrayRef2};
@@ -108,11 +109,12 @@ pub trait Glm: Sized {
         F: Float;
 
     /// Returns the log-likelihood contributions for each observable given the regressor values.
+    /// It's assumed that these regresssors are in the same standardization scale as the dataset.
     fn log_like_terms<F>(data: &Dataset<F>, regressors: &Array1<F>) -> Array1<F>
     where
         F: Float,
     {
-        let lin_pred = data.linear_predictor(regressors);
+        let lin_pred = data.linear_predictor_std(regressors);
         let nat_par = Self::Link::nat_param(lin_pred);
         // the likelihood prior to regularization
         ndarray::Zip::from(&data.y)
@@ -170,11 +172,6 @@ pub trait Glm: Sized {
 
         let fit_history: Vec<IrlsStep<F>> = irls.by_ref().collect::<Result<Vec<_>, _>>()?;
 
-        Ok(Fit::new(
-            &model.data,
-            model.use_intercept,
-            irls,
-            fit_history,
-        ))
+        Ok(Fit::new(&model.data, irls, fit_history))
     }
 }

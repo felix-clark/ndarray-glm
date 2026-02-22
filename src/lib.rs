@@ -120,8 +120,8 @@
 //! \text{E}[y] = A'(\eta), \qquad \text{Var}[y] = \phi\, A''(\eta)
 //! ```
 //!
-//! where $`\phi`$ is the *dispersion parameter* (fixed to 1 for logistic and
-//! Poisson families, estimated for the linear/Gaussian family).
+//! where $`\phi`$ is the *dispersion parameter* (fixed to 1 for some families and estimated from
+//! the data for others).
 //!
 //! ## Link and variance functions
 //!
@@ -133,8 +133,9 @@
 //! ```
 //!
 //! The *canonical link* is the one for which $`\eta = \omega`$, i.e. the natural
-//! parameter equals the linear predictor. Non-canonical links are also supported
-//! (see [`link`]).
+//! parameter equals the linear predictor. In general, in terms of an arbitrary link function $`g`$
+//! and canonical link function $`g_0`$, we have $`\eta(\omega) = g_0(g(\omega)). Non-canonical
+//! links are supported in principle (see [`link`]).
 //!
 //! The *variance function* $`V(\mu)`$ characterizes how the variance of $`y`$
 //! depends on the mean, independent of the choice of link:
@@ -150,7 +151,7 @@
 //! | [`Linear`] (Gaussian) | Identity | $`1`$ | estimated |
 //! | [`Logistic`] (Bernoulli) | Logit | $`\mu(1-\mu)`$ | $`1`$ |
 //! | [`Poisson`] | Log | $`\mu`$ | $`1`$ |
-//! | [`Binomial`] (fixed $`n`$) | Logit | $`\mu(n-\mu)/n`$ | $`1`$ |
+//! | [`Binomial`] (fixed $`n`$) | Logit | $`\mu(1-\mu/n)`$ | $`1`$ |
 //!
 //! ## Fitting via IRLS
 //!
@@ -199,6 +200,7 @@
 //! [derivation notes](https://felix-clark.github.io/src/tex/glm-math/main.pdf).
 
 #![doc(html_root_url = "https://docs.rs/crate/ndarray-glm")]
+pub mod data;
 pub mod error;
 mod fit;
 mod glm;
@@ -209,7 +211,6 @@ pub mod model;
 pub mod num;
 mod regularization;
 mod response;
-pub mod utility;
 
 // Import some common names into the top-level namespace
 pub use {

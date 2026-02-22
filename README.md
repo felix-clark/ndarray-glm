@@ -13,8 +13,10 @@ iteratively reweighted least squares, using the
 
 This package is in beta and the interface could undergo changes, as could the
 numerical value of some functions. The tests include several checks against R's
-`glmnet` package, but some edge cases may be excluded and others may involve
-inherent ambiguities or imprecisions.
+`glm` and `glmnet` packages, but some
+edge cases may be excluded and others
+may involve inherent ambiguities or
+imprecisions.
 
 The regression algorithm uses iteratively re-weighted least squares (IRLS) with
 a line-search procedure applied when the next iteration of guesses does not
