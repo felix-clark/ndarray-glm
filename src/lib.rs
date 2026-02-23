@@ -61,15 +61,15 @@
 //! println!("Fit result: {}", fit.result);
 //! ```
 //!
-//! Data standardization and L2 regularization:
+//! L2 regularization:
 //! ```
-//! use ndarray_glm::{array, Linear, ModelBuilder, utility::standardize};
+//! use ndarray_glm::{array, Linear, ModelBuilder};
 //!
 //! let data_y = array![0.3, 1.3, 0.7];
 //! let data_x = array![[0.1, 0.2], [-0.4, 0.1], [0.2, 0.4]];
-//! // The design matrix can optionally be standardized, where the mean of each independent
-//! // variable is subtracted and each is then divided by the standard deviation of that variable.
-//! let data_x = standardize(data_x);
+//! // The model builder standardizes the design matrix internally by default, so the penalty
+//! // is applied uniformly across features regardless of their scale. The returned coefficients
+//! // are always in the original (un-standardized) coordinate system.
 //! let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build().unwrap();
 //! // L2 (ridge) regularization can be applied with l2_reg().
 //! let fit = model.fit_options().l2_reg(1e-5).fit().unwrap();
@@ -84,7 +84,7 @@
 //! let data_y = array![true, false, false, true, true];
 //! let data_x = array![[0.5, 0.2], [0.1, 0.3], [0.2, 0.6], [0.6, 0.3], [0.4, 0.4]];
 //! let model = ModelBuilder::<Logistic<Cloglog>>::data(&data_y, &data_x).build().unwrap();
-//! let fit = model.fit_options().max_iter(64).l2_reg(1e-3).fit().unwrap();
+//! let fit = model.fit_options().max_iter(64).l2_reg(0.1).fit().unwrap();
 //! println!("Fit result: {}", fit.result);
 //! ```
 //!
@@ -200,7 +200,7 @@
 //! [derivation notes](https://felix-clark.github.io/src/tex/glm-math/main.pdf).
 
 #![doc(html_root_url = "https://docs.rs/crate/ndarray-glm")]
-pub mod data;
+mod data;
 pub mod error;
 mod fit;
 mod glm;
