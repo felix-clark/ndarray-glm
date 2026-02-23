@@ -16,7 +16,7 @@ type BinDom = u16;
 pub struct Binomial<const N: BinDom>;
 
 impl<const N: BinDom> Response<Binomial<N>> for BinDom {
-    fn into_float<F: Float>(self) -> RegressionResult<F> {
+    fn into_float<F: Float>(self) -> RegressionResult<F, F> {
         F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))
     }
 }
@@ -71,7 +71,7 @@ mod tests {
     use ndarray::array;
 
     #[test]
-    fn bin_reg() -> RegressionResult<()> {
+    fn bin_reg() -> RegressionResult<(), f64> {
         const N: u16 = 12;
         let ln2 = f64::ln(2.);
         let beta = array![0., 1.];

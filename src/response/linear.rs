@@ -24,7 +24,7 @@ where
     Y: Float + ToPrimitive + ToString,
     L: Link<Linear<L>>,
 {
-    fn into_float<F: Float>(self) -> RegressionResult<F> {
+    fn into_float<F: Float>(self) -> RegressionResult<F, F> {
         F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))
     }
 }
@@ -86,7 +86,7 @@ mod tests {
     use ndarray::array;
 
     #[test]
-    fn lin_reg() -> RegressionResult<()> {
+    fn lin_reg() -> RegressionResult<(), f64> {
         let beta = array![0.3, 1.2, -0.5];
         let data_x = array![[-0.1, 0.2], [0.7, 0.5], [3.2, 0.1]];
         // let data_x = array![[-0.1, 0.1], [0.7, -0.7], [3.2, -3.2]];

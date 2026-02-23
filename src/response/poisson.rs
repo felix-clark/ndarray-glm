@@ -25,7 +25,7 @@ where
     U: Unsigned + ToPrimitive + ToString + Copy,
     L: Link<Poisson<L>>,
 {
-    fn into_float<F: Float>(self) -> RegressionResult<F> {
+    fn into_float<F: Float>(self) -> RegressionResult<F, F> {
         F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))
     }
 }
@@ -82,10 +82,10 @@ mod tests {
     use super::*;
     use crate::{error::RegressionResult, model::ModelBuilder};
     use approx::assert_abs_diff_eq;
-    use ndarray::{array, Array1};
+    use ndarray::{Array1, array};
 
     #[test]
-    fn poisson_reg() -> RegressionResult<()> {
+    fn poisson_reg() -> RegressionResult<(), f64> {
         let ln2 = f64::ln(2.);
         let beta = array![0., ln2, -ln2];
         let data_x = array![[1., 0.], [1., 1.], [0., 1.], [0., 1.]];

@@ -40,6 +40,8 @@ where
     /// tolerance, so we want to return the current guess but exit immediately
     /// in the next iteration.
     done: bool,
+    /// Internally track the fit history
+    history: Vec<IrlsStep<F>>,
 }
 
 impl<'a, M, F> Irls<'a, M, F>
@@ -61,6 +63,7 @@ where
             n_iter: 0,
             last_like_data: initial_like_data,
             done: false,
+            history: Vec::new(),
         }
     }
 
@@ -70,16 +73,19 @@ where
         self.guess.assign(&next_guess);
         self.last_like_data = next_like_data;
         let model_like = next_like_data + self.reg.likelihood(&next_guess);
-        self.n_iter += 1;
-        if self.n_iter > self.options.max_iter {
-            // NOTE: This could also return the best guess so far. Including the data in the error
-            // type would necessitate either a conversion to f32 or a parameterization.
-            return Err(RegressionError::MaxIter(self.options.max_iter));
-        }
-        Ok(IrlsStep {
+        let step = IrlsStep {
             guess: next_guess,
             like: model_like,
-        })
+        };
+        self.history.push(step.clone());
+        self.n_iter += 1;
+        if self.n_iter > self.options.max_iter {
+            return Err(RegressionError::MaxIter {
+                n_iter: self.options.max_iter,
+                history: self.history.clone(),
+            });
+        }
+        Ok(step)
     }
 
     /// Returns the (LHS, RHS) of the IRLS update matrix equation. This is a bit
@@ -142,6 +148,7 @@ where
 }
 
 /// Represents a step in the IRLS. Holds the current guess and likelihood.
+#[derive(Clone, Debug)]
 pub struct IrlsStep<F> {
     /// The current parameter guess.
     pub guess: Array1<F>,
@@ -157,7 +164,7 @@ where
     F: Float,
     ArrayRef2<F>: SolveH<F>,
 {
-    type Item = RegressionResult<IrlsStep<F>>;
+    type Item = RegressionResult<IrlsStep<F>, F>;
 
     /// Acquire the next IRLS step based on the previous one.
     fn next(&mut self) -> Option<Self::Item> {

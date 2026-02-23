@@ -114,7 +114,7 @@ where
     ///
     /// where $`r_i`$ is the Pearson residual, $`h_i`$ is the leverage, $`K`$ is the rank
     /// (number of parameters), and $`\hat\phi`$ is the estimated dispersion.
-    pub fn cooks(&self) -> RegressionResult<Array1<F>> {
+    pub fn cooks(&self) -> RegressionResult<Array1<F>, F> {
         let hat = self.leverage()?;
         let pear_sq = self.resid_pear().mapv(|r| r * r);
         let h_terms: Array1<F> = hat.mapv_into(|h| {
@@ -125,15 +125,24 @@ where
         Ok(pear_sq * h_terms / denom)
     }
 
-    /// The covariance matrix of the parameter estimates:
+    /// The covariance matrix of the parameter estimates. When no regularization is used, this is:
     ///
     /// ```math
     /// \text{Cov}[\hat{\boldsymbol\beta}] = \hat\phi \, (\mathbf{X}^\mathsf{T}\mathbf{WSX})^{-1}
     /// ```
     ///
-    /// where $`\hat\phi`$ is the estimated dispersion, $`\mathbf{W}`$ is the weight matrix, and
-    /// $`\mathbf{S}`$ is the diagonal variance matrix. The Fisher matrix inverse is cached.
-    pub fn covariance(&self) -> RegressionResult<Array2<F>> {
+    /// When regularization is active, the sandwich form is used to correctly account for the bias
+    /// introduced by the penalty:
+    ///
+    /// ```math
+    /// \text{Cov}[\hat{\boldsymbol\beta}] = \hat\phi \, \mathcal{I}_\text{reg}^{-1} \, \mathcal{I}_\text{data} \, \mathcal{I}_\text{reg}^{-1}
+    /// ```
+    ///
+    /// where $`\mathcal{I}_\text{reg}`$ is the regularized Fisher information and
+    /// $`\mathcal{I}_\text{data}`$ is the unregularized (data-only) Fisher information.
+    /// When unregularized, $`\mathcal{I}_\text{reg} = \mathcal{I}_\text{data}`$ and this reduces
+    /// to the standard form. The regularized Fisher inverse is cached.
+    pub fn covariance(&self) -> RegressionResult<Array2<F>, F> {
         // The covariance must be multiplied by the dispersion parameter.
         // For logistic/poisson regression, this is identically 1.
         // For linear/gamma regression it is estimated from the data.
@@ -169,7 +178,7 @@ where
 
     /// Returns the self-excluded deviance terms, i.e. the deviance of an observation as if the
     /// model was fit without it. This is a one-step approximation.
-    fn deviance_terms_loo(&self) -> RegressionResult<Array1<F>> {
+    fn deviance_terms_loo(&self) -> RegressionResult<Array1<F>, F> {
         let dev_terms = self.deviance_terms();
         let pear_sq = self.resid_pear().mapv(|r| r * r);
         let hat_rat = self.leverage()?.mapv(|h| h / (F::one() - h));
@@ -210,7 +219,7 @@ where
     }
 
     /// Return the dispersion terms with the observation(s) at each point excluded from the fit.
-    fn dispersion_loo(&self) -> RegressionResult<Array1<F>> {
+    fn dispersion_loo(&self) -> RegressionResult<Array1<F>, F> {
         use DispersionType::*;
         match M::DISPERSED {
             FreeDispersion => {
@@ -268,10 +277,10 @@ where
         self.data.inverse_transform_fisher(fish_std)
     }
 
-    /// The inverse of the (regularized) fisher information matrix, in the basis of internal
-    /// standardized parameters. This is used in some other calculations (like the covariance and
-    /// hat matrices) so it is cached.
-    fn fisher_inv(&self) -> RegressionResult<Ref<'_, Array2<F>>> {
+    /// The inverse of the (regularized) fisher information matrix, in the external parameter
+    /// basis. Used for the hat matrix, influence calculations, and as a component of the sandwich
+    /// covariance. Cached on first access.
+    fn fisher_inv(&self) -> RegressionResult<Ref<'_, Array2<F>>, F> {
         if self.cov_unscaled.borrow().is_none() {
             let fisher_reg = self.fisher(&self.result);
             // NOTE: invh/invh_into() are bugged and incorrect!
@@ -304,7 +313,7 @@ where
     /// Orthogonal to the response residuals at the fit result: $`\mathbf{P}(\mathbf{y} -
     /// \hat{\mathbf{y}}) = 0`$.
     /// This version is not symmetric, but the diagonal is invariant to this choice of convention.
-    pub fn hat(&self) -> RegressionResult<Ref<'_, Array2<F>>> {
+    pub fn hat(&self) -> RegressionResult<Ref<'_, Array2<F>>, F> {
         if self.hat.borrow().is_none() {
             // NOTE: The other quantities are in terms of the external beta, but the linear
             // predictor should be the same either way.
@@ -340,8 +349,8 @@ where
     /// Each row $`i`$ should be subtracted from $`\hat{\boldsymbol\beta}`$ to approximate
     /// the coefficients that would result from excluding observation $`i`$.
     /// Exact for linear models; a one-step approximation for nonlinear models.
-    pub fn infl_coef(&self) -> RegressionResult<Array2<F>> {
-        let lin_pred = self.data.linear_predictor(&self.result);
+    pub fn infl_coef(&self) -> RegressionResult<Array2<F>, F> {
+        let lin_pred = self.data.linear_predictor_std(&self.result_std);
         let resid_resp = self.resid_resp();
         let omh = -self.leverage()? + F::one();
         let resid_adj = M::Link::adjust_errors(resid_resp, &lin_pred) / omh;
@@ -353,7 +362,7 @@ where
 
     /// Returns the leverage $`h_i = P_{ii}`$ for each observation: the diagonal of the hat matrix.
     /// Indicates the sensitivity of each prediction to its corresponding observation.
-    pub fn leverage(&self) -> RegressionResult<Array1<F>> {
+    pub fn leverage(&self) -> RegressionResult<Array1<F>, F> {
         let hat = self.hat()?;
         Ok(hat.diag().to_owned())
     }
@@ -361,7 +370,7 @@ where
     /// Returns exact coefficients from leaving each observation out, one-at-a-time.
     /// This is a much more expensive operation than the original regression because a new one is
     /// performed for each observation.
-    pub fn loo_exact(&self) -> RegressionResult<Array2<F>> {
+    pub fn loo_exact(&self) -> RegressionResult<Array2<F>, F> {
         let loo_coef: Array2<F> = self.infl_coef()?;
         // NOTE: could also use the result itself as the initial guess
         let loo_initial = &self.result - loo_coef;
@@ -650,7 +659,7 @@ where
     ///
     /// where $`d_i`$ is the deviance residual, $`\hat\phi`$ is the dispersion, and $`h_i`$ is
     /// the leverage. Generally applicable for outlier detection.
-    pub fn resid_dev_std(&self) -> RegressionResult<Array1<F>> {
+    pub fn resid_dev_std(&self) -> RegressionResult<Array1<F>, F> {
         let dev = self.resid_dev();
         let phi = self.dispersion();
         let hat: Array1<F> = self.leverage()?;
@@ -697,7 +706,7 @@ where
     ///
     /// where $`r_i`$ is the Pearson residual and $`h_i`$ is the leverage. These are expected
     /// to have unit variance.
-    pub fn resid_pear_std(&self) -> RegressionResult<Array1<F>> {
+    pub fn resid_pear_std(&self) -> RegressionResult<Array1<F>, F> {
         let pearson = self.resid_pear();
         let phi = self.dispersion();
         let hat = self.leverage()?;
@@ -721,7 +730,7 @@ where
     /// approximated via one-step deletion. Under normality, $`t`$-distributed with
     /// $`N - K - 1`$ degrees of freedom. This is a robust and general method for outlier
     /// detection.
-    pub fn resid_student(&self) -> RegressionResult<Array1<F>> {
+    pub fn resid_student(&self) -> RegressionResult<Array1<F>, F> {
         let signs = self.resid_resp().mapv(F::signum);
         let dev_terms_loo: Array1<F> = self.deviance_terms_loo()?;
         // NOTE: This match could also be handled internally in dispersion_loo()
@@ -775,7 +784,7 @@ where
     /// where $`\mathbf{J}`$ is the score and $`\mathcal{I}`$ is the Fisher information, both
     /// evaluated at the null parameters. Asymptotically $`\chi^2`$-distributed with
     /// [`test_ndf()`](Self::test_ndf) degrees of freedom.
-    pub fn score_test(&self) -> RegressionResult<F> {
+    pub fn score_test(&self) -> RegressionResult<F, F> {
         let (_, null_params) = self.null_model_fit();
         self.score_test_against(null_params)
     }
@@ -783,7 +792,7 @@ where
     /// Returns the score test statistic compared to another set of model
     /// parameters, not necessarily a null model. The degrees of freedom cannot
     /// be generally inferred.
-    pub fn score_test_against(&self, alternative: Array1<F>) -> RegressionResult<F> {
+    pub fn score_test_against(&self, alternative: Array1<F>) -> RegressionResult<F, F> {
         let score_alt = self.score(&alternative);
         let fisher_alt = self.fisher(&alternative);
         // The is not the same as the cached covariance matrix since it is
@@ -841,7 +850,7 @@ where
     /// ```
     ///
     /// Since it does not account for covariance between parameters it may not be accurate.
-    pub fn wald_z(&self) -> RegressionResult<Array1<F>> {
+    pub fn wald_z(&self) -> RegressionResult<Array1<F>, F> {
         let par_cov = self.covariance()?;
         let par_variances: ArrayView1<F> = par_cov.diag();
         Ok(&self.result / &par_variances.mapv(num_traits::Float::sqrt))
@@ -885,7 +894,7 @@ where
     /// outlive the Fit result. It would be nice if we could get around this with some COW
     /// shenanigans but this will probably require a big change. To get around this for now, just
     /// return the deviance, which is all we're using this function for at the moment.
-    fn dev_without_covariate(&self, i: usize) -> RegressionResult<F> {
+    fn dev_without_covariate(&self, i: usize) -> RegressionResult<F, F> {
         use ndarray::{Axis, concatenate, s};
 
         let is_intercept = self.data.has_intercept && (i == 0);
@@ -970,7 +979,7 @@ where
     /// sometimes yield misleading values compared to an exact test. It is not hard to find it
     /// give p-values that may imply significantly different conclusions for your analysis (e.g.
     /// p<0.07 vs. p<0.02 in one of our tests).
-    pub fn pvalue_wald(&self) -> RegressionResult<Array1<F>> {
+    pub fn pvalue_wald(&self) -> RegressionResult<Array1<F>, F> {
         use statrs::distribution::ContinuousCDF;
         let z = self.wald_z()?;
         let pvals = match M::DISPERSED {
@@ -1006,7 +1015,7 @@ where
     ///
     /// For the intercept (if present), the reduced model is fit without an intercept. For all
     /// other parameters, the reduced model is fit with that column removed from the design matrix.
-    pub fn pvalue_exact(&self) -> RegressionResult<Array1<F>> {
+    pub fn pvalue_exact(&self) -> RegressionResult<Array1<F>, F> {
         use statrs::distribution::ContinuousCDF;
         let n_par = self.n_par;
         let dev_full = self.deviance();

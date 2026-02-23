@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use approx::assert_abs_diff_eq;
 use ndarray::Array;
-use ndarray_glm::{Logistic, ModelBuilder};
+use ndarray_glm::{Logistic, ModelBuilder, error::RegressionError};
 mod common;
 use common::{array_from_csv, y_x_off_from_csv};
 

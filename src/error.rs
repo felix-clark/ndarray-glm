@@ -3,8 +3,10 @@
 use ndarray_linalg::error::LinalgError;
 use thiserror::Error;
 
+use crate::{irls::IrlsStep, num::Float};
+
 #[derive(Error, Debug)]
-pub enum RegressionError {
+pub enum RegressionError<F: Float> {
     #[error("Inconsistent input: {0}")]
     BadInput(String),
     #[error("Invalid response data: {0}")]
@@ -19,9 +21,12 @@ pub enum RegressionError {
     #[error("Underconstrained data")]
     Underconstrained,
     #[error("Colinear data (X^T * X is not invertible)")]
-    ColinearData,
-    #[error("Maximum iterations ({0}) reached")]
-    MaxIter(usize),
+    ColinearData { tol: F },
+    #[error("Maximum iterations ({n_iter}) reached")]
+    MaxIter {
+        n_iter: usize,
+        history: Vec<IrlsStep<F>>,
+    },
 }
 
-pub type RegressionResult<T> = Result<T, RegressionError>;
+pub type RegressionResult<T, F> = Result<T, RegressionError<F>>;

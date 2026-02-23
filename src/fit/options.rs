@@ -17,7 +17,7 @@ where
     M: Glm,
     F: Float,
 {
-    pub fn fit(self) -> RegressionResult<Fit<'a, M, F>> {
+    pub fn fit(self) -> RegressionResult<Fit<'a, M, F>, F> {
         M::regression(self.model, self.options)
     }
 

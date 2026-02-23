@@ -158,7 +158,7 @@ pub trait Glm: Sized {
     fn regression<F>(
         model: &Model<Self, F>,
         options: FitOptions<F>,
-    ) -> RegressionResult<Fit<'_, Self, F>>
+    ) -> RegressionResult<Fit<'_, Self, F>, F>
     where
         F: Float,
         Self: Sized,

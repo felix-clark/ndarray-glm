@@ -30,7 +30,7 @@ where
     F: Float,
 {
     /// Perform the regression and return a fit object holding the results.
-    pub fn fit(&self) -> RegressionResult<Fit<'_, M, F>> {
+    pub fn fit(&self) -> RegressionResult<Fit<'_, M, F>, F> {
         self.fit_options().fit()
     }
 
@@ -116,7 +116,7 @@ where
     /// tolerance for determinant check on rank of data matrix X.
     colin_tol: F,
     /// An error that has come up in the build compilation.
-    error: Option<RegressionError>,
+    error: Option<RegressionError<F>>,
 }
 
 /// A builder to generate a Model object
@@ -190,7 +190,7 @@ where
         self
     }
 
-    pub fn build(self) -> RegressionResult<Model<M, F>>
+    pub fn build(self) -> RegressionResult<Model<M, F>, F>
     where
         M: Glm,
         F: Float,
@@ -229,7 +229,9 @@ where
         // collinearity check, though, since they are applied to each column equally.
         let xtx: Array2<F> = self.data_x.t().dot(&self.data_x);
         if is_rank_deficient(xtx, self.colin_tol)? {
-            return Err(RegressionError::ColinearData);
+            return Err(RegressionError::ColinearData {
+                tol: self.colin_tol,
+            });
         }
 
         // convert y-values to floating-point

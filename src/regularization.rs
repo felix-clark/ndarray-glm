@@ -1,6 +1,6 @@
 //! Regularization methods and their effect on the likelihood and the matrix and
 //! vector components of the IRLS step.
-use crate::{error::RegressionResult, num::Float, Array1, Array2};
+use crate::{Array1, Array2, error::RegressionResult, num::Float};
 use ndarray::ArrayViewMut1;
 use ndarray_linalg::SolveH;
 
@@ -45,7 +45,7 @@ where
         guess: &Array1<F>,
         irls_vec: Array1<F>,
         irls_mat: Array2<F>,
-    ) -> RegressionResult<Array1<F>> {
+    ) -> RegressionResult<Array1<F>, F> {
         self.prepare(guess);
         // Apply the regularization effects to the Hessian (LHS)
         let lhs = self.irls_mat(irls_mat, guess);
@@ -282,7 +282,7 @@ impl<F: Float> ElasticNet<F> {
 impl<F: Float> IrlsReg<F> for ElasticNet<F> {
     fn likelihood(&self, beta: &Array1<F>) -> F {
         -(&self.l1_vec * beta.mapv(num_traits::Float::abs)).sum()
-            -F::from(0.5).unwrap() * (&self.l2_vec * &beta.mapv(|b| b * b)).sum()
+            - F::from(0.5).unwrap() * (&self.l2_vec * &beta.mapv(|b| b * b)).sum()
     }
 
     // This is used in the fit's score function, for instance. Thus it includes the regularization
@@ -297,7 +297,7 @@ impl<F: Float> IrlsReg<F> for ElasticNet<F> {
         self.update_rho();
 
         let old_dual = self.dual.clone();
-       
+
         self.dual = soft_thresh(beta + &self.cum_res, &self.l1_vec / self.rho);
         // the primal residuals
         let r: Array1<F> = beta - &self.dual;
@@ -315,7 +315,7 @@ impl<F: Float> IrlsReg<F> for ElasticNet<F> {
             * (regressors - &self.dual + &self.cum_res)
                 .mapv(|x| x * x)
                 .sum()
-            -F::from(0.5).unwrap() * (&self.l2_vec * &regressors.mapv(|b| b * b)).sum()
+            - F::from(0.5).unwrap() * (&self.l2_vec * &regressors.mapv(|b| b * b)).sum()
     }
 
     /// The beta term from the gradient is cancelled by the corresponding term from the Hessian.

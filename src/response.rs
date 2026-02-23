@@ -13,5 +13,5 @@ pub mod poisson;
 /// be used as a response variable.
 pub trait Response<M: Glm> {
     /// Converts the domain to a floating-point value for IRLS.
-    fn into_float<F: Float>(self) -> RegressionResult<F>;
+    fn into_float<F: Float>(self) -> RegressionResult<F, F>;
 }
