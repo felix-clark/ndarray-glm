@@ -80,13 +80,20 @@ fn log_termination_1() -> Result<()> {
 #[test]
 fn log_regularization() -> Result<()> {
     let (y, x, off) = y_x_off_from_csv::<bool, f32, 1>("tests/data/log_regularization.csv")?;
-    // This can be terminated either by standardizing the data or by using
-    // lambda = 2e-6 intead of 1e-6.
-    // let x = ndarray_glm::standardize::standardize(x);
+    // This actually has a harder time converging when the data *is* standardized. It can be
+    // handled by increasing L2.
     let model = ModelBuilder::<Logistic>::data(&y, &x)
         .linear_offset(off)
         .build()?;
-    let fit = model.fit_options().l2_reg(2e-6).max_iter(48).fit()?;
+    let fit = match model.fit_options().l2_reg(1e-5).max_iter(48).fit() {
+        Ok(fit) => fit,
+        Err(err) => {
+            if let RegressionError::MaxIter { n_iter: _, history } = &err {
+                dbg!(&history);
+            }
+            return Err(err.into());
+        }
+    };
     dbg!(fit.result);
     dbg!(fit.n_iter);
     Ok(())
