@@ -147,10 +147,14 @@ where
         // For logistic/poisson regression, this is identically 1.
         // For linear/gamma regression it is estimated from the data.
         let phi: F = self.dispersion();
-        // NOTE: invh/invh_into() are bugged and incorrect!
-        let unscaled_cov: Array2<F> = self.fisher_inv()?.to_owned();
-        let cov = unscaled_cov * phi;
-        Ok(cov)
+        // NOTE: invh()/invh_into() are bugged and give incorrect values!
+        let f_reg_inv: Array2<F> = self.fisher_inv()?.to_owned();
+        // Use the sandwich form so that regularization doesn't artificially deflate uncertainty.
+        // When unregularized, F_reg = F_data and this reduces to F_data^{-1}.
+        let f_data = self
+            .data
+            .inverse_transform_fisher(self.fisher_data_std(&self.result_std));
+        Ok(f_reg_inv.dot(&f_data).dot(&f_reg_inv) * phi)
     }
 
     /// Returns the deviance of the fit:
