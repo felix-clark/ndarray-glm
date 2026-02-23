@@ -1392,8 +1392,11 @@ mod tests {
         let lr = fit.lr_test();
         let wald = fit.wald_test();
         let score = fit.score_test()?;
-        assert_abs_diff_eq!(lr, wald, epsilon = 32.0 * f64::EPSILON);
-        assert_abs_diff_eq!(lr, score, epsilon = 32.0 * f64::EPSILON);
+        let eps = 32.0 * f64::EPSILON;
+        assert_abs_diff_eq!(lr, wald, epsilon = eps);
+        assert_abs_diff_eq!(lr, score, epsilon = eps);
+        // The score vector should be zero at the minimum
+        assert_abs_diff_eq!(fit.score(&fit.result), array![0., 0.], epsilon = eps,);
         Ok(())
     }
 
