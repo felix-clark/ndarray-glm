@@ -209,24 +209,26 @@ where
     ///
     /// which reduces to $`D / (N - K)`$ without variance weights.
     pub fn dispersion(&self) -> F {
-        use DispersionType::*;
-        match M::DISPERSED {
-            FreeDispersion => {
-                let dev = self.deviance();
-                let p = self.rank();
-                let n_eff = self.data.n_eff();
-                let scaling = if p >= n_eff {
-                    // This is the overparameterized regime, which is checked directly instead of
-                    // allowing negative values. It's not clear what conditions result in this when
-                    // p < N.
-                    F::zero()
-                } else {
-                    (F::one() - p / n_eff) * self.data.sum_weights()
-                };
-                dev / scaling
+        *self.phi.get_or_init(|| {
+            use DispersionType::*;
+            match M::DISPERSED {
+                FreeDispersion => {
+                    let dev = self.deviance();
+                    let p = self.rank();
+                    let n_eff = self.data.n_eff();
+                    let scaling = if p >= n_eff {
+                        // This is the overparameterized regime, which is checked directly instead of
+                        // allowing negative values. It's not clear what conditions result in this when
+                        // p < N.
+                        F::zero()
+                    } else {
+                        (F::one() - p / n_eff) * self.data.sum_weights()
+                    };
+                    dev / scaling
+                }
+                NoDispersion => F::one(),
             }
-            NoDispersion => F::one(),
-        }
+        })
     }
 
     /// Return the dispersion terms with the observation(s) at each point excluded from the fit.
@@ -512,6 +514,8 @@ where
             n_iter,
             history,
             n_par,
+            phi: OnceCell::new(),
+            resid_pear: OnceCell::new(),
             covariance: OnceCell::new(),
             fisher_inv: OnceCell::new(),
             fisher_std_inv: OnceCell::new(),
@@ -701,19 +705,21 @@ where
     ///
     /// where $`V`$ is the variance function and $`w_i`$ are the variance weights.
     /// Not scaled by the dispersion for families with a free dispersion parameter.
-    pub fn resid_pear(&self) -> Array1<F> {
-        let residuals = self.resid_resp();
-        let inv_var_diag: Array1<F> = self
-            .y_hat
-            .clone()
-            .mapv_into(M::variance)
-            .mapv_into(F::recip);
-        // the variance weights are the reciprocal of the corresponding variance
-        let scales = self
-            .data
-            .apply_var_weights(inv_var_diag)
-            .mapv_into(num_traits::Float::sqrt);
-        scales * residuals
+    pub fn resid_pear(&self) -> &Array1<F> {
+        self.resid_pear.get_or_init(|| {
+            let residuals = self.resid_resp();
+            let inv_var_diag: Array1<F> = self
+                .y_hat
+                .clone()
+                .mapv_into(M::variance)
+                .mapv_into(F::recip);
+            // the variance weights are the reciprocal of the corresponding variance
+            let scales = self
+                .data
+                .apply_var_weights(inv_var_diag)
+                .mapv_into(num_traits::Float::sqrt);
+            scales * residuals
+        })
     }
 
     /// Return the standardized Pearson residuals (internally studentized):
