@@ -277,10 +277,7 @@ where
 ///
 /// # Zero-variance columns
 ///
-/// The actual standard deviation, including zero for constant columns, is
-/// stored. [`transform`](Standardizer::transform) zeros out constant columns
-/// rather than producing NaN. [`inverse_transform_coefficients`](Standardizer::inverse_transform_coefficients)
-/// maps the corresponding coefficient to zero.
+/// Columns with zero variance are not scaled (i.e. scaled by 1).
 #[derive(Clone, Debug)]
 pub(crate) struct Standardizer<F> {
     /// Per-column means.
