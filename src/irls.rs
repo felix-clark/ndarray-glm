@@ -244,17 +244,21 @@ where
         // part of the algorithm is undertested. It may be more common using L1 regularization.
         let f_step = |x: F| {
             let b = &next_guess * x + &self.guess * (F::one() - x);
-            // Using the real likelihood in the step finding avoids potential issues with the
-            // augmentation. They should be close to equivalent at this point because the
-            // regularization has reported that the internals have converged.
-            M::log_like(self.data, &b) + self.reg.likelihood(&b)
+            // Use the IRLS likelihood (which may be augmented by ADMM) for consistency with
+            // other checks.
+            // They should be close to equivalent at this point because the regularization has
+            // reported that the internals have converged.
+            // M::log_like(self.data, &b) + self.reg.likelihood(&b) // unaugmented likelihood
+            M::log_like(self.data, &b) + self.reg.irls_like(&b)
         };
         let beta_tol_factor = num_traits::Float::sqrt(self.guess.mapv(|b| F::one() + b * b).sum());
         let step_mult: F = step_scale(&f_step, beta_tol_factor * self.options.tol);
-        if step_mult.is_zero() {
-            // can't find a better minimum if the step multiplier returns zero
-            return None;
-        }
+        // NOTE: At this point in time, step_scale should never return 0, so this comparison is
+        // useless. If that changes, this check should be re-evaluated.
+        // if step_mult.is_zero() {
+        //     // can't find a better minimum if the step multiplier returns zero
+        //     return None;
+        // }
         // If step_mult == 1, that means the guess is a good one according to the un-augmented
         // regularized likelihood, so go ahead and use it.
 
