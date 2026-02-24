@@ -48,13 +48,16 @@ where
     /// The number of parameters
     n_par: usize,
     // The remaining variables hold cached results and matrices
+    /// The estimated dispersion parameter, which is called in many places. For some families this
+    /// is just one.
+    phi: OnceCell<F>,
+    /// The Pearson residuals, a common statistic that is re-used in several other quantities.
+    resid_pear: OnceCell<Array1<F>>,
     /// The covariance matrix, using the sandwich approach.
     covariance: OnceCell<Array2<F>>,
-    /// The unscaled covariance matrix of the parameters, i.e. the inverse of the Fisher
-    /// information. Since the calculation requires a matrix inversion, it is computed only when
-    /// needed and the value is cached. NOTE: This is "unscaled" in that it's not multiplied by
-    /// the dispersion, but it is represented in terms of the external non-standardized
-    /// parameters.
+    /// The inverse of the regularized Fisher information matrix in the external non-standardized
+    /// parameter basis. Used as a component of the sandwich covariance and for influence
+    /// calculations. Cached on first access.
     fisher_inv: OnceCell<Array2<F>>,
     /// The inverse of the fisher matrix in standardized internal parameters.
     fisher_std_inv: OnceCell<Array2<F>>,
@@ -90,7 +93,7 @@ where
     /// Returns the Bayesian information criterion for the model fit.
     ///
     /// ```math
-    /// \text{BIC} = K \ln(n) - 2l - s\sum_{i} \ln w_{i}
+    /// \text{BIC} = K \ln(n) - 2l - 2\sum_{i} \ln w_{i}
     /// ```
     ///
     /// where $`K`$ is the number of parameters, $`n`$ is the number of observations, and $`l`$ is
@@ -144,7 +147,7 @@ where
     /// where $`\mathcal{I}_\text{reg}`$ is the regularized Fisher information and
     /// $`\mathcal{I}_\text{data}`$ is the unregularized (data-only) Fisher information.
     /// When unregularized, $`\mathcal{I}_\text{reg} = \mathcal{I}_\text{data}`$ and this reduces
-    /// to the standard form. The regularized Fisher inverse is cached.
+    /// to the standard form. The result is cached on first access.
     pub fn covariance(&self) -> RegressionResult<&Array2<F>, F> {
         self.covariance.get_or_try_init(|| {
             // The covariance must be multiplied by the dispersion parameter.
@@ -279,7 +282,6 @@ where
     /// where $`\mathbf{S} = \text{diag}(V(\mu_i))`$ and $`\eta'`$ is the derivative of the natural
     /// parameter in terms of the linear predictor ($`\eta(\omega) = g_0(g^{-1}(\omega))`$ where
     /// $`g_0`$ is the canonical link function).
-    /// functions.
     /// The regularization is included.
     pub fn fisher(&self, params: &Array1<F>) -> Array2<F> {
         // Note that fisher() is a public function so it should take the external parameters.
@@ -291,8 +293,8 @@ where
     }
 
     /// The inverse of the (regularized) fisher information matrix, in the external parameter
-    /// basis. Used for the hat matrix, influence calculations, and as a component of the sandwich
-    /// covariance. Cached on first access.
+    /// basis. Used for the influence calculations, and as a component of the sandwich covariance.
+    /// Cached on first access.
     fn fisher_inv(&self) -> RegressionResult<&Array2<F>, F> {
         self.fisher_inv.get_or_try_init(|| {
             let fisher_reg = self.fisher(&self.result);
@@ -532,8 +534,9 @@ where
         *null_like
     }
 
-    /// Return the likelihood and intercept for the null model. Since this can
-    /// require an additional regression, the values are cached.
+    /// Return the likelihood and null model parameters, which will be zero with the possible
+    /// exception of the intercept term. Since this can require an additional regression, the
+    /// values are cached.
     fn null_model_fit(&self) -> &(F, Array1<F>) {
         self.null_model
             .get_or_init(|| match &self.data.linear_offset {
