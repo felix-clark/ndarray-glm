@@ -4,8 +4,8 @@
 //! optimization of linear algebra operations with BLAS.
 //!
 //! This crate is in beta and the interface may change significantly. The tests include several
-//! comparisons with R's `glmnet` package, but some cases may not be covered directly or involve
-//! inherent ambiguities or imprecisions.
+//! comparisons with R's `glm` and `glmnet` packages, but some cases may not be covered directly or
+//! involve inherent ambiguities or imprecisions.
 //!
 //! # Feature summary:
 //!
@@ -34,7 +34,7 @@
 //! following into your crate's `Cargo.toml`:
 //! ```text
 //! ndarray = { version = "0.17", features = ["blas"]}
-//! ndarray-glm = { version = "0.0.14", features = ["openblas-system"] }
+//! ndarray-glm = { version = "0.0.15", features = ["openblas-system"] }
 //! ```
 //!
 //! ## Compile OpenBLAS from source
@@ -44,7 +44,7 @@
 //! `Cargo.toml`.
 //! ```text
 //! ndarray = { version = "0.17", features = ["blas"]}
-//! ndarray-glm = { version = "0.0.14", features = ["openblas-static"] }
+//! ndarray-glm = { version = "0.0.15", features = ["openblas-static"] }
 //! ```
 //!
 //! # Examples:
