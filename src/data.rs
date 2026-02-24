@@ -227,6 +227,21 @@ where
             None => fisher,
         }
     }
+
+    /// Transform a score (gradient) vector from the internal standardized parameter basis to the
+    /// external one: `score_ext = J^T score_int` where `J = d(beta_std)/d(beta_ext)`.
+    pub(crate) fn inverse_transform_score(&self, score: Array1<F>) -> Array1<F> {
+        match &self.standardizer {
+            Some(std) => {
+                if self.has_intercept {
+                    std.inverse_transform_score(score)
+                } else {
+                    std.inverse_transform_score_no_int(score)
+                }
+            }
+            None => score,
+        }
+    }
 }
 
 /// Stores the per-column means and sample standard deviations learned from a design matrix, and
@@ -435,6 +450,29 @@ where
         // The diagonal std matrix multiplies the fisher block from both sides, which should be
         // equivalent to this element-wise multiplication
         fisher * std.t() * std
+    }
+
+    /// Transform a gradient from the internal standardized basis to external: `score_ext = J^T score_int`.
+    ///
+    /// With intercept:
+    /// - `score_ext[0] = score_int[0]`
+    /// - `score_ext[j] = mu_j * score_int[0] + sigma_j * score_int[j]` for j > 0
+    fn inverse_transform_score(&self, mut score: Array1<F>) -> Array1<F> {
+        let s0 = score[0];
+        score.slice_mut(s![1..]).mul_assign(&self.scales);
+        score
+            .slice_mut(s![1..])
+            .add_assign(&(self.shifts.clone() * s0));
+        score
+    }
+
+    /// Transform a gradient from internal to external when there is no intercept.
+    /// `J = D_sigma`, so `score_ext = D_sigma * score_int`.
+    /// This ends up being the same computation as transform_coefficients_no_int(), but since it's
+    /// not true of the intercept version, we'll keep this function separate for now to have
+    /// consistent organization.
+    fn inverse_transform_score_no_int(&self, score: Array1<F>) -> Array1<F> {
+        score * &self.scales
     }
 }
 
