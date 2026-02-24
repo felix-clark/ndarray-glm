@@ -103,8 +103,27 @@ for examples.
 - [X] Automatic internal data standardization (can be disabled)
 - [X] Weighted regressions (frequency and/or variance weights)
 - [X] Non-canonical link functions
-- [X] Goodness-of-fit test statistics
-- [X] P-values for model and covariates (with the `stats` feature)
+- [X] Fit statistics (see documentation on `Fit` struct)
+  - [X] Redisuals
+    - [X] Response
+    - [X] Pearson
+    - [X] Deviance
+    - [X] Standardized variants
+    - [X] Studentized
+  - [X] Coefficient covariance matrix
+  - [X] Dispersion (for families with free dispersion)
+  - [X] Leave-one-out (LOO) computations
+    - [X] One-step approximations
+    - [X] Exact re-fits
+    - [X] Residuals
+    - [X] Coefficients
+  - [X] Information criteria
+  - [X] Model significance
+    - [X] Wald test
+    - [X] Score test
+    - [X] Likelihood ratio test
+  - [X] P-values for model and covariates (with the `stats` feature)
+  - [X] ... and others
 
 ## Troubleshooting
 
