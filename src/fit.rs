@@ -502,7 +502,7 @@ where
         );
         // NOTE: This necessarily uses the coefficients directly from the standardized data.
         // Store these predictions as they are commonly used.
-        let y_hat = data.predict_with::<M>(&result_std);
+        let y_hat = M::mean(&data.linear_predictor_std(&result_std));
         let result_ext = data.inverse_transform_beta(result_std.clone());
         Self {
             model: PhantomData,

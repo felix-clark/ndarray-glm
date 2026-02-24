@@ -49,20 +49,6 @@ where
         }
     }
 
-    /// Get the predicted y-values for *standardized* covariates under the GLM model.
-    pub(crate) fn predict_with<M>(&self, beta_std: &Array1<F>) -> Array1<F>
-    where
-        M: Glm,
-    {
-        let xb: Array1<F> = self.x.dot(beta_std);
-        let lin_pred: Array1<F> = if let Some(off) = &self.linear_offset {
-            xb + off
-        } else {
-            xb
-        };
-        M::mean(&lin_pred)
-    }
-
     /// Total number of observations as given by the sum of the frequencies of observations
     pub fn n_obs(&self) -> F {
         match &self.freqs {
