@@ -662,3 +662,4 @@ mod tests {
         let recovered_ext = s.inverse_transform_coefficients(beta_std2);
         assert_abs_diff_eq!(recovered_ext, beta_ext2, epsilon = 1e-12);
     }
+}
