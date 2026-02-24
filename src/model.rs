@@ -5,12 +5,11 @@ use crate::{
     error::{RegressionError, RegressionResult},
     fit::{self, Fit},
     glm::Glm,
-    math::is_rank_deficient,
     num::Float,
     response::Response,
 };
 use fit::options::{FitConfig, FitOptions};
-use ndarray::{Array1, Array2, ArrayBase, ArrayView1, ArrayView2, Data, Ix1, Ix2};
+use ndarray::{Array1, ArrayBase, ArrayView1, ArrayView2, Data, Ix1, Ix2};
 use std::marker::PhantomData;
 
 /// Holds the data and configuration settings for a regression.
