@@ -24,7 +24,8 @@ where
     model: PhantomData<M>,
     data: &'a Dataset<F>,
     /// The current parameter guess. No longer public because the full history is passed and this
-    /// may not end up being the optimal.
+    /// may not end up being the optimal one. make_last_step() can be used to build an IrlsStep
+    /// from the current values, which is primarily used as a fallback when no iterations occur.
     guess: Array1<F>,
     /// The options for the fit
     pub(crate) options: FitOptions<F>,
@@ -147,6 +148,20 @@ where
             target
         };
         (neg_hessian, rhs)
+    }
+
+    /// Get the most recent step as a new object. This is most useful as a fallback when there
+    /// are no iterations because the iteration started at the maximum, and we need to recover the
+    /// default with proper regularization. It could also be used within step_with() itself, after
+    /// setting the guess and likelihood, though that could be a little opaque.
+    pub(crate) fn make_last_step(&self) -> IrlsStep<F> {
+        // It's crucial that this regularization is applied the same way here as it is in
+        // step_with().
+        let model_like = self.last_like_data + self.reg.likelihood(&self.guess);
+        IrlsStep {
+            guess: self.guess.clone(),
+            like: model_like,
+        }
     }
 }
 

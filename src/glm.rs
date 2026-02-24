@@ -167,6 +167,9 @@ pub trait Glm: Sized {
         let initial: Array1<F> = options
             .init_guess
             .clone()
+            // The guess is given in external space, so it should be mapped to the internal before
+            // passing to IRLS.
+            .map(|b| model.data.transform_beta(b))
             .unwrap_or_else(|| Self::init_guess(&model.data));
 
         let mut irls: Irls<Self, F> = Irls::new(model, initial, options);
@@ -175,9 +178,28 @@ pub trait Glm: Sized {
         // we've got the optimum. The full history is stored in the IRLS structure.
         let optimum: IrlsStep<F> = process_results(irls.by_ref(), |iter| {
             iter.max_by(|a, b| a.like.partial_cmp(&b.like).unwrap())
-                .unwrap()
-        })?;
+        })?
+        .unwrap_or_else(|| irls.make_last_step());
 
         Ok(Fit::new(&model.data, optimum, irls))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Linear, ModelBuilder};
+    use anyhow::Result;
+    use ndarray::{Array1, Array2};
+
+    /// Start with a trivially optimized model and make sure that the iteration returns a value
+    #[test]
+    fn returns_at_least_one() -> Result<()> {
+        let data_y = Array1::<f64>::zeros(4);
+        let data_x = Array2::<f64>::zeros((4, 2));
+        let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
+        let fit = model.fit_options().l2_reg(1e-6).fit()?;
+        // These should be exactly equal, not approximately.
+        assert_eq!(&fit.result, Array1::<f64>::zeros(3));
+        Ok(())
     }
 }
