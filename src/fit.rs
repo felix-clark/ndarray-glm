@@ -15,11 +15,9 @@ use crate::{
 };
 use ndarray::{Array1, Array2, ArrayBase, ArrayView1, Axis, Data, Ix2, array};
 use ndarray_linalg::InverseInto;
+use once_cell::unsync::OnceCell; // can be replaced by std::cell::OnceCell upon stabilization
 use options::FitOptions;
-use std::{
-    cell::{Ref, RefCell},
-    marker::PhantomData,
-};
+use std::marker::PhantomData;
 
 /// the result of a successful GLM fit
 pub struct Fit<'a, M, F>
@@ -49,18 +47,23 @@ where
     pub history: Vec<IrlsStep<F>>,
     /// The number of parameters
     n_par: usize,
+    // The remaining variables hold cached results and matrices
+    /// The covariance matrix, using the sandwich approach.
+    covariance: OnceCell<Array2<F>>,
     /// The unscaled covariance matrix of the parameters, i.e. the inverse of the Fisher
     /// information. Since the calculation requires a matrix inversion, it is computed only when
     /// needed and the value is cached. NOTE: This is "unscaled" in that it's not multiplied by
     /// the dispersion, but it is represented in terms of the external non-standardized
     /// parameters.
-    cov_unscaled: RefCell<Option<Array2<F>>>,
+    fisher_inv: OnceCell<Array2<F>>,
+    /// The inverse of the fisher matrix in standardized internal parameters.
+    fisher_std_inv: OnceCell<Array2<F>>,
     /// The hat matrix of the data and fit. Since the calculation requires a matrix inversion of
     /// the fisher information, it is computed only when needed and the value is cached. Access
     /// through the `hat()` function.
-    hat: RefCell<Option<Array2<F>>>,
+    hat: OnceCell<Array2<F>>,
     /// The likelihood and parameters for the null model.
-    null_model: RefCell<Option<(F, Array1<F>)>>,
+    null_model: OnceCell<(F, Array1<F>)>,
 }
 
 impl<'a, M, F> Fit<'a, M, F>
@@ -142,19 +145,23 @@ where
     /// $`\mathcal{I}_\text{data}`$ is the unregularized (data-only) Fisher information.
     /// When unregularized, $`\mathcal{I}_\text{reg} = \mathcal{I}_\text{data}`$ and this reduces
     /// to the standard form. The regularized Fisher inverse is cached.
-    pub fn covariance(&self) -> RegressionResult<Array2<F>, F> {
-        // The covariance must be multiplied by the dispersion parameter.
-        // For logistic/poisson regression, this is identically 1.
-        // For linear/gamma regression it is estimated from the data.
-        let phi: F = self.dispersion();
-        // NOTE: invh()/invh_into() are bugged and give incorrect values!
-        let f_reg_inv: Array2<F> = self.fisher_inv()?.to_owned();
-        // Use the sandwich form so that regularization doesn't artificially deflate uncertainty.
-        // When unregularized, F_reg = F_data and this reduces to F_data^{-1}.
-        let f_data = self
-            .data
-            .inverse_transform_fisher(self.fisher_data_std(&self.result_std));
-        Ok(f_reg_inv.dot(&f_data).dot(&f_reg_inv) * phi)
+    pub fn covariance(&self) -> RegressionResult<&Array2<F>, F> {
+        self.covariance.get_or_try_init(|| {
+            // The covariance must be multiplied by the dispersion parameter.
+            // For logistic/poisson regression, this is identically 1.
+            // For linear/gamma regression it is estimated from the data.
+            let phi: F = self.dispersion();
+            // NOTE: invh()/invh_into() are bugged and give incorrect values!
+            let f_reg_inv: Array2<F> = self.fisher_inv()?.to_owned();
+            // Use the sandwich form so that regularization doesn't artificially deflate uncertainty.
+            // When unregularized, F_reg = F_data and this reduces to F_data^{-1}.
+            // The unregularized fisher matrix is most easily acquired in terms of the standardized
+            // variables, so apply the external transformation to it.
+            let f_data = self
+                .data
+                .inverse_transform_fisher(self.fisher_data_std(&self.result_std));
+            Ok(f_reg_inv.dot(&f_data).dot(&f_reg_inv) * phi)
+        })
     }
 
     /// Returns the deviance of the fit:
@@ -284,28 +291,38 @@ where
     /// The inverse of the (regularized) fisher information matrix, in the external parameter
     /// basis. Used for the hat matrix, influence calculations, and as a component of the sandwich
     /// covariance. Cached on first access.
-    fn fisher_inv(&self) -> RegressionResult<Ref<'_, Array2<F>>, F> {
-        if self.cov_unscaled.borrow().is_none() {
+    fn fisher_inv(&self) -> RegressionResult<&Array2<F>, F> {
+        self.fisher_inv.get_or_try_init(|| {
             let fisher_reg = self.fisher(&self.result);
             // NOTE: invh/invh_into() are bugged and incorrect!
-            let unscaled_cov: Array2<F> = fisher_reg.inv_into()?;
-            *self.cov_unscaled.borrow_mut() = Some(unscaled_cov);
-        }
-        Ok(Ref::map(self.cov_unscaled.borrow(), |x| {
-            x.as_ref().unwrap()
-        }))
+            let fish_inv = fisher_reg.inv_into()?;
+            Ok(fish_inv)
+        })
+    }
+
+    /// Compute the data-only (unregularized) Fisher information in the internal standardized basis.
+    fn fisher_data_std(&self, params: &Array1<F>) -> Array2<F> {
+        let lin_pred: Array1<F> = self.data.linear_predictor_std(params);
+        let adj_var: Array1<F> = M::adjusted_variance_diag(&lin_pred);
+        (self.data.x_conj() * &adj_var).dot(&self.data.x)
     }
 
     /// Compute the fisher information in terms of the internal (likely standardized)
     /// coefficients. The regularization is included here.
     fn fisher_std(&self, params: &Array1<F>) -> Array2<F> {
-        let lin_pred: Array1<F> = self.data.linear_predictor_std(params);
-        let adj_var: Array1<F> = M::adjusted_variance_diag(&lin_pred);
-        // calculate the fisher matrix
-        let fisher: Array2<F> = (self.data.x_conj() * &adj_var).dot(&self.data.x);
-        // Regularize the fisher matrix. It must be done in terms of the internal standardized
-        // coefficients.
+        let fisher = self.fisher_data_std(params);
         self.reg.as_ref().irls_mat(fisher, params)
+    }
+
+    /// The inverse of the (regularized) fisher information matrix, in the internal standardized
+    /// parameter basis.
+    fn fisher_std_inv(&self) -> RegressionResult<&Array2<F>, F> {
+        self.fisher_std_inv.get_or_try_init(|| {
+            let fisher_reg = self.fisher_std(&self.result_std);
+            // NOTE: invh/invh_into() are bugged and incorrect!
+            let fish_inv = fisher_reg.inv_into()?;
+            Ok(fish_inv)
+        })
     }
 
     /// Returns the hat matrix, also known as the "projection" or "influence" matrix:
@@ -317,10 +334,10 @@ where
     /// Orthogonal to the response residuals at the fit result: $`\mathbf{P}(\mathbf{y} -
     /// \hat{\mathbf{y}}) = 0`$.
     /// This version is not symmetric, but the diagonal is invariant to this choice of convention.
-    pub fn hat(&self) -> RegressionResult<Ref<'_, Array2<F>>, F> {
-        if self.hat.borrow().is_none() {
-            // NOTE: The other quantities are in terms of the external beta, but the linear
-            // predictor should be the same either way.
+    pub fn hat(&self) -> RegressionResult<&Array2<F>, F> {
+        self.hat.get_or_try_init(|| {
+            // Do the full computation in terms of the internal parameters, since this observable
+            // is not sensitive to the choice of basis.
             let lin_pred = self.data.linear_predictor_std(&self.result_std);
             // Apply the eta' terms manually instead of calling adjusted_variance_diag, because the
             // adjusted variance method applies 2 powers to the variance, while we want one power
@@ -331,17 +348,13 @@ where
             let var = mu.mapv_into(M::variance);
             let eta_d = M::Link::d_nat_param(&lin_pred);
 
-            let fisher_inv = self.fisher_inv()?;
+            let fisher_inv = self.fisher_std_inv()?;
 
             // the GLM variance and the data weights are put on different sides in this convention
-            let left = (var * &eta_d).insert_axis(Axis(1)) * &self.data.x_ext();
-            let right = self.data.x_conj_ext() * &eta_d;
-            let result = left.dot(&fisher_inv.dot(&right));
-
-            *self.hat.borrow_mut() = Some(result);
-        }
-        let borrowed: Ref<Option<Array2<F>>> = self.hat.borrow();
-        Ok(Ref::map(borrowed, |x| x.as_ref().unwrap()))
+            let left = (var * &eta_d).insert_axis(Axis(1)) * &self.data.x;
+            let right = self.data.x_conj() * &eta_d;
+            Ok(left.dot(&fisher_inv.dot(&right)))
+        })
     }
 
     /// The one-step approximation to the change in coefficients from excluding each observation:
@@ -354,13 +367,15 @@ where
     /// the coefficients that would result from excluding observation $`i`$.
     /// Exact for linear models; a one-step approximation for nonlinear models.
     pub fn infl_coef(&self) -> RegressionResult<Array2<F>, F> {
+        // The linear predictor can be acquired in terms of the standardized parameters, but the
+        // rest of the computation should use external.
         let lin_pred = self.data.linear_predictor_std(&self.result_std);
         let resid_resp = self.resid_resp();
         let omh = -self.leverage()? + F::one();
         let resid_adj = M::Link::adjust_errors(resid_resp, &lin_pred) / omh;
-        let xte = self.data.x_conj() * resid_adj;
+        let xte = self.data.x_conj_ext() * resid_adj;
         let fisher_inv = self.fisher_inv()?;
-        let delta_b = xte.t().dot(&*fisher_inv);
+        let delta_b = xte.t().dot(fisher_inv);
         Ok(delta_b)
     }
 
@@ -376,16 +391,20 @@ where
     /// performed for each observation.
     pub fn loo_exact(&self) -> RegressionResult<Array2<F>, F> {
         let loo_coef: Array2<F> = self.infl_coef()?;
-        // NOTE: could also use the result itself as the initial guess
+        // NOTE: These coefficients need to be in terms of external parameters
         let loo_initial = &self.result - loo_coef;
         let mut loo_result = loo_initial.clone();
         let n_obs = self.data.y.len();
         for i in 0..n_obs {
             let data_i: Dataset<F> = {
+                // This dataset has already been standardized.
                 let mut data_i: Dataset<F> = self.data.clone();
+                // Leave the observation out by setting the frequency weight to zero.
                 let mut freqs: Array1<F> = data_i.freqs.unwrap_or(Array1::<F>::ones(n_obs));
                 freqs[i] = F::zero();
                 data_i.freqs = Some(freqs);
+                // NOTE: Don't re-standardize internally, as it complicates the transformations.
+                // This choice could have impacts for high-influence points under regularization.
                 data_i.standardizer = None;
                 data_i
             };
@@ -431,8 +450,9 @@ where
     /// way that the regression resulting in this fit was. The degrees of
     /// freedom cannot be generally inferred.
     pub fn lr_test_against(&self, alternative: &Array1<F>) -> F {
-        let alt_like = M::log_like(self.data, alternative);
-        let alt_like_reg = alt_like + self.reg.likelihood(alternative);
+        let alt_std = self.data.transform_beta(alternative.clone());
+        let alt_like = M::log_like(self.data, &alt_std);
+        let alt_like_reg = alt_like + self.reg.likelihood(&alt_std);
         F::two() * (self.model_like - alt_like_reg)
     }
 
@@ -492,9 +512,11 @@ where
             n_iter,
             history,
             n_par,
-            cov_unscaled: RefCell::new(None),
-            hat: RefCell::new(None),
-            null_model: RefCell::new(None),
+            covariance: OnceCell::new(),
+            fisher_inv: OnceCell::new(),
+            fisher_std_inv: OnceCell::new(),
+            hat: OnceCell::new(),
+            null_model: OnceCell::new(),
         }
     }
 
@@ -503,15 +525,14 @@ where
     /// parameters are constrained.
     pub fn null_like(&self) -> F {
         let (null_like, _) = self.null_model_fit();
-        null_like
+        *null_like
     }
 
     /// Return the likelihood and intercept for the null model. Since this can
     /// require an additional regression, the values are cached.
-    fn null_model_fit(&self) -> (F, Array1<F>) {
-        // TODO: make a result instead of allowing a potential panic in the borrow.
-        if self.null_model.borrow().is_none() {
-            let (null_like, null_intercept): (F, Array1<F>) = match &self.data.linear_offset {
+    fn null_model_fit(&self) -> &(F, Array1<F>) {
+        self.null_model
+            .get_or_init(|| match &self.data.linear_offset {
                 None => {
                     // If there is no linear offset, the natural parameter is
                     // identical for all observations so it is sufficient to
@@ -604,14 +625,7 @@ where
                         (null_like, null_params)
                     }
                 }
-            };
-            *self.null_model.borrow_mut() = Some((null_like, null_intercept));
-        }
-        self.null_model
-            .borrow()
-            .as_ref()
-            .expect("the null model should be cached now")
-            .clone()
+            })
     }
 
     /// Returns $`\hat{\mathbf{y}} = g^{-1}(\mathbf{X}\hat{\boldsymbol\beta} + \boldsymbol\omega_0)`$
@@ -790,7 +804,7 @@ where
     /// [`test_ndf()`](Self::test_ndf) degrees of freedom.
     pub fn score_test(&self) -> RegressionResult<F, F> {
         let (_, null_params) = self.null_model_fit();
-        self.score_test_against(null_params)
+        self.score_test_against(null_params.clone())
     }
 
     /// Returns the score test statistic compared to another set of model
@@ -829,17 +843,18 @@ where
         // The null parameters are all zero except for a possible intercept term
         // which optimizes the null model.
         let (_, null_params) = self.null_model_fit();
-        self.wald_test_against(&null_params)
+        // NOTE: The null model is agnostic to standardization, since it discards all features
+        // except perhaps the intercept.
+        self.wald_test_against(null_params)
     }
 
     /// Returns the Wald test statistic compared to another specified model fit
     /// instead of the null model. The degrees of freedom cannot be generally
     /// inferred.
     pub fn wald_test_against(&self, alternative: &Array1<F>) -> F {
+        // This could be computed in either the internal or external basis. This implementation
+        // will use internal, so first we just need to transform the input.
         let alt_std = self.data.transform_beta(alternative.clone());
-        // This is a linear transformation, so it should still work on the difference.
-        // It's simpler to work in the standardized parameters.
-        // let d_params_std = self.data.transform_beta(d_params);
         let d_params_std = &self.result_std - &alt_std;
         // Get the fisher matrix at the *other* result, since this is a test of this fit's
         // parameters under a model given by the other.
@@ -1331,6 +1346,8 @@ mod tests {
             .build()?;
         let fit = model.fit()?;
 
+        let loo_exact = fit.loo_exact()?;
+
         let loo_coef: Array2<f64> = fit.infl_coef()?;
         let loo_results = &fit.result - loo_coef;
         let n_data = data_y.len();
@@ -1348,6 +1365,11 @@ mod tests {
                 .var_weights(w_loo)
                 .build()?;
             let fit_i = model_i.fit()?;
+            assert_abs_diff_eq!(
+                loo_exact.row(i),
+                &fit_i.result,
+                epsilon = f32::EPSILON as f64
+            );
             assert_abs_diff_eq!(
                 loo_results.row(i),
                 &fit_i.result,
