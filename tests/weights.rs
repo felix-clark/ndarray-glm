@@ -53,7 +53,7 @@ fn logistic_weights() -> Result<()> {
     assert_abs_diff_eq!(hat, r_hat, epsilon = eps);
 
     let r_resid_pear = array_from_csv::<f32>("tests/R/log_weights/pearson_resid.csv")?;
-    assert_abs_diff_eq!(fit.resid_pear(), r_resid_pear, epsilon = eps);
+    assert_abs_diff_eq!(*fit.resid_pear(), r_resid_pear, epsilon = eps);
 
     // Again we have a discrepancy between frequency and variance weights
     let r_resid_dev = array_from_csv::<f32>("tests/R/log_weights/dev_resid.csv")?;
