@@ -244,12 +244,12 @@ where
         // part of the algorithm is undertested. It may be more common using L1 regularization.
         let f_step = |x: F| {
             let b = &next_guess * x + &self.guess * (F::one() - x);
-            // Use the IRLS likelihood (which may be augmented by ADMM) for consistency with
-            // other checks.
-            // They should be close to equivalent at this point because the regularization has
-            // reported that the internals have converged.
-            // M::log_like(self.data, &b) + self.reg.likelihood(&b) // unaugmented likelihood
-            M::log_like(self.data, &b) + self.reg.irls_like(&b)
+            // The augmented and unaugmented checks should be close to equivalent at this point
+            // because the regularization has reported that the internals have converged via
+            // `terminate_ok()`. Since we are potentially finding the final best guess, look for
+            // the best model likelihood in the step search.
+            M::log_like(self.data, &b) + self.reg.likelihood(&b) // unaugmented
+            // M::log_like(self.data, &b) + self.reg.irls_like(&b) // augmented
         };
         let beta_tol_factor = num_traits::Float::sqrt(self.guess.mapv(|b| F::one() + b * b).sum());
         let step_mult: F = step_scale(&f_step, beta_tol_factor * self.options.tol);
