@@ -13,7 +13,7 @@ use crate::{
     num::Float,
     regularization::IrlsReg,
 };
-use ndarray::{Array1, Array2, ArrayBase, ArrayView1, Axis, Data, Ix2, array};
+use ndarray::{Array1, Array2, ArrayBase, ArrayView1, Axis, Data, Ix2, array, s};
 use ndarray_linalg::InverseInto;
 use once_cell::unsync::OnceCell; // can be replaced by std::cell::OnceCell upon stabilization
 use options::FitOptions;
@@ -394,6 +394,7 @@ where
     /// This is a much more expensive operation than the original regression because a new one is
     /// performed for each observation.
     pub fn loo_exact(&self) -> RegressionResult<Array2<F>, F> {
+        // Use the one-step approximation to get good starting points for each exclusion.
         let loo_coef: Array2<F> = self.infl_coef()?;
         // NOTE: These coefficients need to be in terms of external parameters
         let loo_initial = &self.result - loo_coef;
@@ -401,15 +402,38 @@ where
         let n_obs = self.data.y.len();
         for i in 0..n_obs {
             let data_i: Dataset<F> = {
-                // This dataset has already been standardized.
-                let mut data_i: Dataset<F> = self.data.clone();
+                // Get the proper X data matrix as it existed before standardization and
+                // intercept-padding.
+                let x_i = {
+                    let x_i = if self.data.has_intercept {
+                        self.data.x.slice(s![.., 1..]).to_owned()
+                    } else {
+                        self.data.x.clone()
+                    };
+                    match &self.data.standardizer {
+                        Some(std) => std.inverse_transform(x_i),
+                        None => x_i,
+                    }
+                };
                 // Leave the observation out by setting the frequency weight to zero.
-                let mut freqs: Array1<F> = data_i.freqs.unwrap_or(Array1::<F>::ones(n_obs));
-                freqs[i] = F::zero();
-                data_i.freqs = Some(freqs);
-                // NOTE: Don't re-standardize internally, as it complicates the transformations.
-                // This choice could have impacts for high-influence points under regularization.
-                data_i.standardizer = None;
+                let mut freqs_i: Array1<F> =
+                    self.data.freqs.clone().unwrap_or(Array1::<F>::ones(n_obs));
+                freqs_i[i] = F::zero();
+                let mut data_i = Dataset {
+                    y: self.data.y.clone(),
+                    x: x_i,
+                    linear_offset: self.data.linear_offset.clone(),
+                    weights: self.data.weights.clone(),
+                    freqs: Some(freqs_i),
+                    // These fields must be set this way, as they are in the ModelBuilder, before
+                    // finalize_design_matrix() is called.
+                    has_intercept: false,
+                    standardizer: None,
+                };
+                data_i.finalize_design_matrix(
+                    self.data.standardizer.is_some(),
+                    self.data.has_intercept,
+                );
                 data_i
             };
             let model_i = Model {
@@ -418,14 +442,15 @@ where
             };
             let options = {
                 let mut options = self.options.clone();
-                // Use the standardized result as this dataset has already been scaled.
-                options.init_guess = Some(self.result_std.clone());
+                // The one-step approximation should be a good starting point.
+                // Use the external result as it should be re-standardized to the new dataset
+                // internally before being passed to IRLS.
+                options.init_guess = Some(loo_initial.row(i).to_owned());
                 options
             };
             let fit_i = model_i.with_options(options).fit()?;
-            // Use this fit's re-mapping to put back on the external scale
-            let result_i = self.data.inverse_transform_beta(fit_i.result);
-            loo_result.row_mut(i).assign(&result_i);
+            // The internal re-fit transforms back to the external scale.
+            loo_result.row_mut(i).assign(&fit_i.result);
         }
         Ok(loo_result)
     }
@@ -920,7 +945,7 @@ where
     /// shenanigans but this will probably require a big change. To get around this for now, just
     /// return the deviance, which is all we're using this function for at the moment.
     fn dev_without_covariate(&self, i: usize) -> RegressionResult<F, F> {
-        use ndarray::{Axis, concatenate, s};
+        use ndarray::{concatenate, s};
 
         let is_intercept = self.data.has_intercept && (i == 0);
         let x_reduced: Array2<F> = if is_intercept {
@@ -1396,6 +1421,52 @@ mod tests {
             assert_abs_diff_eq!(
                 loo_results.row(i),
                 &fit_i.result,
+                epsilon = f32::EPSILON as f64
+            );
+        }
+        Ok(())
+    }
+
+    // check the leave-one-out one-step for the logistic model
+    #[test]
+    fn loo_logistic() -> Result<()> {
+        let data_y = array![false, false, true, true, true, false];
+        let data_x = array![0.4, 0.1, 0.3, -0.1, 0.5, 0.6].insert_axis(Axis(1));
+        let weights = array![1.0, 1.2, 0.8, 1.1, 1.0, 0.7];
+        let model = ModelBuilder::<Logistic>::data(&data_y, &data_x)
+            .var_weights(weights.clone())
+            .build()?;
+        let fit = model.fit()?;
+        let fit_reg = model.fit_options().l2_reg(0.5).fit()?;
+
+        // NOTE: The one-step approximation fails for non-linear response functions, so we
+        // should only test the exact case.
+        let loo_exact = fit.loo_exact()?;
+        let loo_exact_reg = fit_reg.loo_exact()?;
+        let n_data = data_y.len();
+        for i in 0..n_data {
+            let ya = data_y.slice(s![0..i]);
+            let yb = data_y.slice(s![i + 1..]);
+            let xa = data_x.slice(s![0..i, ..]);
+            let xb = data_x.slice(s![i + 1.., ..]);
+            let wa = weights.slice(s![0..i]);
+            let wb = weights.slice(s![i + 1..]);
+            let y_loo = concatenate![Axis(0), ya, yb];
+            let x_loo = concatenate![Axis(0), xa, xb];
+            let w_loo = concatenate![Axis(0), wa, wb];
+            let model_i = ModelBuilder::<Logistic>::data(&y_loo, &x_loo)
+                .var_weights(w_loo)
+                .build()?;
+            let fit_i = model_i.fit()?;
+            let fit_i_reg = model_i.fit_options().l2_reg(0.5).fit()?;
+            assert_abs_diff_eq!(
+                loo_exact.row(i),
+                &fit_i.result,
+                epsilon = f32::EPSILON as f64
+            );
+            assert_abs_diff_eq!(
+                loo_exact_reg.row(i),
+                &fit_i_reg.result,
                 epsilon = f32::EPSILON as f64
             );
         }
