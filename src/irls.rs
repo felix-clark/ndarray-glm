@@ -204,13 +204,12 @@ where
             return Some(self.step_with(next_guess, next_like_data));
         }
 
+        // Some tolerances should scale with the size of the dataset, so store it here.
+        let n_obs = F::from(self.data.y.len()).unwrap();
+
         // Indicates if the likelihood change is small, within tolerance, even if it is not
         // positive.
-        let small_delta_like = small_delta(
-            next_like_obj,
-            last_like_obj,
-            self.options.tol * F::from(self.data.y.len()).unwrap(),
-        );
+        let small_delta_like = small_delta(next_like_obj, last_like_obj, self.options.tol * n_obs);
 
         // If the parameters have changed significantly but the likelihood hasn't improved,
         // step halving needs to be engaged. The parameter delta should probably ideally be
@@ -267,11 +266,7 @@ where
             return None;
         }
 
-        let small_delta_like = small_delta(
-            next_like,
-            last_like,
-            self.options.tol * F::from(self.data.y.len()).unwrap(),
-        );
+        let small_delta_like = small_delta(next_like, last_like, self.options.tol * n_obs);
         let small_delta_guess = small_delta_vec(&next_guess, &self.guess, self.options.tol);
         if small_delta_like && small_delta_guess {
             self.done = true;
