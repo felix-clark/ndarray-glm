@@ -468,42 +468,35 @@ where
         self.data.n_obs() - self.rank()
     }
 
-    pub(crate) fn new(data: &'a Dataset<F>, irls: Irls<M, F>, history: Vec<IrlsStep<F>>) -> Self {
-        let Irls {
+    pub(crate) fn new(data: &'a Dataset<F>, optimum: IrlsStep<F>, irls: Irls<M, F>) -> Self {
+        let IrlsStep {
             guess: result_std,
+            like: model_like,
+        } = optimum;
+        let Irls {
             options,
             reg,
             n_iter,
-            last_like_data: data_like,
+            history,
             ..
         } = irls;
-        assert_eq!(
-            data_like,
-            M::log_like(data, &result_std),
-            "Unregularized likelihoods should match exactly."
-        );
-        assert_eq!(
-            n_iter,
-            history.len(),
-            "Number of iterations should match history length"
-        );
-        assert_eq!(
-            result_std,
-            history.last().unwrap().guess,
-            "Last guess should be the same"
-        );
         // Cache some of these variables that will be used often.
         let n_par = result_std.len();
-        let model_like = data_like + reg.likelihood(&result_std);
-        assert_eq!(
-            model_like,
-            history.last().unwrap().like,
-            "Last data likelihood should be the same"
-        );
         // NOTE: This necessarily uses the coefficients directly from the standardized data.
         // Store these predictions as they are commonly used.
         let y_hat = M::mean(&data.linear_predictor_std(&result_std));
+        // The public result must be transformed back to the external scale for compatability with
+        // the input data.
         let result_ext = data.inverse_transform_beta(result_std.clone());
+        // The history also needs to be transformed back to the external scale, since it is public.
+        // It shouldn't be used directly by the Fit's methods.
+        let history = history
+            .into_iter()
+            .map(|IrlsStep { guess, like }| IrlsStep {
+                guess: data.inverse_transform_beta(guess),
+                like,
+            })
+            .collect();
         Self {
             model: PhantomData,
             data,

@@ -12,6 +12,7 @@ use crate::{
     model::Model,
     num::Float,
 };
+use itertools::process_results;
 use ndarray::{Array1, Array2, ArrayRef2};
 use ndarray_linalg::SolveH;
 
@@ -170,8 +171,13 @@ pub trait Glm: Sized {
 
         let mut irls: Irls<Self, F> = Irls::new(model, initial, options);
 
-        let fit_history: Vec<IrlsStep<F>> = irls.by_ref().collect::<Result<Vec<_>, _>>()?;
+        // Collect the best guess along the way so we don't have to loop back through to make sure
+        // we've got the optimum. The full history is stored in the IRLS structure.
+        let optimum: IrlsStep<F> = process_results(irls.by_ref(), |iter| {
+            iter.max_by(|a, b| a.like.partial_cmp(&b.like).unwrap())
+                .unwrap()
+        })?;
 
-        Ok(Fit::new(&model.data, irls, fit_history))
+        Ok(Fit::new(&model.data, optimum, irls))
     }
 }

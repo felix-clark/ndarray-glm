@@ -23,8 +23,9 @@ where
 {
     model: PhantomData<M>,
     data: &'a Dataset<F>,
-    /// The current parameter guess.
-    pub(crate) guess: Array1<F>,
+    /// The current parameter guess. No longer public because the full history is passed and this
+    /// may not end up being the optimal.
+    guess: Array1<F>,
     /// The options for the fit
     pub(crate) options: FitOptions<F>,
     /// The regularizer object, which may be stateful
@@ -35,13 +36,15 @@ where
     /// This is cached separately from the guess because it demands expensive matrix
     /// multiplications. The augmented and/or regularized terms are relatively cheap, so they
     /// aren't stored.
-    pub(crate) last_like_data: F,
+    last_like_data: F,
     /// Sometimes the next guess is better than the previous but within
     /// tolerance, so we want to return the current guess but exit immediately
     /// in the next iteration.
     done: bool,
-    /// Internally track the fit history
-    history: Vec<IrlsStep<F>>,
+    /// Internally track the fit history, and allow the Fit to expose it. Note that this history is
+    /// stored on the internal standardized scale as it can know nothing about any external
+    /// transformations.
+    pub(crate) history: Vec<IrlsStep<F>>,
 }
 
 impl<'a, M, F> Irls<'a, M, F>
