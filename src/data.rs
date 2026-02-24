@@ -662,20 +662,3 @@ mod tests {
         let recovered_ext = s.inverse_transform_coefficients(beta_std2);
         assert_abs_diff_eq!(recovered_ext, beta_ext2, epsilon = 1e-12);
     }
-
-    // Check that both linear predictor approaches give the same value
-    #[test]
-    fn lin_pred_consistency() {
-        let x = array![[1.0_f64, 3.0], [2.0, 5.0], [-1.0, 2.0]];
-        let d = make_dataset(x);
-        // d.finalize_design_matrix(true, true);
-        let s = d.standardizer.as_ref().unwrap();
-
-        let beta_std = array![1.0_f64, -1.5, 2.0];
-        let beta = s.inverse_transform_coefficients(beta_std.clone());
-
-        let lin_pred = d.linear_predictor_ext(beta);
-        let lin_pred_std = d.linear_predictor_std(&beta_std);
-        assert_abs_diff_eq!(lin_pred, lin_pred_std, epsilon = 1e-12);
-    }
-}

@@ -820,8 +820,8 @@ where
     /// parameters, not necessarily a null model. The degrees of freedom cannot
     /// be generally inferred.
     pub fn score_test_against(&self, alternative: Array1<F>) -> RegressionResult<F, F> {
-        let score_alt = self.score(&alternative);
         let fisher_alt = self.fisher(&alternative);
+        let score_alt = self.score(alternative);
         // The is not the same as the cached covariance matrix since it is
         // evaluated at the null parameters.
         // NOTE: invh/invh_into() are bugged and incorrect!
@@ -1471,6 +1471,8 @@ mod tests {
             array![0., 0.],
             epsilon = eps
         );
+        // NOTE: Without regularization, the results themselves will not be exactly identical
+        // through standardization.
         Ok(())
     }
 
