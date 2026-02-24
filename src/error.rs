@@ -13,15 +13,11 @@ pub enum RegressionError<F: Float> {
     InvalidY(String),
     #[error("Model build error: {0}")]
     BuildError(String),
-    #[error("Linear algebra")]
+    #[error("Linear algebra error. Consider adding L2 regularization.")]
     LinalgError {
         #[from]
         source: LinalgError,
     },
-    #[error("Underconstrained data")]
-    Underconstrained,
-    #[error("Colinear data (X^T * X is not invertible)")]
-    ColinearData { tol: F },
     #[error("Maximum iterations ({n_iter}) reached")]
     MaxIter {
         n_iter: usize,

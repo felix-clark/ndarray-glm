@@ -219,19 +219,7 @@ where
             // The regression can find a solution if n_data == ncols, but there will be
             // no estimate for the uncertainty. Regularization can solve this, so keep
             // it to a warning.
-            // return Err(RegressionError::Underconstrained);
             eprintln!("Warning: data is underconstrained");
-        }
-
-        // Check for co-linearity up to a tolerance
-        // NOTE: Should this use the weights? If so, it should be checked after the
-        // unpadded Dataset is built so we can use x_conj(). The weights might not impact the
-        // collinearity check, though, since they are applied to each column equally.
-        let xtx: Array2<F> = self.data_x.t().dot(&self.data_x);
-        if is_rank_deficient(xtx, self.colin_tol)? {
-            return Err(RegressionError::ColinearData {
-                tol: self.colin_tol,
-            });
         }
 
         // convert y-values to floating-point

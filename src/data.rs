@@ -155,7 +155,8 @@ where
         }
     }
 
-    /// Returns the external data matrix, scaled back to the original level.
+    /// Returns the external data matrix, scaled back to the original level. The intercept term is
+    /// included so that this can be used in some fit statistic matrix multiplications.
     /// NOTE: This does some unnecessary clones if there is no standardization. Perhaps we want to
     /// maintain a reference to the original matrix and use copy-on-write to optionally a
     /// standardized version.
@@ -339,7 +340,9 @@ where
     }
 
     /// Apply the inverse transformation to get back the original data.
-    fn inverse_transform(&self, x: Array2<F>) -> Array2<F> {
+    /// This method is crate-public so that the exact LOO computation can appropriately account for
+    /// regularization.
+    pub(crate) fn inverse_transform(&self, x: Array2<F>) -> Array2<F> {
         (x * &self.scales) + &self.shifts
     }
 
