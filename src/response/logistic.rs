@@ -24,7 +24,7 @@ impl<L> Response<Logistic<L>> for bool
 where
     L: Link<Logistic<L>>,
 {
-    fn into_float<F: Float>(self) -> RegressionResult<F> {
+    fn into_float<F: Float>(self) -> RegressionResult<F, F> {
         Ok(if self { F::one() } else { F::zero() })
     }
 }
@@ -35,7 +35,7 @@ impl<L> Response<Logistic<L>> for f32
 where
     L: Link<Logistic<L>>,
 {
-    fn into_float<F: Float>(self) -> RegressionResult<F> {
+    fn into_float<F: Float>(self) -> RegressionResult<F, F> {
         if !(0.0..=1.0).contains(&self) {
             return Err(RegressionError::InvalidY(self.to_string()));
         }
@@ -46,7 +46,7 @@ impl<L> Response<Logistic<L>> for f64
 where
     L: Link<Logistic<L>>,
 {
-    fn into_float<F: Float>(self) -> RegressionResult<F> {
+    fn into_float<F: Float>(self) -> RegressionResult<F, F> {
         if !(0.0..=1.0).contains(&self) {
             return Err(RegressionError::InvalidY(self.to_string()));
         }
@@ -146,7 +146,7 @@ mod tests {
 
     /// A simple test where the correct value for the data is known exactly.
     #[test]
-    fn log_reg() -> RegressionResult<()> {
+    fn log_reg() -> RegressionResult<(), f64> {
         let beta = array![0., 1.0];
         let ln2 = f64::ln(2.);
         let data_x = array![[0.], [0.], [ln2], [ln2], [ln2]];

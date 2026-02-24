@@ -4,8 +4,8 @@
 //! optimization of linear algebra operations with BLAS.
 //!
 //! This crate is in beta and the interface may change significantly. The tests include several
-//! comparisons with R's `glmnet` package, but some cases may not be covered directly or involve
-//! inherent ambiguities or imprecisions.
+//! comparisons with R's `glm` and `glmnet` packages, but some cases may not be covered directly or
+//! involve inherent ambiguities or imprecisions.
 //!
 //! # Feature summary:
 //!
@@ -34,7 +34,7 @@
 //! following into your crate's `Cargo.toml`:
 //! ```text
 //! ndarray = { version = "0.17", features = ["blas"]}
-//! ndarray-glm = { version = "0.0.14", features = ["openblas-system"] }
+//! ndarray-glm = { version = "0.0.15", features = ["openblas-system"] }
 //! ```
 //!
 //! ## Compile OpenBLAS from source
@@ -44,7 +44,7 @@
 //! `Cargo.toml`.
 //! ```text
 //! ndarray = { version = "0.17", features = ["blas"]}
-//! ndarray-glm = { version = "0.0.14", features = ["openblas-static"] }
+//! ndarray-glm = { version = "0.0.15", features = ["openblas-static"] }
 //! ```
 //!
 //! # Examples:
@@ -61,15 +61,15 @@
 //! println!("Fit result: {}", fit.result);
 //! ```
 //!
-//! Data standardization and L2 regularization:
+//! L2 regularization:
 //! ```
-//! use ndarray_glm::{array, Linear, ModelBuilder, utility::standardize};
+//! use ndarray_glm::{array, Linear, ModelBuilder};
 //!
 //! let data_y = array![0.3, 1.3, 0.7];
 //! let data_x = array![[0.1, 0.2], [-0.4, 0.1], [0.2, 0.4]];
-//! // The design matrix can optionally be standardized, where the mean of each independent
-//! // variable is subtracted and each is then divided by the standard deviation of that variable.
-//! let data_x = standardize(data_x);
+//! // The model builder standardizes the design matrix internally by default, so the penalty
+//! // is applied uniformly across features regardless of their scale. The returned coefficients
+//! // are always in the original (un-standardized) coordinate system.
 //! let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build().unwrap();
 //! // L2 (ridge) regularization can be applied with l2_reg().
 //! let fit = model.fit_options().l2_reg(1e-5).fit().unwrap();
@@ -84,7 +84,7 @@
 //! let data_y = array![true, false, false, true, true];
 //! let data_x = array![[0.5, 0.2], [0.1, 0.3], [0.2, 0.6], [0.6, 0.3], [0.4, 0.4]];
 //! let model = ModelBuilder::<Logistic<Cloglog>>::data(&data_y, &data_x).build().unwrap();
-//! let fit = model.fit_options().max_iter(64).l2_reg(1e-3).fit().unwrap();
+//! let fit = model.fit_options().max_iter(64).l2_reg(0.1).fit().unwrap();
 //! println!("Fit result: {}", fit.result);
 //! ```
 //!
@@ -120,8 +120,8 @@
 //! \text{E}[y] = A'(\eta), \qquad \text{Var}[y] = \phi\, A''(\eta)
 //! ```
 //!
-//! where $`\phi`$ is the *dispersion parameter* (fixed to 1 for logistic and
-//! Poisson families, estimated for the linear/Gaussian family).
+//! where $`\phi`$ is the *dispersion parameter* (fixed to 1 for some families and estimated from
+//! the data for others).
 //!
 //! ## Link and variance functions
 //!
@@ -133,8 +133,9 @@
 //! ```
 //!
 //! The *canonical link* is the one for which $`\eta = \omega`$, i.e. the natural
-//! parameter equals the linear predictor. Non-canonical links are also supported
-//! (see [`link`]).
+//! parameter equals the linear predictor. In general, in terms of an arbitrary link function $`g`$
+//! and canonical link function $`g_0`$, we have $`\eta(\omega) = g_0(g(\omega)). Non-canonical
+//! links are supported in principle (see [`link`]).
 //!
 //! The *variance function* $`V(\mu)`$ characterizes how the variance of $`y`$
 //! depends on the mean, independent of the choice of link:
@@ -150,7 +151,7 @@
 //! | [`Linear`] (Gaussian) | Identity | $`1`$ | estimated |
 //! | [`Logistic`] (Bernoulli) | Logit | $`\mu(1-\mu)`$ | $`1`$ |
 //! | [`Poisson`] | Log | $`\mu`$ | $`1`$ |
-//! | [`Binomial`] (fixed $`n`$) | Logit | $`\mu(n-\mu)/n`$ | $`1`$ |
+//! | [`Binomial`] (fixed $`n`$) | Logit | $`\mu(1-\mu/n)`$ | $`1`$ |
 //!
 //! ## Fitting via IRLS
 //!
@@ -199,6 +200,7 @@
 //! [derivation notes](https://felix-clark.github.io/src/tex/glm-math/main.pdf).
 
 #![doc(html_root_url = "https://docs.rs/crate/ndarray-glm")]
+mod data;
 pub mod error;
 mod fit;
 mod glm;
@@ -209,7 +211,6 @@ pub mod model;
 pub mod num;
 mod regularization;
 mod response;
-pub mod utility;
 
 // Import some common names into the top-level namespace
 pub use {

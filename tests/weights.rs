@@ -30,7 +30,7 @@ fn logistic_weights() -> Result<()> {
     // check parameter covariance function
     let r_flat_cov = array_from_csv::<f32>("tests/R/log_weights/covariance.csv")?;
     let r_cov = Array::from_shape_vec((n_par, n_par), r_flat_cov.into_raw_vec_and_offset().0)?;
-    assert_abs_diff_eq!(fit.covariance()?, r_cov, epsilon = eps);
+    assert_abs_diff_eq!(fit.covariance()?, &r_cov, epsilon = eps);
 
     // total deviance uses the weights
     let r_dev = array_from_csv::<f32>("tests/R/log_weights/deviance.csv")?[0];
@@ -53,7 +53,7 @@ fn logistic_weights() -> Result<()> {
     assert_abs_diff_eq!(hat, r_hat, epsilon = eps);
 
     let r_resid_pear = array_from_csv::<f32>("tests/R/log_weights/pearson_resid.csv")?;
-    assert_abs_diff_eq!(fit.resid_pear(), r_resid_pear, epsilon = eps);
+    assert_abs_diff_eq!(*fit.resid_pear(), r_resid_pear, epsilon = eps);
 
     // Again we have a discrepancy between frequency and variance weights
     let r_resid_dev = array_from_csv::<f32>("tests/R/log_weights/dev_resid.csv")?;
@@ -155,7 +155,7 @@ fn check_linear_scenario(
         // Covariance and Wald Z depend on dispersion, so only check when dispersion matches
         let r_cov_flat = r("covariance")?;
         let r_cov = Array::from_shape_vec((n_par, n_par), r_cov_flat.into_raw_vec_and_offset().0)?;
-        assert_abs_diff_eq!(fit.covariance()?, r_cov, epsilon = eps);
+        assert_abs_diff_eq!(fit.covariance()?, &r_cov, epsilon = eps);
 
         let r_wald_z = r("wald_z")?;
         assert_abs_diff_eq!(fit.wald_z()?, r_wald_z, epsilon = 10. * eps);
@@ -183,7 +183,7 @@ fn check_linear_scenario(
 
         // --- Pearson residuals ---
         let r_resid_pear = r("resid_pear")?;
-        assert_abs_diff_eq!(fit.resid_pear(), r_resid_pear, epsilon = eps);
+        assert_abs_diff_eq!(*fit.resid_pear(), r_resid_pear, epsilon = eps);
 
         // --- Deviance residuals ---
         let r_resid_dev = r("resid_dev")?;

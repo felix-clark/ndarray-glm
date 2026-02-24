@@ -1,13 +1,13 @@
 //! Iteratively re-weighed least squares algorithm
-use crate::glm::Glm;
-use crate::link::Transform;
-use crate::model::{Dataset, Model};
-use crate::regularization::{ElasticNet, Lasso, Null, Ridge};
 use crate::{
+    data::Dataset,
     error::{RegressionError, RegressionResult},
     fit::options::FitOptions,
+    glm::Glm,
+    link::Transform,
+    model::Model,
     num::Float,
-    regularization::IrlsReg,
+    regularization::*,
 };
 use ndarray::{Array1, Array2, ArrayRef2};
 use ndarray_linalg::SolveH;
@@ -23,8 +23,10 @@ where
 {
     model: PhantomData<M>,
     data: &'a Dataset<F>,
-    /// The current parameter guess.
-    pub(crate) guess: Array1<F>,
+    /// The current parameter guess. No longer public because the full history is passed and this
+    /// may not end up being the optimal one. make_last_step() can be used to build an IrlsStep
+    /// from the current values, which is primarily used as a fallback when no iterations occur.
+    guess: Array1<F>,
     /// The options for the fit
     pub(crate) options: FitOptions<F>,
     /// The regularizer object, which may be stateful
@@ -35,11 +37,15 @@ where
     /// This is cached separately from the guess because it demands expensive matrix
     /// multiplications. The augmented and/or regularized terms are relatively cheap, so they
     /// aren't stored.
-    pub(crate) last_like_data: F,
+    last_like_data: F,
     /// Sometimes the next guess is better than the previous but within
     /// tolerance, so we want to return the current guess but exit immediately
     /// in the next iteration.
     done: bool,
+    /// Internally track the fit history, and allow the Fit to expose it. Note that this history is
+    /// stored on the internal standardized scale as it can know nothing about any external
+    /// transformations.
+    pub(crate) history: Vec<IrlsStep<F>>,
 }
 
 impl<'a, M, F> Irls<'a, M, F>
@@ -50,7 +56,7 @@ where
 {
     pub fn new(model: &'a Model<M, F>, initial: Array1<F>, options: FitOptions<F>) -> Self {
         let data = &model.data;
-        let reg = get_reg(&options, data.x.ncols(), model.use_intercept);
+        let reg = get_reg(&options, data.x.ncols(), data.has_intercept);
         let initial_like_data: F = M::log_like(data, &initial);
         Self {
             model: PhantomData,
@@ -61,6 +67,7 @@ where
             n_iter: 0,
             last_like_data: initial_like_data,
             done: false,
+            history: Vec::new(),
         }
     }
 
@@ -70,16 +77,19 @@ where
         self.guess.assign(&next_guess);
         self.last_like_data = next_like_data;
         let model_like = next_like_data + self.reg.likelihood(&next_guess);
-        self.n_iter += 1;
-        if self.n_iter > self.options.max_iter {
-            // NOTE: This could also return the best guess so far. Including the data in the error
-            // type would necessitate either a conversion to f32 or a parameterization.
-            return Err(RegressionError::MaxIter(self.options.max_iter));
-        }
-        Ok(IrlsStep {
+        let step = IrlsStep {
             guess: next_guess,
             like: model_like,
-        })
+        };
+        self.history.push(step.clone());
+        self.n_iter += 1;
+        if self.n_iter > self.options.max_iter {
+            return Err(RegressionError::MaxIter {
+                n_iter: self.options.max_iter,
+                history: self.history.clone(),
+            });
+        }
+        Ok(step)
     }
 
     /// Returns the (LHS, RHS) of the IRLS update matrix equation. This is a bit
@@ -139,9 +149,24 @@ where
         };
         (neg_hessian, rhs)
     }
+
+    /// Get the most recent step as a new object. This is most useful as a fallback when there
+    /// are no iterations because the iteration started at the maximum, and we need to recover the
+    /// default with proper regularization. It could also be used within step_with() itself, after
+    /// setting the guess and likelihood, though that could be a little opaque.
+    pub(crate) fn make_last_step(&self) -> IrlsStep<F> {
+        // It's crucial that this regularization is applied the same way here as it is in
+        // step_with().
+        let model_like = self.last_like_data + self.reg.likelihood(&self.guess);
+        IrlsStep {
+            guess: self.guess.clone(),
+            like: model_like,
+        }
+    }
 }
 
 /// Represents a step in the IRLS. Holds the current guess and likelihood.
+#[derive(Clone, Debug)]
 pub struct IrlsStep<F> {
     /// The current parameter guess.
     pub guess: Array1<F>,
@@ -157,7 +182,7 @@ where
     F: Float,
     ArrayRef2<F>: SolveH<F>,
 {
-    type Item = RegressionResult<IrlsStep<F>>;
+    type Item = RegressionResult<IrlsStep<F>, F>;
 
     /// Acquire the next IRLS step based on the previous one.
     fn next(&mut self) -> Option<Self::Item> {
@@ -197,9 +222,12 @@ where
             return Some(self.step_with(next_guess, next_like_data));
         }
 
+        // Some tolerances should scale with the size of the dataset, so store it here.
+        let n_obs = F::from(self.data.y.len()).unwrap();
+
         // Indicates if the likelihood change is small, within tolerance, even if it is not
         // positive.
-        let small_delta_like = small_delta(next_like_obj, last_like_obj, self.options.tol);
+        let small_delta_like = small_delta(next_like_obj, last_like_obj, self.options.tol * n_obs);
 
         // If the parameters have changed significantly but the likelihood hasn't improved,
         // step halving needs to be engaged. The parameter delta should probably ideally be
@@ -210,17 +238,18 @@ where
         // Terminate if the difference is close to zero and the parameters haven't changed
         // significantly.
         if small_delta_like && small_delta_guess {
+            self.done = true;
             // If this guess is an improvement then go ahead and return it, but
             // quit early on the next iteration. The equivalence with zero is
             // necessary in order to return a value when the iteration starts at
             // the best guess. This comparison includes zero so that the
             // iteration terminates if the likelihood hasn't changed at all.
-            if next_like_obj >= last_like_obj {
-                // assert_eq!(next_like_obj, last_like_obj); // this should still hold
-                self.done = true;
-                return Some(self.step_with(next_guess, next_like_data));
-            }
-            return None;
+            return if next_like_obj >= last_like_obj {
+                // assert_eq!(next_like_obj, last_like_obj); // this should still hold (?)
+                Some(self.step_with(next_guess, next_like_data))
+            } else {
+                None
+            };
         }
 
         // Don't go through step halving if the regularization isn't convergent
@@ -233,17 +262,21 @@ where
         // part of the algorithm is undertested. It may be more common using L1 regularization.
         let f_step = |x: F| {
             let b = &next_guess * x + &self.guess * (F::one() - x);
-            // Using the real likelihood in the step finding avoids potential issues with the
-            // augmentation. They should be close to equivalent at this point because the
-            // regularization has reported that the internals have converged.
-            M::log_like(self.data, &b) + self.reg.likelihood(&b)
+            // The augmented and unaugmented checks should be close to equivalent at this point
+            // because the regularization has reported that the internals have converged via
+            // `terminate_ok()`. Since we are potentially finding the final best guess, look for
+            // the best model likelihood in the step search.
+            M::log_like(self.data, &b) + self.reg.likelihood(&b) // unaugmented
+            // M::log_like(self.data, &b) + self.reg.irls_like(&b) // augmented
         };
         let beta_tol_factor = num_traits::Float::sqrt(self.guess.mapv(|b| F::one() + b * b).sum());
         let step_mult: F = step_scale(&f_step, beta_tol_factor * self.options.tol);
-        if step_mult.is_zero() {
-            // can't find a better minimum if the step multiplier returns zero
-            return None;
-        }
+        // NOTE: At this point in time, step_scale should never return 0, so this comparison is
+        // useless. If that changes, this check should be re-evaluated.
+        // if step_mult.is_zero() {
+        //     // can't find a better minimum if the step multiplier returns zero
+        //     return None;
+        // }
         // If step_mult == 1, that means the guess is a good one according to the un-augmented
         // regularized likelihood, so go ahead and use it.
 
@@ -256,7 +289,7 @@ where
             return None;
         }
 
-        let small_delta_like = small_delta(next_like, last_like, self.options.tol);
+        let small_delta_like = small_delta(next_like, last_like, self.options.tol * n_obs);
         let small_delta_guess = small_delta_vec(&next_guess, &self.guess, self.options.tol);
         if small_delta_like && small_delta_guess {
             self.done = true;
@@ -270,8 +303,7 @@ fn small_delta<F>(new: F, old: F, tol: F) -> bool
 where
     F: Float,
 {
-    let rel = (new - old) / (F::epsilon() + num_traits::Float::abs(new));
-    num_traits::Float::abs(rel) <= tol
+    num_traits::Float::abs(new - old) <= tol
 }
 
 fn small_delta_vec<F>(new: &Array1<F>, old: &Array1<F>, tol: F) -> bool

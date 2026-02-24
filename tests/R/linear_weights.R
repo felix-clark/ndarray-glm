@@ -158,13 +158,13 @@ l2_param <- 0.1
 lambda_glmnet <- 2 * l2_param / n
 
 dir.create("linear_weights/ridge_none", showWarnings = FALSE, recursive = TRUE)
-m_ridge <- glmnet(x_mat, y, alpha = 0, lambda = lambda_glmnet, standardize = FALSE,
+m_ridge <- glmnet(x_mat, y, alpha = 0, lambda = lambda_glmnet, standardize = TRUE,
                    family = "gaussian", thresh = 1e-14)
 write(as.vector(coef(m_ridge)), "linear_weights/ridge_none/coefficients.csv", ncolumns = 1)
 cat("Exported scenario: linear_weights/ridge_none\n")
 
 dir.create("linear_weights/ridge_var", showWarnings = FALSE, recursive = TRUE)
-m_ridge_var <- glmnet(x_mat, y, alpha = 0, lambda = lambda_glmnet, standardize = FALSE,
+m_ridge_var <- glmnet(x_mat, y, alpha = 0, lambda = lambda_glmnet, standardize = TRUE,
                        weights = var_wt / sum(var_wt) * n,
                        family = "gaussian", thresh = 1e-14)
 write(as.vector(coef(m_ridge_var)), "linear_weights/ridge_var/coefficients.csv", ncolumns = 1)

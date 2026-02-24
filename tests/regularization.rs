@@ -4,8 +4,8 @@ mod common;
 use anyhow::Result;
 use approx::assert_abs_diff_eq;
 use common::{array_from_csv, y_x_from_iris};
-use ndarray::{array, Array1, Array2};
-use ndarray_glm::{utility::standardize, Linear, Logistic, ModelBuilder};
+use ndarray::{Array1, Array2, Axis, array};
+use ndarray_glm::{Linear, Logistic, ModelBuilder};
 
 #[test]
 /// Test that the intercept is not affected by regularization when the dependent
@@ -13,9 +13,10 @@ use ndarray_glm::{utility::standardize, Linear, Logistic, ModelBuilder};
 fn same_lin_intercept() -> Result<()> {
     let y_data: Array1<f64> = array![0.3, 0.5, 0.8, 0.2];
     let x_data: Array2<f64> = array![[1.5, 0.6], [2.1, 0.8], [1.2, 0.7], [1.6, 0.3]];
-    // standardize the data
-    let x_data = standardize(x_data);
-
+    // Explicitly center the data, but don't scale it.
+    let x_data = x_data.clone() - x_data.mean_axis(Axis(0)).unwrap();
+    // Since we are explicitly centering the x-data, this should hold with or without
+    // internal standardization.
     let lin_model = ModelBuilder::<Linear>::data(&y_data, &x_data).build()?;
     let lin_fit = lin_model.fit()?;
     let lin_model_reg = ModelBuilder::<Linear>::data(&y_data, &x_data).build()?;
@@ -39,12 +40,11 @@ fn lasso_underconstrained() -> Result<()> {
     let y_data: Array1<bool> = array![true, false, true];
     let x_data: Array2<f64> = array![[0.1, 1.5, 8.0], [-0.1, 1.0, -12.0], [0.2, 0.5, 9.5]];
     // Either standardization or 32-bit floats is needed to converge.
-    let x_data = standardize(x_data);
+    // The data is now standardized by default so this should still work internally.
     let model = ModelBuilder::<Logistic>::data(&y_data, &x_data).build()?;
     // The smoothing parameter needs to be relatively large in order to test
-    let fit = model.fit_options().max_iter(64).l1_reg(1.0).fit()?;
-    dbg!(fit.result);
-    let like = fit.model_like;
+    let fit = model.fit_options().max_iter(256).l1_reg(1.0).fit()?;
+    let like: f64 = fit.model_like;
     // make sure the likelihood isn't NaN
     assert!(like.is_normal());
     Ok(())
@@ -53,27 +53,51 @@ fn lasso_underconstrained() -> Result<()> {
 #[test]
 fn elnet_seperable() -> Result<()> {
     let (y_labels, x_data) = y_x_from_iris()?;
-    let x_data = standardize(x_data);
     // setosa
     let y_data: Array1<bool> = y_labels.mapv(|i| i == 0);
-    let target: Array1<f32> = array_from_csv("tests/R/log_regularization/iris_setosa_l1_l2_1e-2.csv")?;
-    dbg!(&target);
+    let target: Array1<f32> =
+        array_from_csv("tests/R/log_regularization/iris_setosa_l1_l2_1e-2.csv")?;
     let model = ModelBuilder::<Logistic>::data(&y_data, &x_data).build()?;
+    // The X-data is now standardized by default.
     let fit = model.fit_options().l1_reg(1e-2).l2_reg(1e-2).fit()?;
-    dbg!(&fit.result);
+
     // If this is negative then our alg hasn't converged to a good minimum
-    assert!(fit.lr_test_against(&target) >= 0., "If it's not an exact match to the target, it should be a better result under our likelihood.");
+    assert!(
+        fit.lr_test_against(&target) >= 0.,
+        "If it's not an exact match to the target, it should be a better result under our likelihood."
+    );
     assert_abs_diff_eq!(&target, &fit.result, epsilon = 0.01);
+
+    let target_nostd: Array1<f32> =
+        array_from_csv("tests/R/log_regularization/iris_setosa_l1_l2_1e-2_nostd.csv")?;
+    let model_std = ModelBuilder::<Logistic>::data(&y_data, &x_data)
+        .no_standardize()
+        .build()?;
+    // The X-data is now standardized by default.
+    let fit_nostd = model_std
+        .fit_options()
+        .l1_reg(1e-2)
+        .l2_reg(1e-2)
+        .max_iter(128)
+        .fit()?;
+
+    // ADMM convergence is harder without standardization for separable data. We don't require
+    // an exact match, just that the result is in the right neighborhood.
+    assert_abs_diff_eq!(&target_nostd, &fit_nostd.result, epsilon = 0.05);
     Ok(())
 }
 
 #[test]
 fn ridge_seperable() -> Result<()> {
     let (y_labels, x_data) = y_x_from_iris()?;
-    // let x_data = standardize(x_data);
     let y_data: Array1<bool> = y_labels.mapv(|i| i == 0);
-    let target: Array1<f32> = array_from_csv("tests/R/log_regularization/iris_setosa_l2_1e-2.csv")?;
-    let model = ModelBuilder::<Logistic>::data(&y_data, &x_data).build()?;
+    // Compare against glmnet standardize=FALSE on raw data, since no_standardize() is used.
+    let target: Array1<f32> =
+        array_from_csv("tests/R/log_regularization/iris_setosa_l2_1e-2_nostd.csv")?;
+    // Explicitly skip standardization to test the ability of ridge to converge.
+    let model = ModelBuilder::<Logistic>::data(&y_data, &x_data)
+        .no_standardize()
+        .build()?;
     // Temporarily try L2 for testing
     let fit = model.fit_options().l2_reg(1e-2).fit()?;
     // This still appears to be positive so our result is better
@@ -87,17 +111,21 @@ fn ridge_seperable() -> Result<()> {
 #[test]
 fn lasso_versicolor() -> Result<()> {
     let (y_labels, x_data) = y_x_from_iris()?;
-    let x_data = standardize(x_data);
     // NOTE: It matches for versicolor, but not setosa (which is fully seperable).
     // versicolor
     let y_data: Array1<bool> = y_labels.mapv(|i| i == 1);
-    let target: Array1<f32> = array_from_csv("tests/R/log_regularization/iris_versicolor_l1_1e-2.csv")?;
+    let target: Array1<f32> =
+        array_from_csv("tests/R/log_regularization/iris_versicolor_l1_1e-2.csv")?;
+    // The data is standardized internally by default.
     let model = ModelBuilder::<Logistic>::data(&y_data, &x_data).build()?;
     // TODO: test more harshly by increasing lambda. It passes at l1 = 1 at time of writing but
     // taks longer.
     let fit = model.fit_options().l1_reg(1e-2).fit()?;
     // If this is negative then our alg hasn't converged to a good minimum
-    assert!(fit.lr_test_against(&target) >= 0., "If it's not an exact match to the target, it should be a better result under our likelihood.");
+    assert!(
+        fit.lr_test_against(&target) >= 0.,
+        "If it's not an exact match to the target, it should be a better result under our likelihood."
+    );
     // The epsilon tolerance doesn't need to be very low if we've found a better minimum
     assert_abs_diff_eq!(&target, &fit.result, epsilon = 0.01);
     Ok(())

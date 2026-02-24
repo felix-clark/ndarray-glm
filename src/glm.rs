@@ -5,12 +5,14 @@
 use crate::irls::IrlsStep;
 use crate::link::{Link, Transform};
 use crate::{
+    data::Dataset,
     error::RegressionResult,
     fit::{Fit, options::FitOptions},
     irls::Irls,
-    model::{Dataset, Model},
+    model::Model,
     num::Float,
 };
+use itertools::process_results;
 use ndarray::{Array1, Array2, ArrayRef2};
 use ndarray_linalg::SolveH;
 
@@ -108,11 +110,12 @@ pub trait Glm: Sized {
         F: Float;
 
     /// Returns the log-likelihood contributions for each observable given the regressor values.
+    /// It's assumed that these regresssors are in the same standardization scale as the dataset.
     fn log_like_terms<F>(data: &Dataset<F>, regressors: &Array1<F>) -> Array1<F>
     where
         F: Float,
     {
-        let lin_pred = data.linear_predictor(regressors);
+        let lin_pred = data.linear_predictor_std(regressors);
         let nat_par = Self::Link::nat_param(lin_pred);
         // the likelihood prior to regularization
         ndarray::Zip::from(&data.y)
@@ -156,7 +159,7 @@ pub trait Glm: Sized {
     fn regression<F>(
         model: &Model<Self, F>,
         options: FitOptions<F>,
-    ) -> RegressionResult<Fit<'_, Self, F>>
+    ) -> RegressionResult<Fit<'_, Self, F>, F>
     where
         F: Float,
         Self: Sized,
@@ -164,17 +167,39 @@ pub trait Glm: Sized {
         let initial: Array1<F> = options
             .init_guess
             .clone()
+            // The guess is given in external space, so it should be mapped to the internal before
+            // passing to IRLS.
+            .map(|b| model.data.transform_beta(b))
             .unwrap_or_else(|| Self::init_guess(&model.data));
 
         let mut irls: Irls<Self, F> = Irls::new(model, initial, options);
 
-        let fit_history: Vec<IrlsStep<F>> = irls.by_ref().collect::<Result<Vec<_>, _>>()?;
+        // Collect the best guess along the way so we don't have to loop back through to make sure
+        // we've got the optimum. The full history is stored in the IRLS structure.
+        let optimum: IrlsStep<F> = process_results(irls.by_ref(), |iter| {
+            iter.max_by(|a, b| a.like.partial_cmp(&b.like).unwrap())
+        })?
+        .unwrap_or_else(|| irls.make_last_step());
 
-        Ok(Fit::new(
-            &model.data,
-            model.use_intercept,
-            irls,
-            fit_history,
-        ))
+        Ok(Fit::new(&model.data, optimum, irls))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Linear, ModelBuilder};
+    use anyhow::Result;
+    use ndarray::{Array1, Array2};
+
+    /// Start with a trivially optimized model and make sure that the iteration returns a value
+    #[test]
+    fn returns_at_least_one() -> Result<()> {
+        let data_y = Array1::<f64>::zeros(4);
+        let data_x = Array2::<f64>::zeros((4, 2));
+        let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
+        let fit = model.fit_options().l2_reg(1e-6).fit()?;
+        // These should be exactly equal, not approximately.
+        assert_eq!(&fit.result, Array1::<f64>::zeros(3));
+        Ok(())
     }
 }

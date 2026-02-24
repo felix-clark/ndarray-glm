@@ -35,23 +35,33 @@ fn linear_pvalues() -> Result<()> {
     let model = ModelBuilder::<Linear>::data(&y, &x).build()?;
     let fit = model.fit()?;
 
+    let model_nostd = ModelBuilder::<Linear>::data(&y, &x)
+        .no_standardize()
+        .build()?;
+    let fit_nostd = model_nostd.fit()?;
+
     // R: pchisq(6.395584, df=2, lower.tail=FALSE) = 0.04085231
     let lr_p = fit.pvalue_lr_test();
+    let lr_p_nostd = fit_nostd.pvalue_lr_test();
     assert_abs_diff_eq!(lr_p, 0.04085231, epsilon = 1e-5);
+    assert_abs_diff_eq!(lr_p_nostd, 0.04085231, epsilon = 1e-5);
+
+    // These are the p-values from R. For the linear model, they are equal for both approaches.
+    let p_r = array![0.1203156, 4.007292e-06, 0.2835236];
 
     // R: summary(m)$coefficients[,"Pr(>|t|)"]
     // Intercept: 0.1203156, x1: 4.007292e-06, x2: 0.2835236
     let wald_p = fit.pvalue_wald()?;
-    assert_abs_diff_eq!(wald_p[0], 0.1203156, epsilon = 1e-4);
-    assert_abs_diff_eq!(wald_p[1], 4.007292e-06, epsilon = 1e-8);
-    assert_abs_diff_eq!(wald_p[2], 0.2835236, epsilon = 1e-4);
+    let wald_p_nostd = fit_nostd.pvalue_wald()?;
+    assert_abs_diff_eq!(wald_p, p_r, epsilon = 1e-6);
+    assert_abs_diff_eq!(wald_p_nostd, p_r, epsilon = 1e-6);
 
     // R: anova(glm(y~x1+x2-1), m, test="F") and drop1(m, test="F") Pr(>F)
     // intercept: 0.1203156, x1: 4.007e-06, x2: 0.2835
     let exact_p = fit.pvalue_exact()?;
-    assert_abs_diff_eq!(exact_p[0], 0.1203156, epsilon = 1e-5);
-    assert_abs_diff_eq!(exact_p[1], 4.007e-06, epsilon = 1e-7);
-    assert_abs_diff_eq!(exact_p[2], 0.2835, epsilon = 1e-3);
+    let exact_p_nostd = fit_nostd.pvalue_exact()?;
+    assert_abs_diff_eq!(exact_p, p_r, epsilon = 1e-6);
+    assert_abs_diff_eq!(exact_p_nostd, p_r, epsilon = 1e-6);
 
     Ok(())
 }
@@ -149,9 +159,7 @@ fn wald_exact_agreement() -> Result<()> {
 
     // For non-intercept parameters, Wald and exact should be in reasonable agreement
     // (exact match for linear models with sufficient data)
-    for k in 0..wald_p.len() {
-        assert_abs_diff_eq!(wald_p[k], exact_p[k], epsilon = 1e-6);
-    }
+    assert_abs_diff_eq!(wald_p, exact_p, epsilon = 1e-6);
 
     Ok(())
 }

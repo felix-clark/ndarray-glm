@@ -1,8 +1,8 @@
 # ndarray-glm
 
-Rust library for solving linear, logistic, and generalized linear models through
-iteratively reweighted least squares, using the
-[`ndarray-linalg`](https://docs.rs/crate/ndarray-linalg/) module.
+Rust library for solving linear, logistic, and other generalized linear models
+(GLMs), using the [`ndarray-linalg`](https://docs.rs/crate/ndarray-linalg/)
+module.
 
 [![Crate](https://img.shields.io/crates/v/ndarray-glm.svg)](https://crates.io/crates/ndarray-glm)
 [![Documentation](https://docs.rs/ndarray-glm/badge.svg)](https://docs.rs/ndarray-glm)
@@ -13,8 +13,8 @@ iteratively reweighted least squares, using the
 
 This package is in beta and the interface could undergo changes, as could the
 numerical value of some functions. The tests include several checks against R's
-`glmnet` package, but some edge cases may be excluded and others may involve
-inherent ambiguities or imprecisions.
+`glm` and `glmnet` packages, but some edge cases may be excluded and others may
+involve inherent ambiguities or imprecisions.
 
 The regression algorithm uses iteratively re-weighted least squares (IRLS) with
 a line-search procedure applied when the next iteration of guesses does not
@@ -49,10 +49,11 @@ To use in your crate, add the following to the `Cargo.toml`:
 
 ```
 ndarray = { version = "0.17", features = ["blas"]}
-ndarray-glm = { version = "0.0.14", features = ["openblas-system"] }
+ndarray-glm = { version = "0.0.15", features = ["openblas-system"] }
 ```
 
-An example for linear regression is shown below.
+An example for linear regression is shown below. The library is generic over
+floating point type (`f32` of `f64`).
 
 ``` rust
 use ndarray_glm::{array, Linear, ModelBuilder, utility::standardize};
@@ -60,15 +61,24 @@ use ndarray_glm::{array, Linear, ModelBuilder, utility::standardize};
 // define some test data
 let data_y = array![0.3, 1.3, 0.7];
 let data_x = array![[0.1, 0.2], [-0.4, 0.1], [0.2, 0.4]];
-// The design matrix can optionally be standardized, where the mean of each independent
-// variable is subtracted and each is then divided by the standard deviation of that variable.
-let data_x = standardize(data_x);
 let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
-// L2 (ridge) regularization can be applied with l2_reg().
+
+let fit = model.fit()?;
+// Or instead, to e.g. apply L2 (ridge) regularization:
 let fit = model.fit_options().l2_reg(1e-5).fit()?;
-// Currently the result is a simple array of the MLE estimators, including the intercept term.
+
+// The result is a simple array of the MLE estimators, including the intercept
+// term in the 0th index.
 println!("Fit result: {}", fit.result);
 ```
+
+By default, the X data is standardized (mean-subtracted and scaled by the std
+dev) for internal calculations, but the regression results are transformed back
+to the external scale for the user. This reduces the risk of scale-dependent
+numerical issues, and puts all features on the same footing with regards to any
+regularization. This can be disabled with `no_standardize()` in the
+`ModelBuilder` but is designed to be hands-off for the user, so it's
+recommended to keep it in most cases.
 
 Custom non-canonical link functions can be defined by the user, although the
 interface is currently not particularly ergonomic. See `tests/custom_link.rs`
@@ -76,28 +86,44 @@ for examples.
 
 ## Features
 
-- [X] Linear regression
-- [X] Logistic regression
-- [X] Generalized linear model IRLS
-- [X] Linear offsets
-- [X] Generic over floating point type
-- [X] Regularization
-  - [X] L2 (ridge)
-  - [X] L1 (lasso)
-  - [X] Elastic Net
-- [ ] Other exponential family distributions
+- [X] Exponential family distributions
+  - [X] Linear
+  - [X] Logistic
   - [X] Poisson
   - [X] Binomial
   - [ ] Exponential
   - [ ] Gamma
   - [ ] Inverse Gaussian
-- [X] Data standardization/normalization
-  - [X] External utility function
-  - [ ] Automatic internal transformation
-- [X] Weighted regressions (frequency and variance weights)
+- [X] Linear offsets
+- [X] Generic over floating point type
+- [X] Regularization
+  - [X] L2 (ridge)
+  - [X] L1 (lasso) via ADMM
+  - [X] Elastic Net (L1 + L2)
+- [X] Automatic internal data standardization (can be disabled)
+- [X] Weighted regressions (frequency and/or variance weights)
 - [X] Non-canonical link functions
-- [X] Goodness-of-fit tests
-- [X] P-values for model and covariates (with the `stats` feature)
+- [X] Fit statistics (see documentation on `Fit` struct)
+  - [X] Redisuals
+    - [X] Response
+    - [X] Pearson
+    - [X] Deviance
+    - [X] Standardized variants
+    - [X] Studentized
+  - [X] Coefficient covariance matrix
+  - [X] Dispersion (for families with free dispersion)
+  - [X] Leave-one-out (LOO) computations
+    - [X] One-step approximations
+    - [X] Exact re-fits
+    - [X] Residuals
+    - [X] Coefficients
+  - [X] Information criteria
+  - [X] Model significance
+    - [X] Wald test
+    - [X] Score test
+    - [X] Likelihood ratio test
+  - [X] P-values for model and covariates (with the `stats` feature)
+  - [X] ... and others
 
 ## Troubleshooting
 

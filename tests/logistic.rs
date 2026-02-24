@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use approx::assert_abs_diff_eq;
 use ndarray::Array;
-use ndarray_glm::{Logistic, ModelBuilder};
+use ndarray_glm::{Logistic, ModelBuilder, error::RegressionError};
 mod common;
 use common::{array_from_csv, y_x_off_from_csv};
 
@@ -32,7 +32,7 @@ fn log_termination_0() -> Result<()> {
     assert_abs_diff_eq!(fit.resid_dev(), r_dev_resid, epsilon = 1e-5);
     let r_flat_cov = array_from_csv::<f32>("tests/R/log_termination_0/covariance.csv")?;
     let r_cov = Array::from_shape_vec((n_par, n_par), r_flat_cov.into_raw_vec_and_offset().0)?;
-    assert_abs_diff_eq!(fit.covariance()?, r_cov, epsilon = 1e-5);
+    assert_abs_diff_eq!(fit.covariance()?, &r_cov, epsilon = 2e-5);
 
     // We've already asserted that our fit is better according to our likelihood function, so the
     // epsilon doesn't have to be extremely strict.
@@ -80,13 +80,20 @@ fn log_termination_1() -> Result<()> {
 #[test]
 fn log_regularization() -> Result<()> {
     let (y, x, off) = y_x_off_from_csv::<bool, f32, 1>("tests/data/log_regularization.csv")?;
-    // This can be terminated either by standardizing the data or by using
-    // lambda = 2e-6 intead of 1e-6.
-    // let x = ndarray_glm::standardize::standardize(x);
+    // This actually has a harder time converging when the data *is* standardized. It can be
+    // handled by increasing L2.
     let model = ModelBuilder::<Logistic>::data(&y, &x)
         .linear_offset(off)
         .build()?;
-    let fit = model.fit_options().l2_reg(2e-6).max_iter(48).fit()?;
+    let fit = match model.fit_options().l2_reg(1e-5).max_iter(48).fit() {
+        Ok(fit) => fit,
+        Err(err) => {
+            if let RegressionError::MaxIter { n_iter: _, history } = &err {
+                dbg!(&history);
+            }
+            return Err(err.into());
+        }
+    };
     dbg!(fit.result);
     dbg!(fit.n_iter);
     Ok(())

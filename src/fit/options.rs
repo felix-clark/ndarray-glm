@@ -17,7 +17,7 @@ where
     M: Glm,
     F: Float,
 {
-    pub fn fit(self) -> RegressionResult<Fit<'a, M, F>> {
+    pub fn fit(self) -> RegressionResult<Fit<'a, M, F>, F> {
         M::regression(self.model, self.options)
     }
 
@@ -33,12 +33,25 @@ where
         self
     }
 
-    /// Use to set a L2 regularization parameter
+    /// Set the L2 (ridge) regularization penalty weight.
+    ///
+    /// NOTE: The fit is sensitive to the scale of the data under L2 regularization. By default,
+    /// the data and parameters are internally standardized so that the contributions from features
+    /// with low variances relative to their offsets are not overly suppressed. The reported
+    /// coefficients are transformed back to the scale of the data, so that they can be applied
+    /// directly to the input data. This default is the recommended approach, and should be
+    /// invisible to the user.
+    ///
+    /// To disable this internal regularization, use
+    /// [`crate::model::ModelBuilderData::no_standardize`].
     pub fn l2_reg(mut self, l2: F) -> Self {
         self.options.l2 = l2;
         self
     }
 
+    /// Set the L1 (lasso) regularization penalty weight.
+    ///
+    /// L1 regularization incurs the same scale sensitivity as L2 regularization.
     pub fn l1_reg(mut self, l1: F) -> Self {
         self.options.l1 = l1;
         self
