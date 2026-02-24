@@ -1103,6 +1103,12 @@ mod tests {
             .linear_offset(lin_off)
             .build()?;
         let fit_std = model_std.fit()?;
+        assert_abs_diff_eq!(&fit.result, &fit_std.result, epsilon = 4.0 * f64::EPSILON);
+        assert_abs_diff_eq!(
+            fit.covariance()?,
+            fit_std.covariance()?,
+            epsilon = 0.01 * f32::EPSILON as f64
+        );
         let lr = fit.lr_test();
         let lr_std = fit_std.lr_test();
         assert_abs_diff_eq!(lr, lr_std, epsilon = 4.0 * f64::EPSILON);
@@ -1146,6 +1152,12 @@ mod tests {
             fit_std.pvalue_exact()?,
             epsilon = 0.01 * f32::EPSILON as f64
         );
+
+        // Ensure that the score and fisher functions are identical even when evaluated at another
+        // point. The fit results are near [0.5, 0.5], so pick somewhere not too close.
+        let other = array![-0.5, 2.0];
+        assert_abs_diff_eq!(fit.score(other.clone()), fit_std.score(other.clone()));
+        assert_abs_diff_eq!(fit.fisher(&other), fit_std.fisher(&other.clone()));
 
         Ok(())
     }
