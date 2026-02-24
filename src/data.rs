@@ -32,21 +32,6 @@ impl<F> Dataset<F>
 where
     F: Float,
 {
-    /// Returns the linear predictors for unstandardized (external) parameters.
-    pub(crate) fn linear_predictor_ext(&self, beta: Array1<F>) -> Array1<F> {
-        let regressors = match &self.standardizer {
-            Some(std) => {
-                if self.has_intercept {
-                    std.transform_coefficients(beta)
-                } else {
-                    std.transform_coefficients_no_int(beta)
-                }
-            }
-            None => beta,
-        };
-        self.linear_predictor_std(&regressors)
-    }
-
     /// Returns the linear predictors, i.e. the design matrix multiplied by the
     /// regression parameters. Each entry in the resulting array is the linear
     /// predictor for a given observation. If linear offsets for each
