@@ -206,7 +206,11 @@ where
 
         // Indicates if the likelihood change is small, within tolerance, even if it is not
         // positive.
-        let small_delta_like = small_delta(next_like_obj, last_like_obj, self.options.tol);
+        let small_delta_like = small_delta(
+            next_like_obj,
+            last_like_obj,
+            self.options.tol * F::from(self.data.y.len()).unwrap(),
+        );
 
         // If the parameters have changed significantly but the likelihood hasn't improved,
         // step halving needs to be engaged. The parameter delta should probably ideally be
@@ -263,7 +267,11 @@ where
             return None;
         }
 
-        let small_delta_like = small_delta(next_like, last_like, self.options.tol);
+        let small_delta_like = small_delta(
+            next_like,
+            last_like,
+            self.options.tol * F::from(self.data.y.len()).unwrap(),
+        );
         let small_delta_guess = small_delta_vec(&next_guess, &self.guess, self.options.tol);
         if small_delta_like && small_delta_guess {
             self.done = true;
@@ -277,8 +285,7 @@ fn small_delta<F>(new: F, old: F, tol: F) -> bool
 where
     F: Float,
 {
-    let rel = (new - old) / (F::epsilon() + num_traits::Float::abs(new));
-    num_traits::Float::abs(rel) <= tol
+    num_traits::Float::abs(new - old) <= tol
 }
 
 fn small_delta_vec<F>(new: &Array1<F>, old: &Array1<F>, tol: F) -> bool
