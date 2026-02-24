@@ -2,114 +2,9 @@ use anyhow::Result;
 
 use approx::assert_abs_diff_eq;
 use ndarray::Array;
-use ndarray_glm::{Linear, Logistic, ModelBuilder};
+use ndarray_glm::{Linear, ModelBuilder};
 mod common;
-use common::{array_from_csv, load_linear_weights_data, y_x_off_from_csv};
-
-#[test]
-fn logistic_weights() -> Result<()> {
-    let (y, x, wts) = y_x_off_from_csv::<bool, f32, 2>("tests/data/log_weights.csv")?;
-    let model = ModelBuilder::<Logistic>::data(&y, &x)
-        .var_weights(wts.clone())
-        .build()?;
-    let fit = model.fit()?;
-
-    let eps: f32 = 1e-4;
-
-    let n_par = fit.result.len();
-    let n_obs = y.len();
-
-    let r_result = array_from_csv::<f32>("tests/R/log_weights/coefficients.csv")?;
-    // NOTE: R result only seems good to a few decimal points
-    assert_abs_diff_eq!(&fit.result, &r_result, epsilon = eps);
-    assert!(
-        fit.lr_test_against(&r_result) >= 0.,
-        "make sure our fit is at least as good as R's"
-    );
-
-    // check parameter covariance function
-    let r_flat_cov = array_from_csv::<f32>("tests/R/log_weights/covariance.csv")?;
-    let r_cov = Array::from_shape_vec((n_par, n_par), r_flat_cov.into_raw_vec_and_offset().0)?;
-    assert_abs_diff_eq!(fit.covariance()?, &r_cov, epsilon = eps);
-
-    // total deviance uses the weights
-    let r_dev = array_from_csv::<f32>("tests/R/log_weights/deviance.csv")?[0];
-    assert_abs_diff_eq!(fit.deviance(), r_dev, epsilon = 0.1 * eps);
-
-    let r_null_dev = array_from_csv::<f32>("tests/R/log_weights/null_dev.csv")?[0];
-    assert_abs_diff_eq!(fit.lr_test(), r_null_dev - r_dev, epsilon = 0.1 * eps);
-
-    // Residuals should be orthogonal to the hat matrix
-    // Our convention of the hat matrix is orthogonal to the response residuals
-    let hat_mat = fit.hat()?;
-    assert_abs_diff_eq!(
-        hat_mat.dot(&fit.resid_resp()),
-        Array::zeros(y.len()),
-        epsilon = 0.1 * eps,
-    );
-
-    let hat = fit.leverage()?;
-    let r_hat = array_from_csv::<f32>("tests/R/log_weights/hat.csv")?;
-    assert_abs_diff_eq!(hat, r_hat, epsilon = eps);
-
-    let r_resid_pear = array_from_csv::<f32>("tests/R/log_weights/pearson_resid.csv")?;
-    assert_abs_diff_eq!(*fit.resid_pear(), r_resid_pear, epsilon = eps);
-
-    // Again we have a discrepancy between frequency and variance weights
-    let r_resid_dev = array_from_csv::<f32>("tests/R/log_weights/dev_resid.csv")?;
-    assert_abs_diff_eq!(fit.resid_dev(), r_resid_dev, epsilon = eps);
-
-    // studentized residuals use the leverage, which depends on the weights
-    let r_stand_resid_pear =
-        array_from_csv::<f32>("tests/R/log_weights/standard_pearson_resid.csv")?;
-    let r_stand_resid_dev =
-        array_from_csv::<f32>("tests/R/log_weights/standard_deviance_resid.csv")?;
-    assert_abs_diff_eq!(fit.resid_pear_std()?, r_stand_resid_pear, epsilon = eps);
-    assert_abs_diff_eq!(fit.resid_dev_std()?, r_stand_resid_dev, epsilon = eps);
-    // R's rstudent.glm() doesn't seem to be as precise as our approximation. In this example, most
-    // values are close but at least one is off by ~20%. Just skip this one here.
-    // let r_stud_resid = array_from_csv::<f32>("tests/R/log_weights/student_resid.csv")?;
-    // assert_abs_diff_eq!(fit.resid_student()?, r_stud_resid, epsilon = eps);
-
-    // // These match in the unweighted case, but not the weighted one.
-    // The difference between weighted/unweighted is the odd part.
-    let r_aic = array_from_csv::<f32>("tests/R/log_weights/aic.csv")?[0];
-    // With the sum of the log weights, these are pretty close, but not to FPE.
-    assert_abs_diff_eq!(fit.aic(), r_aic, epsilon = 0.2);
-    // let r_bic = array_from_csv::<f32>("tests/R/log_weights/bic.csv")?[0];
-    // assert_eq!(fit.bic(), r_bic);
-
-    // check the leave-one-out influence coefficients
-    // Probably only accurate to within O(1/n_obs).
-    // R's method is inexact as well, and it does not match ours, even when unweighted.
-    // We'll check with a large epsilon, but the difference may be worth investigating further.
-    let r_loo = array_from_csv::<f32>("tests/R/log_weights/loo_coef.csv")?;
-    let r_loo = Array::from_shape_vec((n_obs, n_par), r_loo.into_raw_vec_and_offset().0)?;
-
-    let loo_exact = fit.loo_exact()?;
-    let infl_exact = &fit.result - &loo_exact;
-    let infl_loo = fit.infl_coef()?;
-
-    // The influence results from R seem much worse than ours. Check that the errors are usually
-    // lower, component-wise.
-    let r_diff = infl_exact.clone() - r_loo.clone();
-    let loo_diff = infl_exact.clone() - infl_loo.clone();
-    let all_better = loo_diff.mapv(|x| x.abs()) - r_diff.mapv(|x| x.abs());
-    // In this case, one of the entries is positive.
-    let num_positive = all_better.into_iter().filter(|&x| x > 0.).count();
-    dbg!(num_positive);
-    assert!(num_positive < 5, "Allowing only four worse elements");
-    // R's coefficients seem to be further away from exact than our own. In fact, they seem quite
-    // far off.
-    // assert_abs_diff_eq!(infl_exact, r_loo, epsilon = eps);
-    // let infl_diff = fit.infl_coef()? - &r_loo;
-    // This passes instead, but this epsilon is rather huge:
-    // assert_abs_diff_eq!(infl_loo, r_loo, epsilon = 0.5);
-    // This is close-ish, but not expected to be exact.
-    // assert_abs_diff_eq!(infl_loo, infl_exact, epsilon = eps);
-
-    Ok(())
-}
+use common::{array_from_csv, load_linear_data};
 
 // --- Linear model weight test suite ---
 
@@ -125,7 +20,7 @@ fn check_linear_scenario(
     has_var_weights: bool,
     has_freq_weights: bool,
 ) -> Result<()> {
-    let r = |name: &str| array_from_csv::<f64>(&format!("tests/R/linear_weights/{dir}/{name}.csv"));
+    let r = |name: &str| array_from_csv::<f64>(&format!("tests/R/linear_results/{dir}/{name}.csv"));
 
     let n_par = fit.result.len();
     let n_obs = 25usize; // original observations
@@ -257,7 +152,7 @@ fn check_linear_scenario(
 
 #[test]
 fn linear_no_weights() -> Result<()> {
-    let (y, x, _var_wt, _freq_wt) = load_linear_weights_data()?;
+    let (y, x, _var_wt, _freq_wt) = load_linear_data()?;
     let model = ModelBuilder::<Linear>::data(&y, &x).build()?;
     let fit = model.fit()?;
     check_linear_scenario(&fit, "none", 1e-10, false, false)
@@ -265,7 +160,7 @@ fn linear_no_weights() -> Result<()> {
 
 #[test]
 fn linear_var_weights() -> Result<()> {
-    let (y, x, var_wt, _freq_wt) = load_linear_weights_data()?;
+    let (y, x, var_wt, _freq_wt) = load_linear_data()?;
     let model = ModelBuilder::<Linear>::data(&y, &x)
         .var_weights(var_wt)
         .build()?;
@@ -275,7 +170,7 @@ fn linear_var_weights() -> Result<()> {
 
 #[test]
 fn linear_freq_weights() -> Result<()> {
-    let (y, x, _var_wt, freq_wt) = load_linear_weights_data()?;
+    let (y, x, _var_wt, freq_wt) = load_linear_data()?;
     let model = ModelBuilder::<Linear>::data(&y, &x)
         .freq_weights(freq_wt)
         .build()?;
@@ -285,68 +180,13 @@ fn linear_freq_weights() -> Result<()> {
 
 #[test]
 fn linear_both_weights() -> Result<()> {
-    let (y, x, var_wt, freq_wt) = load_linear_weights_data()?;
+    let (y, x, var_wt, freq_wt) = load_linear_data()?;
     let model = ModelBuilder::<Linear>::data(&y, &x)
         .var_weights(var_wt)
         .freq_weights(freq_wt)
         .build()?;
     let fit = model.fit()?;
     check_linear_scenario(&fit, "both", 1e-10, true, true)
-}
-
-#[test]
-fn linear_ridge() -> Result<()> {
-    let (y, x, _var_wt, _freq_wt) = load_linear_weights_data()?;
-    let model = ModelBuilder::<Linear>::data(&y, &x).build()?;
-    let fit_unreg = model.fit()?;
-
-    let model = ModelBuilder::<Linear>::data(&y, &x).build()?;
-    let fit = model.fit_options().l2_reg(0.1).fit()?;
-
-    // Ridge should converge
-    assert!(fit.n_iter <= 32, "Ridge should converge");
-
-    // Ridge likelihood should be >= unregularized when evaluated with the regularizer
-    // (the regularized fit maximizes the penalized likelihood)
-    assert!(
-        fit.lr_test_against(&fit_unreg.result) >= 0.,
-        "Ridge fit should be at least as good under its own penalized likelihood"
-    );
-
-    // Coefficients should be shrunk toward zero compared to OLS
-    let ridge_norm: f64 = fit.result.mapv(|x| x * x).sum();
-    let ols_norm: f64 = fit_unreg.result.mapv(|x| x * x).sum();
-    assert!(
-        ridge_norm < ols_norm,
-        "Ridge coefficients should have smaller L2 norm"
-    );
-
-    Ok(())
-}
-
-#[test]
-fn linear_ridge_var_weights() -> Result<()> {
-    let (y, x, var_wt, _freq_wt) = load_linear_weights_data()?;
-    let model = ModelBuilder::<Linear>::data(&y, &x)
-        .var_weights(var_wt.clone())
-        .build()?;
-    let fit_unreg = model.fit()?;
-
-    let model = ModelBuilder::<Linear>::data(&y, &x)
-        .var_weights(var_wt)
-        .build()?;
-    let fit = model.fit_options().l2_reg(0.1).fit()?;
-
-    assert!(fit.n_iter <= 32, "Ridge with var weights should converge");
-
-    let ridge_norm: f64 = fit.result.mapv(|x| x * x).sum();
-    let ols_norm: f64 = fit_unreg.result.mapv(|x| x * x).sum();
-    assert!(
-        ridge_norm < ols_norm,
-        "Ridge coefficients should have smaller L2 norm"
-    );
-
-    Ok(())
 }
 
 // --- Linear model with offset and no intercept ---
@@ -359,7 +199,7 @@ fn offset_from_x(x: &ndarray::Array2<f64>) -> ndarray::Array1<f64> {
 
 #[test]
 fn linear_offset_noint_no_weights() -> Result<()> {
-    let (y, x, _var_wt, _freq_wt) = load_linear_weights_data()?;
+    let (y, x, _var_wt, _freq_wt) = load_linear_data()?;
     let off = offset_from_x(&x);
     // Fit y ~ x2 + x3 - 1 with offset = 0.3*x1
     let x_sub = x.slice(ndarray::s![.., 1..]).to_owned();
@@ -373,7 +213,7 @@ fn linear_offset_noint_no_weights() -> Result<()> {
 
 #[test]
 fn linear_offset_noint_var_weights() -> Result<()> {
-    let (y, x, var_wt, _freq_wt) = load_linear_weights_data()?;
+    let (y, x, var_wt, _freq_wt) = load_linear_data()?;
     let off = offset_from_x(&x);
     let x_sub = x.slice(ndarray::s![.., 1..]).to_owned();
     let model = ModelBuilder::<Linear>::data(&y, &x_sub)
@@ -387,7 +227,7 @@ fn linear_offset_noint_var_weights() -> Result<()> {
 
 #[test]
 fn linear_offset_noint_freq_weights() -> Result<()> {
-    let (y, x, _var_wt, freq_wt) = load_linear_weights_data()?;
+    let (y, x, _var_wt, freq_wt) = load_linear_data()?;
     let off = offset_from_x(&x);
     let x_sub = x.slice(ndarray::s![.., 1..]).to_owned();
     let model = ModelBuilder::<Linear>::data(&y, &x_sub)
@@ -401,7 +241,7 @@ fn linear_offset_noint_freq_weights() -> Result<()> {
 
 #[test]
 fn linear_offset_noint_both_weights() -> Result<()> {
-    let (y, x, var_wt, freq_wt) = load_linear_weights_data()?;
+    let (y, x, var_wt, freq_wt) = load_linear_data()?;
     let off = offset_from_x(&x);
     let x_sub = x.slice(ndarray::s![.., 1..]).to_owned();
     let model = ModelBuilder::<Linear>::data(&y, &x_sub)
@@ -412,57 +252,6 @@ fn linear_offset_noint_both_weights() -> Result<()> {
         .build()?;
     let fit = model.fit()?;
     check_linear_scenario(&fit, "off_both", 1e-10, true, true)
-}
-
-#[test]
-fn linear_lasso() -> Result<()> {
-    let (y, x, _var_wt, _freq_wt) = load_linear_weights_data()?;
-    let model = ModelBuilder::<Linear>::data(&y, &x).build()?;
-    let fit_unreg = model.fit()?;
-
-    let model = ModelBuilder::<Linear>::data(&y, &x).build()?;
-    let fit = model.fit_options().l1_reg(0.1).fit()?;
-
-    assert!(fit.n_iter <= 64, "Lasso should converge");
-
-    // L1 should shrink coefficients
-    let lasso_norm: f64 = fit.result.iter().map(|x| x.abs()).sum();
-    let ols_norm: f64 = fit_unreg.result.iter().map(|x| x.abs()).sum();
-    assert!(
-        lasso_norm < ols_norm,
-        "Lasso coefficients should have smaller L1 norm"
-    );
-
-    Ok(())
-}
-
-#[test]
-fn linear_elastic_net() -> Result<()> {
-    let (y, x, _var_wt, _freq_wt) = load_linear_weights_data()?;
-    let model = ModelBuilder::<Linear>::data(&y, &x).build()?;
-    let fit_unreg = model.fit()?;
-
-    let model = ModelBuilder::<Linear>::data(&y, &x).build()?;
-    let fit = model.fit_options().l1_reg(0.05).l2_reg(0.05).fit()?;
-
-    assert!(fit.n_iter <= 64, "Elastic net should converge");
-
-    // Should shrink both norms
-    let en_l1: f64 = fit.result.iter().map(|x| x.abs()).sum();
-    let ols_l1: f64 = fit_unreg.result.iter().map(|x| x.abs()).sum();
-    assert!(
-        en_l1 < ols_l1,
-        "Elastic net coefficients should have smaller L1 norm"
-    );
-
-    let en_l2: f64 = fit.result.mapv(|x| x * x).sum();
-    let ols_l2: f64 = fit_unreg.result.mapv(|x| x * x).sum();
-    assert!(
-        en_l2 < ols_l2,
-        "Elastic net coefficients should have smaller L2 norm"
-    );
-
-    Ok(())
 }
 
 #[test]
