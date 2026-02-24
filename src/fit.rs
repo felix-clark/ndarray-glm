@@ -790,16 +790,20 @@ where
     }
 
     /// Returns the score function $`\nabla_{\boldsymbol\beta} l`$ (the gradient of the
-    /// log-likelihood) at the parameter values given. Should be zero at the MLE.
-    pub fn score(&self, params: &Array1<F>) -> Array1<F> {
-        // This represents the predictions given the input parameters, not the
-        // fit parameters.
-        let lin_pred: Array1<F> = self.data.linear_predictor_ext(params.clone());
+    /// regularized log-likelihood) at the parameter values given. Should be zero at the MLE.
+    /// The input and output are in the external (unstandardized) parameter space.
+    pub fn score(&self, params: Array1<F>) -> Array1<F> {
+        // Compute in the internal (standardized) basis so the regularization gradient is applied
+        // to the correct parameters, then transform the result back to external coordinates via
+        // score_ext = J^T score_int where J = d(beta_std)/d(beta_ext).
+        let params_std = self.data.transform_beta(params);
+        let lin_pred: Array1<F> = self.data.linear_predictor_std(&params_std);
         let mu: Array1<F> = M::mean(&lin_pred);
         let resid_response = &self.data.y - mu;
         let resid_working = M::Link::adjust_errors(resid_response, &lin_pred);
-        let score_unreg = self.data.x_conj_ext().dot(&resid_working);
-        self.reg.as_ref().gradient(score_unreg, params)
+        let score_int = self.data.x_conj().dot(&resid_working);
+        let score_int_reg = self.reg.as_ref().gradient(score_int, &params_std);
+        self.data.inverse_transform_score(score_int_reg)
     }
 
     /// Returns the score test statistic:
