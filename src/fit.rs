@@ -956,8 +956,13 @@ where
         };
         // Start with the non-excluded parameters at the values from the main fit.
         let init_guess = if is_intercept {
+            // For the intercept term, we need to use the original unscaled data, or else the
+            // transformation mixes the intercept with the other terms. This number is supposed to
+            // represent the model deviance from excluding the *external* intercept term.
             self.result.slice(s![1..]).to_owned()
         } else {
+            // The data is already standardized in the non-intercept case, so we should start the
+            // the standardized parameters, removing the covariate of interest.
             concatenate![
                 Axis(0),
                 self.result_std.slice(s![..i]),
