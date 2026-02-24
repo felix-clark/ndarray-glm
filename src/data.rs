@@ -1,5 +1,5 @@
 //! Structs and utilities to represent input fit data.
-use crate::{glm::Glm, num::Float};
+use crate::num::Float;
 use ndarray::{Array1, Array2, ArrayView2, Axis, concatenate, s};
 use num_traits::{FromPrimitive, One};
 use std::ops::{AddAssign, DivAssign, MulAssign};
