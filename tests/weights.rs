@@ -183,7 +183,7 @@ fn check_linear_scenario(
 
         // --- Pearson residuals ---
         let r_resid_pear = r("resid_pear")?;
-        assert_abs_diff_eq!(fit.resid_pear(), r_resid_pear, epsilon = eps);
+        assert_abs_diff_eq!(*fit.resid_pear(), r_resid_pear, epsilon = eps);
 
         // --- Deviance residuals ---
         let r_resid_dev = r("resid_dev")?;
