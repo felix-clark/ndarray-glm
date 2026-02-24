@@ -1436,7 +1436,29 @@ mod tests {
         assert_abs_diff_eq!(lr, wald, epsilon = eps);
         assert_abs_diff_eq!(lr, score, epsilon = eps);
         // The score vector should be zero at the minimum
-        assert_abs_diff_eq!(fit.score(&fit.result), array![0., 0.], epsilon = eps,);
+        assert_abs_diff_eq!(fit.score(fit.result.clone()), array![0., 0.], epsilon = eps,);
+        Ok(())
+    }
+
+    // The score should be zero at the MLE even with L2 regularization and internal standardization.
+    #[test]
+    fn score_zero_at_mle_regularized() -> Result<()> {
+        let data_y = array![-0.3, -0.1, 0.0, 0.2, 0.4, 0.5, 0.8, 0.8, 1.1];
+        let data_x = array![-0.5, -0.2, 0.1, 0.2, 0.5, 0.6, 0.7, 0.9, 1.3].insert_axis(Axis(1));
+        let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
+        let fit = model.fit_options().l2_reg(0.1).fit()?;
+        let eps = 1e-8;
+        assert_abs_diff_eq!(fit.score(fit.result.clone()), array![0., 0.], epsilon = eps);
+        // Also check with standardization disabled
+        let model_nostd = ModelBuilder::<Linear>::data(&data_y, &data_x)
+            .no_standardize()
+            .build()?;
+        let fit_nostd = model_nostd.fit_options().l2_reg(0.1).fit()?;
+        assert_abs_diff_eq!(
+            fit_nostd.score(fit_nostd.result.clone()),
+            array![0., 0.],
+            epsilon = eps
+        );
         Ok(())
     }
 
