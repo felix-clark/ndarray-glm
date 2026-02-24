@@ -220,17 +220,18 @@ where
         // Terminate if the difference is close to zero and the parameters haven't changed
         // significantly.
         if small_delta_like && small_delta_guess {
+            self.done = true;
             // If this guess is an improvement then go ahead and return it, but
             // quit early on the next iteration. The equivalence with zero is
             // necessary in order to return a value when the iteration starts at
             // the best guess. This comparison includes zero so that the
             // iteration terminates if the likelihood hasn't changed at all.
-            if next_like_obj >= last_like_obj {
-                // assert_eq!(next_like_obj, last_like_obj); // this should still hold
-                self.done = true;
-                return Some(self.step_with(next_guess, next_like_data));
-            }
-            return None;
+            return if next_like_obj >= last_like_obj {
+                // assert_eq!(next_like_obj, last_like_obj); // this should still hold (?)
+                Some(self.step_with(next_guess, next_like_data))
+            } else {
+                None
+            };
         }
 
         // Don't go through step halving if the regularization isn't convergent
