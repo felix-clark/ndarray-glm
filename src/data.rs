@@ -143,6 +143,8 @@ where
     }
 
     /// Returns the weighted transpose of the feature data
+    /// TODO: Consider making this weighted-conjugate operation separate from the x data, so it can
+    /// be applied in multiple places (e.g. x_conj_ext())
     pub(crate) fn x_conj(&self) -> Array2<F> {
         let xt = self.x.t().to_owned();
         let xt = match &self.freqs {
