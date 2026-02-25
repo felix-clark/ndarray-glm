@@ -211,89 +211,67 @@ where
         let last_like_obj = self.last_like_data + self.reg.irls_like(&self.guess);
         let next_like_obj = next_like_data + self.reg.irls_like(&next_guess);
 
-        // NOTE: might be optimizable by not checking the likelihood until step
-        // = next_guess - &self.guess stops decreasing. There could be edge
-        // cases that lead to poor convergence.
-        // Ideally we could only check the step difference but that might not be
-        // as stable. Some parameters might be at different scales.
-
-        // If this guess is a strict improvement, return it immediately.
-        if next_like_obj > last_like_obj {
+        // If the regularization isn't convergent (which should only happen with ADMM in
+        // L1/ElasticNet), precision tolerance checks don't matter and we should continue on with
+        // the iteration.
+        if !self.reg.terminate_ok(self.options.tol) {
             return Some(self.step_with(next_guess, next_like_data));
         }
 
-        // Some tolerances should scale with the size of the dataset, so store it here.
-        let n_obs = F::from(self.data.y.len()).unwrap();
-
-        // Indicates if the likelihood change is small, within tolerance, even if it is not
-        // positive.
-        let small_delta_like = small_delta(next_like_obj, last_like_obj, self.options.tol * n_obs);
-
-        // If the parameters have changed significantly but the likelihood hasn't improved,
-        // step halving needs to be engaged. The parameter delta should probably ideally be
-        // tested using the spread of the covariate data, but in principle the data can be
-        // standardized so this will just compare to the raw tolerance.
-        let small_delta_guess = small_delta_vec(&next_guess, &self.guess, self.options.tol);
-
-        // Terminate if the difference is close to zero and the parameters haven't changed
-        // significantly.
-        if small_delta_like && small_delta_guess {
-            self.done = true;
-            // If this guess is an improvement then go ahead and return it, but
-            // quit early on the next iteration. The equivalence with zero is
-            // necessary in order to return a value when the iteration starts at
-            // the best guess. This comparison includes zero so that the
-            // iteration terminates if the likelihood hasn't changed at all.
-            return if next_like_obj >= last_like_obj {
-                // assert_eq!(next_like_obj, last_like_obj); // this should still hold (?)
-                Some(self.step_with(next_guess, next_like_data))
-            } else {
-                None
-            };
+        // If the next guess is literally equal to the last, then additional IRLS or step-halving
+        // procedures won't get use anywhere further.
+        // This should be true even under ADMM, given that it's converged per the previous check.
+        // This will fire if the optimum is passed in as the initial guess, in which case the
+        // iteration will have length zero and the GLM regression function will query this IRLS
+        // object for its initial step object.
+        if next_guess == self.guess {
+            return None;
         }
 
-        // Don't go through step halving if the regularization isn't convergent
-        if !self.reg.terminate_ok(self.options.tol) {
+        // Terminate when both the likelihood change and the parameter step are within tolerance.
+        // This check comes before the strict-improvement shortcut so that problems where every
+        // step is a tiny improvement (e.g. logistic with y = p_true) converge rather than
+        // exhausting max_iter.
+        // If ADMM hasn't converged, we've already iterated to the next step, so we don't need to
+        // check self.reg.terminate_ok() again.
+        let n_obs = F::from(self.data.y.len()).unwrap();
+        if small_delta(next_like_obj, last_like_obj, self.options.tol * n_obs)
+            && small_delta_vec(&next_guess, &self.guess, self.options.tol)
+        {
+            self.done = true;
+        }
+
+        // If this guess is a strict improvement, continue. If we're within convergence tolerance
+        // at this stage, this will be the last step.
+        if next_like_obj > last_like_obj {
             return Some(self.step_with(next_guess, next_like_data));
         }
 
         // apply step halving if the new likelihood is the same or worse as the previous guess.
         // NOTE: It's difficult to engage the step halving because it's rarely necessary, so this
         // part of the algorithm is undertested. It may be more common using L1 regularization.
+        // next_guess != self.guess because we've already checked that case above.
         let f_step = |x: F| {
             let b = &next_guess * x + &self.guess * (F::one() - x);
             // The augmented and unaugmented checks should be close to equivalent at this point
             // because the regularization has reported that the internals have converged via
             // `terminate_ok()`. Since we are potentially finding the final best guess, look for
             // the best model likelihood in the step search.
+            // NOTE: It's possible there are some edge cases with an inconsistency, given that the
+            // checks above use the augmented likelihood and this checks directly.
             M::log_like(self.data, &b) + self.reg.likelihood(&b) // unaugmented
             // M::log_like(self.data, &b) + self.reg.irls_like(&b) // augmented
         };
         let beta_tol_factor = num_traits::Float::sqrt(self.guess.mapv(|b| F::one() + b * b).sum());
         let step_mult: F = step_scale(&f_step, beta_tol_factor * self.options.tol);
-        // NOTE: At this point in time, step_scale should never return 0, so this comparison is
-        // useless. If that changes, this check should be re-evaluated.
-        // if step_mult.is_zero() {
-        //     // can't find a better minimum if the step multiplier returns zero
-        //     return None;
-        // }
-        // If step_mult == 1, that means the guess is a good one according to the un-augmented
-        // regularized likelihood, so go ahead and use it.
+        if step_mult.is_zero() {
+            // can't find a strictly better minimum if the step multiplier returns zero
+            return None;
+        }
 
         // If the step multiplier is not zero, it found a better guess
         let next_guess = &next_guess * step_mult + &self.guess * (F::one() - step_mult);
         let next_like_data = M::log_like(self.data, &next_guess);
-        let next_like = M::log_like(self.data, &next_guess) + self.reg.likelihood(&next_guess);
-        let last_like = self.last_like_data + self.reg.likelihood(&self.guess);
-        if next_like < last_like {
-            return None;
-        }
-
-        let small_delta_like = small_delta(next_like, last_like, self.options.tol * n_obs);
-        let small_delta_guess = small_delta_vec(&next_guess, &self.guess, self.options.tol);
-        if small_delta_like && small_delta_guess {
-            self.done = true;
-        }
 
         Some(self.step_with(next_guess, next_like_data))
     }
@@ -376,17 +354,19 @@ fn step_scale<F: Float>(f: &dyn Fn(F) -> F, tol: F) -> F {
 
     let zero: F = F::zero();
     let one: F = F::one();
-    // `scale = 0.5` should also work, but using the golden ratio is prettier.
+    // `scale = 0.5` should also work, but using the golden ratio is prettier and might be less
+    // likely to fail in pathological cases.
     let scale = F::from(0.618033988749894).unwrap();
     let mut x: F = one;
     let f0: F = f(zero);
 
+    // start at scale < 1, since 1 has already been checked.
     while x > tol {
+        x *= scale;
         let fx = f(x);
         if fx > f0 {
             return x;
         }
-        x *= scale;
     }
 
     // If f(1) > f(0), then an improvement has already been found. However, if the optimization is
@@ -400,5 +380,6 @@ fn step_scale<F: Float>(f: &dyn Fn(F) -> F, tol: F) -> F {
         return -scale;
     }
 
-    x
+    // Nothing checked has been an improvement, so return zero.
+    F::zero()
 }
