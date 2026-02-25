@@ -57,10 +57,6 @@ fn log_termination_0() -> Result<()> {
     let r_null_dev = array_from_csv::<f32>("tests/R/log_termination_0/null_dev.csv")?[0];
     assert_abs_diff_eq!(fit.lr_test(), r_null_dev - r_dev, epsilon = eps);
 
-    // dbg!(fit.score_test()?);
-    // dbg!(fit.lr_test());
-    // dbg!(fit.wald_test());
-
     Ok(())
 }
 
@@ -71,9 +67,7 @@ fn log_termination_1() -> Result<()> {
     let model = ModelBuilder::<Logistic>::data(&y, &x)
         .linear_offset(off)
         .build()?;
-    let fit = model.fit()?;
-    dbg!(fit.result);
-    dbg!(fit.n_iter);
+    let _fit = model.fit()?;
     Ok(())
 }
 
@@ -85,7 +79,7 @@ fn log_regularization() -> Result<()> {
     let model = ModelBuilder::<Logistic>::data(&y, &x)
         .linear_offset(off)
         .build()?;
-    let fit = match model.fit_options().l2_reg(1e-5).fit() {
+    let _ = match model.fit_options().l2_reg(1e-5).fit() {
         Ok(fit) => fit,
         Err(err) => {
             if let RegressionError::MaxIter { n_iter: _, history } = &err {
@@ -94,8 +88,6 @@ fn log_regularization() -> Result<()> {
             return Err(err.into());
         }
     };
-    dbg!(fit.result);
-    dbg!(fit.n_iter);
     Ok(())
 }
 
