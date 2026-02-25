@@ -791,11 +791,15 @@ where
     /// Returns the working residuals:
     ///
     /// ```math
-    /// e_i^\text{work} = \frac{\eta'(\omega_i)(y_i - \hat\mu_i)}{V(\hat\mu_i)}
+    /// e_i^\text{work} = g'(\hat\mu_i)\,(y_i - \hat\mu_i) = \frac{y_i - \hat\mu_i}{\eta'(\omega_i)\,V(\hat\mu_i)}
     /// ```
     ///
-    /// Equal to the response residuals divided by the variance function (as
-    /// opposed to the square root of the variance as in the Pearson residuals).
+    /// where $`g'(\mu)`$ is the derivative of the link function and $`\eta'(\omega)`$ is the
+    /// derivative of the natural parameter with respect to the linear predictor. For canonical
+    /// links $`\eta'(\omega) = 1`$, reducing this to $`(y_i - \hat\mu_i)/V(\hat\mu_i)`$.
+    ///
+    /// These can be interpreted as the residual differences mapped into the linear predictor space
+    /// of $`\omega = \mathbf{x}\cdot\boldsymbol{\beta}`$.
     pub fn resid_work(&self) -> Array1<F> {
         let lin_pred: Array1<F> = self.data.linear_predictor_std(&self.result_std);
         let mu: Array1<F> = self.y_hat.clone();
