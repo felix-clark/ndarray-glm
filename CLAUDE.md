@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Build (requires system OpenBLAS: libopenblas-dev on Debian, openblas on Arch)
-cargo build --features openblas-system
+cargo build --features openblas-system,stats
 
 # Run all tests (include stats to run p-value tests)
 cargo test --features openblas-system,stats
@@ -18,7 +18,7 @@ cargo test --features openblas-system,stats <test_name>
 cargo test --features openblas-system,stats --test <file_name>
 
 # Check without building (faster feedback)
-cargo check --features openblas-system
+cargo check --features openblas-system,stats
 ```
 
 A BLAS feature flag is always required. `openblas-system` is the standard choice for development.

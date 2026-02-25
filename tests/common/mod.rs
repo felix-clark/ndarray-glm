@@ -1,5 +1,5 @@
 //! Utility functions for testing
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use ndarray::{Array1, Array2};
 use num_traits::Float;
 use std::{
@@ -101,12 +101,56 @@ where
     Ok(x)
 }
 
+/// Load the logistic dataset: y_bool, y_float, x1, x2, x3, var_wt, freq_wt (with header row)
+#[cfg(test)]
+#[allow(dead_code)]
+#[allow(clippy::type_complexity)]
+pub fn load_logistic_data() -> Result<(
+    Array1<bool>,
+    Array1<f64>,
+    Array2<f64>,
+    Array1<f64>,
+    Array1<usize>,
+)> {
+    let file = File::open("tests/data/logistic.csv")?;
+    let reader = BufReader::new(file);
+    let mut y_bool_vec = Vec::new();
+    let mut y_float_vec = Vec::new();
+    let mut x_vec = Vec::new();
+    let mut var_wt_vec = Vec::new();
+    let mut freq_wt_vec = Vec::new();
+    for (i, line_result) in reader.lines().enumerate() {
+        let line = line_result?;
+        if i == 0 {
+            continue; // skip header
+        }
+        let cols: Vec<&str> = line.split(',').collect();
+        if cols.len() != 7 {
+            return Err(anyhow!("Expected 7 columns in logistic.csv"));
+        }
+        let bool_val: i32 = cols[0].trim().parse()?;
+        y_bool_vec.push(bool_val != 0);
+        y_float_vec.push(cols[1].trim().parse::<f64>()?);
+        x_vec.push(cols[2].trim().parse::<f64>()?);
+        x_vec.push(cols[3].trim().parse::<f64>()?);
+        x_vec.push(cols[4].trim().parse::<f64>()?);
+        var_wt_vec.push(cols[5].trim().parse::<f64>()?);
+        freq_wt_vec.push(cols[6].trim().parse::<f64>()? as usize);
+    }
+    let n = y_bool_vec.len();
+    let y_bool = Array1::from(y_bool_vec);
+    let y_float = Array1::from(y_float_vec);
+    let x = Array2::from_shape_vec((n, 3), x_vec)?;
+    let var_wt = Array1::from(var_wt_vec);
+    let freq_wt = Array1::from(freq_wt_vec);
+    Ok((y_bool, y_float, x, var_wt, freq_wt))
+}
+
 /// Load the linear dataset: y, x1, x2, x3, var_wt, freq_wt (with header row)
 #[cfg(test)]
 #[allow(dead_code)]
 #[allow(clippy::type_complexity)]
-pub fn load_linear_data() -> Result<(Array1<f64>, Array2<f64>, Array1<f64>, Array1<usize>)>
-{
+pub fn load_linear_data() -> Result<(Array1<f64>, Array2<f64>, Array1<f64>, Array1<usize>)> {
     let file = File::open("tests/data/linear.csv")?;
     let reader = BufReader::new(file);
     let mut y_vec = Vec::new();
