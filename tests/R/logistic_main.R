@@ -4,6 +4,11 @@
 
 options(digits = 17)
 
+# Use near-machine-precision convergence so reference targets are as accurate as possible.
+# R's default epsilon is 1e-8 (relative deviance change); we use 1e-14 to get close to
+# machine precision without the oscillation issues that arise at .Machine$double.eps.
+ctrl <- glm.control(epsilon = 1e-14, maxit = 10000)
+
 set.seed(99)
 n <- 30
 x1 <- rnorm(n)
@@ -125,42 +130,42 @@ export_scenario <- function(model, dir_name, orig_idx = NULL, model_no_int = NUL
 
 # --- Bool response scenarios ---
 
-m_bool_none <- glm(y_bool ~ x1 + x2 + x3, data = df, family = binomial())
-m_bool_none_noint <- glm(y_bool ~ x1 + x2 + x3 - 1, data = df, family = binomial())
+m_bool_none <- glm(y_bool ~ x1 + x2 + x3, data = df, family = binomial(), control = ctrl)
+m_bool_none_noint <- glm(y_bool ~ x1 + x2 + x3 - 1, data = df, family = binomial(), control = ctrl)
 export_scenario(m_bool_none, "logistic_results/bool_none",
                 model_no_int = m_bool_none_noint, pred_data = x_test)
 
-m_bool_var <- glm(y_bool ~ x1 + x2 + x3, data = df, family = binomial(), weights = var_wt)
-m_bool_var_noint <- glm(y_bool ~ x1 + x2 + x3 - 1, data = df, family = binomial(), weights = var_wt)
+m_bool_var <- glm(y_bool ~ x1 + x2 + x3, data = df, family = binomial(), weights = var_wt, control = ctrl)
+m_bool_var_noint <- glm(y_bool ~ x1 + x2 + x3 - 1, data = df, family = binomial(), weights = var_wt, control = ctrl)
 export_scenario(m_bool_var, "logistic_results/bool_var",
                 model_no_int = m_bool_var_noint, pred_data = x_test)
 
-m_bool_freq <- glm(y_bool ~ x1 + x2 + x3, data = df_exp, family = binomial())
-m_bool_freq_noint <- glm(y_bool ~ x1 + x2 + x3 - 1, data = df_exp, family = binomial())
+m_bool_freq <- glm(y_bool ~ x1 + x2 + x3, data = df_exp, family = binomial(), control = ctrl)
+m_bool_freq_noint <- glm(y_bool ~ x1 + x2 + x3 - 1, data = df_exp, family = binomial(), control = ctrl)
 export_scenario(m_bool_freq, "logistic_results/bool_freq", orig_idx,
                 model_no_int = m_bool_freq_noint, pred_data = x_test)
 
-m_bool_both <- glm(y_bool ~ x1 + x2 + x3, data = df_exp, family = binomial(), weights = var_wt)
-m_bool_both_noint <- glm(y_bool ~ x1 + x2 + x3 - 1, data = df_exp, family = binomial(), weights = var_wt)
+m_bool_both <- glm(y_bool ~ x1 + x2 + x3, data = df_exp, family = binomial(), weights = var_wt, control = ctrl)
+m_bool_both_noint <- glm(y_bool ~ x1 + x2 + x3 - 1, data = df_exp, family = binomial(), weights = var_wt, control = ctrl)
 export_scenario(m_bool_both, "logistic_results/bool_both", orig_idx,
                 model_no_int = m_bool_both_noint, pred_data = x_test)
 
 # bool_off: no intercept, offset = 0.5 * x1, fit y ~ x2 + x3 - 1
 off <- 0.5 * x1
-m_bool_off <- glm(y_bool ~ x2 + x3 - 1, offset = off, data = df, family = binomial())
+m_bool_off <- glm(y_bool ~ x2 + x3 - 1, offset = off, data = df, family = binomial(), control = ctrl)
 export_scenario(m_bool_off, "logistic_results/bool_off",
                 pred_data = x_test_sub, pred_off = off_test)
 
 # --- Float response scenarios (y in (0,1)) ---
 # R gives a "non-integer successes" warning; this is expected.
 
-m_float_none <- glm(y_float ~ x1 + x2 + x3, data = df, family = binomial())
-m_float_none_noint <- glm(y_float ~ x1 + x2 + x3 - 1, data = df, family = binomial())
+m_float_none <- glm(y_float ~ x1 + x2 + x3, data = df, family = binomial(), control = ctrl)
+m_float_none_noint <- glm(y_float ~ x1 + x2 + x3 - 1, data = df, family = binomial(), control = ctrl)
 export_scenario(m_float_none, "logistic_results/float_none",
                 model_no_int = m_float_none_noint, pred_data = x_test)
 
-m_float_var <- glm(y_float ~ x1 + x2 + x3, data = df, family = binomial(), weights = var_wt)
-m_float_var_noint <- glm(y_float ~ x1 + x2 + x3 - 1, data = df, family = binomial(), weights = var_wt)
+m_float_var <- glm(y_float ~ x1 + x2 + x3, data = df, family = binomial(), weights = var_wt, control = ctrl)
+m_float_var_noint <- glm(y_float ~ x1 + x2 + x3 - 1, data = df, family = binomial(), weights = var_wt, control = ctrl)
 export_scenario(m_float_var, "logistic_results/float_var",
                 model_no_int = m_float_var_noint, pred_data = x_test)
 
