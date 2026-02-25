@@ -45,6 +45,9 @@ export_scenario <- function(model, dir_name, orig_idx = NULL, model_no_int = NUL
   write(sub(residuals(model, type = "pearson")), file.path(dir_name, "resid_pear.csv"), ncolumns = 1)
   write(sub(residuals(model, type = "deviance")), file.path(dir_name, "resid_dev.csv"), ncolumns = 1)
   write(sub(residuals(model, type = "working")), file.path(dir_name, "resid_work.csv"), ncolumns = 1)
+  # Partial residuals: working_resid + predict(model, type="terms"). One column per predictor
+  # (intercept excluded). Written row-major: each row is one observation.
+  write(t(sub_mat(residuals(model, type = "partial"))), file.path(dir_name, "resid_partial.csv"), ncolumns = 1)
   write(sub(rstandard(model, type = "pearson")), file.path(dir_name, "resid_pear_std.csv"), ncolumns = 1)
   write(sub(rstandard(model, type = "deviance")), file.path(dir_name, "resid_dev_std.csv"), ncolumns = 1)
   write(sub(rstudent(model)), file.path(dir_name, "resid_student.csv"), ncolumns = 1)

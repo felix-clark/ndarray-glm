@@ -72,6 +72,21 @@ fn check_linear_scenario(
     let r_resid_work = r("resid_work")?;
     assert_abs_diff_eq!(fit.resid_work(), r_resid_work, epsilon = eps);
 
+    // --- Partial residuals ---
+    // One column per predictor (intercept excluded), row-major in the CSV.
+    let partial = fit.resid_part();
+    let n_feat = partial.ncols();
+    // Our library uses fully-weighted (variance × frequency) column means for centering, while R
+    // uses only frequency weights. Results agree when there are no variance weights, or when there
+    // is no intercept (no centering applied). Detect has_intercept by checking n_par vs n_feat.
+    let has_intercept = n_feat + 1 == n_par;
+    if !has_var_weights || !has_intercept {
+        let r_partial_flat = r("resid_partial")?;
+        let r_partial =
+            Array::from_shape_vec((n_obs, n_feat), r_partial_flat.into_raw_vec_and_offset().0)?;
+        assert_abs_diff_eq!(partial, r_partial, epsilon = eps);
+    }
+
     if !has_freq_weights {
         // Per-observation quantities that depend on leverage (which has different semantics
         // under frequency weights due to row duplication in R vs. freq weighting in our library)
