@@ -20,7 +20,7 @@ p_true <- 1 / (1 + exp(-eta_true))
 # Boolean response: binary 0/1
 y_bool <- as.integer(rbinom(n, 1, p_true))
 # Float response in (0,1): use true probabilities (clamped to avoid log(0))
-y_float <- pmax(0.001, pmin(0.999, p_true))
+y_float <- pmax(0.0001, pmin(0.9999, rbeta(n, p_true, 1. - p_true)))
 
 var_wt <- runif(n, 0.5, 2.0)
 freq_wt <- sample(1:3, n, replace = TRUE)
