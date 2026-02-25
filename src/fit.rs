@@ -701,11 +701,48 @@ where
         Ok(dev / denom)
     }
 
-    /// Return the partial residuals.
-    pub fn resid_part(&self) -> Array1<F> {
-        let x_mean = self.data.x.mean_axis(Axis(0)).expect("empty dataset");
-        let x_centered = &self.data.x - x_mean.insert_axis(Axis(0));
-        self.resid_work() + x_centered.dot(&self.result_std)
+    /// Return the partial residuals as an n_obs × n_predictors matrix. Each column $`j`$
+    /// contains working residuals plus the centered contribution of predictor $`j`$:
+    ///
+    /// ```math
+    /// r^{(j)}_i = r^w_i + (x_{ij} - \bar x_j) \beta_j
+    /// ```
+    ///
+    /// The bar denotes the **fully weighted** column mean (combining both variance and frequency
+    /// weights), which is the WLS-consistent choice: it ensures that $`\sum_i w_i r^{(j)}_i = 0`$
+    /// for each predictor. R's `residuals(model, type = "partial")` uses only frequency weights in
+    /// its centering (excluding variance weights), so results will differ when variance weights are
+    /// present. For models without an intercept, no centering is applied. The intercept term is
+    /// always excluded from the output.
+    pub fn resid_part(&self) -> Array2<F> {
+        let resid_work_i = self.resid_work().insert_axis(Axis(1));
+        let n = resid_work_i.len();
+
+        // Use external (unstandardized) feature columns and coefficients.
+        let x_orig = self.data.x_orig();
+        // The intercept term is not part of the partial residuals.
+        let beta_j = if self.data.has_intercept {
+            self.result.slice(s![1..]).to_owned()
+        } else {
+            self.result.clone()
+        }
+        .insert_axis(Axis(0));
+
+        // Center by fully-weighted (variance × frequency) column means. This is the WLS-consistent
+        // choice: sum_i w_i r^(j)_i = 0 for each predictor. R excludes variance weights from
+        // centering; results will differ from R when variance weights are present with an intercept.
+        // No centering for no-intercept models.
+        let x_centered: Array2<F> = if self.data.has_intercept {
+            let wt_factors = self
+                .data
+                .apply_total_weights(Array1::ones(n))
+                .insert_axis(Axis(1));
+            let x_mean: Array1<F> = (&x_orig * &wt_factors).sum_axis(Axis(0)) / wt_factors.sum();
+            x_orig - x_mean.insert_axis(Axis(0))
+        } else {
+            x_orig
+        };
+        resid_work_i + x_centered * beta_j
     }
 
     /// Return the Pearson residuals for each point in the training data:
