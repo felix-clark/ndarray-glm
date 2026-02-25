@@ -397,4 +397,3 @@ fn counting_weights() -> Result<()> {
 
     Ok(())
 }
-

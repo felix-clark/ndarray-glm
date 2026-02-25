@@ -84,7 +84,7 @@
 //! let data_y = array![true, false, false, true, true];
 //! let data_x = array![[0.5, 0.2], [0.1, 0.3], [0.2, 0.6], [0.6, 0.3], [0.4, 0.4]];
 //! let model = ModelBuilder::<Logistic<Cloglog>>::data(&data_y, &data_x).build().unwrap();
-//! let fit = model.fit_options().max_iter(64).l2_reg(0.1).fit().unwrap();
+//! let fit = model.fit_options().max_iter(256).l2_reg(0.1).fit().unwrap();
 //! println!("Fit result: {}", fit.result);
 //! ```
 //!

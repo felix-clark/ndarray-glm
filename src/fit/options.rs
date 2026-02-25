@@ -81,7 +81,7 @@ where
 {
     fn default() -> Self {
         Self {
-            max_iter: 32,
+            max_iter: 128,
             // This tolerance is rather small, but it is used in the context of a
             // fraction of the total likelihood.
             tol: F::epsilon(),

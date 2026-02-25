@@ -74,12 +74,7 @@ fn elnet_seperable() -> Result<()> {
         .no_standardize()
         .build()?;
     // The X-data is now standardized by default.
-    let fit_nostd = model_std
-        .fit_options()
-        .l1_reg(1e-2)
-        .l2_reg(1e-2)
-        .max_iter(128)
-        .fit()?;
+    let fit_nostd = model_std.fit_options().l1_reg(1e-2).l2_reg(1e-2).fit()?;
 
     // ADMM convergence is harder without standardization for separable data. We don't require
     // an exact match, just that the result is in the right neighborhood.
