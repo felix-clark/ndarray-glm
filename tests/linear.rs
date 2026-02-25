@@ -38,6 +38,10 @@ fn check_linear_scenario(
     let our_null_dev = fit.lr_test() + r_dev;
     assert_abs_diff_eq!(our_null_dev, r_null_dev, epsilon = 10. * eps);
 
+    // --- RSS ---
+    let r_rss = r("rss")?[0];
+    assert_abs_diff_eq!(fit.rss(), r_rss, epsilon = eps);
+
     // --- R² ---
     let r_r_sq = r("r_sq")?[0];
     assert_abs_diff_eq!(fit.r_sq(), r_r_sq, epsilon = 10. * eps);

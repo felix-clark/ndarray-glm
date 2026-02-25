@@ -38,6 +38,9 @@ export_scenario <- function(model, dir_name, orig_idx = NULL, model_no_int = NUL
   write(model$deviance, file.path(dir_name, "deviance.csv"), ncolumns = 1)
   write(model$null.deviance, file.path(dir_name, "null_deviance.csv"), ncolumns = 1)
   write(1 - model$deviance / model$null.deviance, file.path(dir_name, "r_sq.csv"), ncolumns = 1)
+  # RSS: sum(w_i * r_i^2) over all rows (no sub() — aggregate quantity)
+  wts_all <- if (!is.null(model$prior.weights)) model$prior.weights else rep(1, length(fitted(model)))
+  write(sum(wts_all * residuals(model, type = "response")^2), file.path(dir_name, "rss.csv"), ncolumns = 1)
   write(model$aic, file.path(dir_name, "aic.csv"), ncolumns = 1)
   write(BIC(model), file.path(dir_name, "bic.csv"), ncolumns = 1)
 
