@@ -101,13 +101,13 @@ where
     Ok(x)
 }
 
-/// Load the linear_weights dataset: y, x1, x2, x3, var_wt, freq_wt (with header row)
+/// Load the linear dataset: y, x1, x2, x3, var_wt, freq_wt (with header row)
 #[cfg(test)]
 #[allow(dead_code)]
 #[allow(clippy::type_complexity)]
-pub fn load_linear_weights_data() -> Result<(Array1<f64>, Array2<f64>, Array1<f64>, Array1<usize>)>
+pub fn load_linear_data() -> Result<(Array1<f64>, Array2<f64>, Array1<f64>, Array1<usize>)>
 {
-    let file = File::open("tests/data/linear_weights.csv")?;
+    let file = File::open("tests/data/linear.csv")?;
     let reader = BufReader::new(file);
     let mut y_vec = Vec::new();
     let mut x_vec = Vec::new();
@@ -120,7 +120,7 @@ pub fn load_linear_weights_data() -> Result<(Array1<f64>, Array2<f64>, Array1<f6
         }
         let cols: Vec<&str> = line.split(',').collect();
         if cols.len() != 6 {
-            return Err(anyhow!("Expected 6 columns in linear_weights.csv"));
+            return Err(anyhow!("Expected 6 columns in linear.csv"));
         }
         y_vec.push(cols[0].parse::<f64>()?);
         x_vec.push(cols[1].parse::<f64>()?);

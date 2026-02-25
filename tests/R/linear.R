@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
-# Generate reference data for linear model weight tests.
-# Run from tests/R/ directory: Rscript linear_weights.R
+# Generate reference data for linear model tests.
+# Run from tests/R/ directory: Rscript linear.R
 
 # Use full double precision in output
 options(digits = 17)
@@ -16,11 +16,12 @@ freq_wt <- sample(1:3, n, replace = TRUE)
 
 # Save dataset with header
 write.csv(data.frame(y, x1, x2, x3, var_wt, freq_wt),
-          file = "../data/linear_weights.csv", row.names = FALSE)
+          file = "../data/linear.csv", row.names = FALSE)
 
 # Helper: export all quantities for a glm fit.
 # If orig_idx is provided, only export quantities at those indices (for freq-expanded scenarios).
-export_scenario <- function(model, dir_name, orig_idx = NULL, model_no_int = NULL) {
+export_scenario <- function(model, dir_name, orig_idx = NULL, model_no_int = NULL,
+                             pred_data = NULL, pred_off = NULL) {
   dir.create(dir_name, showWarnings = FALSE, recursive = TRUE)
   ms <- summary(model)
 
@@ -37,6 +38,10 @@ export_scenario <- function(model, dir_name, orig_idx = NULL, model_no_int = NUL
   write(ms$dispersion, file.path(dir_name, "dispersion.csv"), ncolumns = 1)
   write(model$deviance, file.path(dir_name, "deviance.csv"), ncolumns = 1)
   write(model$null.deviance, file.path(dir_name, "null_deviance.csv"), ncolumns = 1)
+  write(1 - model$deviance / model$null.deviance, file.path(dir_name, "r_sq.csv"), ncolumns = 1)
+  # RSS: sum(w_i * r_i^2) over all rows (no sub() — aggregate quantity)
+  wts_all <- if (!is.null(model$prior.weights)) model$prior.weights else rep(1, length(fitted(model)))
+  write(sum(wts_all * residuals(model, type = "response")^2), file.path(dir_name, "rss.csv"), ncolumns = 1)
   write(model$aic, file.path(dir_name, "aic.csv"), ncolumns = 1)
   write(BIC(model), file.path(dir_name, "bic.csv"), ncolumns = 1)
 
@@ -45,6 +50,9 @@ export_scenario <- function(model, dir_name, orig_idx = NULL, model_no_int = NUL
   write(sub(residuals(model, type = "pearson")), file.path(dir_name, "resid_pear.csv"), ncolumns = 1)
   write(sub(residuals(model, type = "deviance")), file.path(dir_name, "resid_dev.csv"), ncolumns = 1)
   write(sub(residuals(model, type = "working")), file.path(dir_name, "resid_work.csv"), ncolumns = 1)
+  # Partial residuals: working_resid + predict(model, type="terms"). One column per predictor
+  # (intercept excluded). Written row-major: each row is one observation.
+  write(t(sub_mat(residuals(model, type = "partial"))), file.path(dir_name, "resid_partial.csv"), ncolumns = 1)
   write(sub(rstandard(model, type = "pearson")), file.path(dir_name, "resid_pear_std.csv"), ncolumns = 1)
   write(sub(rstandard(model, type = "deviance")), file.path(dir_name, "resid_dev_std.csv"), ncolumns = 1)
   write(sub(rstudent(model)), file.path(dir_name, "resid_student.csv"), ncolumns = 1)
@@ -82,18 +90,37 @@ export_scenario <- function(model, dir_name, orig_idx = NULL, model_no_int = NUL
     write(pred_p, file.path(dir_name, "pvalue_exact.csv"), ncolumns = 1)
   }
 
+  # Prediction on held-out test observations.
+  # For intercept models R's predict() handles newdata correctly. For no-intercept+offset models
+  # the offset argument to predict.glm isn't applied to newdata cleanly, so we compute manually.
+  if (!is.null(pred_data)) {
+    if (!is.null(pred_off)) {
+      new_lp <- as.vector(as.matrix(pred_data) %*% model$coefficients + pred_off)
+      new_pred <- model$family$linkinv(new_lp)
+    } else {
+      new_pred <- predict(model, newdata = pred_data, type = "response")
+    }
+    write(new_pred, file.path(dir_name, "predict_resp.csv"), ncolumns = 1)
+  }
+
   cat("Exported scenario:", dir_name, "\n")
 }
+
+# Fixed held-out test observations for prediction checks (3 rows, not in training set)
+# These are hard-coded in the tests/linear.rs
+x_test <- data.frame(x1 = c(0.5, -1.0, 2.0), x2 = c(0.3, -0.5, 1.2), x3 = c(0.1, 0.8, -0.3))
+off_test <- 0.3 * x_test$x1          # c(0.15, -0.30, 0.60), matches Rust's off_from_x
+x_test_sub <- x_test[, c("x2", "x3")] # for no-intercept+offset scenarios (2 predictors)
 
 # Scenario: no weights
 m_none <- glm(y ~ x1 + x2 + x3, family = gaussian())
 m_none_noint <- glm(y ~ x1 + x2 + x3 - 1, family = gaussian())
-export_scenario(m_none, "linear_weights/none", model_no_int = m_none_noint)
+export_scenario(m_none, "linear_results/none", model_no_int = m_none_noint, pred_data = x_test)
 
 # Scenario: variance weights only
 m_var <- glm(y ~ x1 + x2 + x3, family = gaussian(), weights = var_wt)
 m_var_noint <- glm(y ~ x1 + x2 + x3 - 1, family = gaussian(), weights = var_wt)
-export_scenario(m_var, "linear_weights/var", model_no_int = m_var_noint)
+export_scenario(m_var, "linear_results/var", model_no_int = m_var_noint, pred_data = x_test)
 
 # Expand rows by frequency for freq-weight scenarios
 expand_by_freq <- function(df, freq_col) {
@@ -109,12 +136,12 @@ orig_idx <- exp_result$orig_idx
 # Scenario: frequency weights only
 m_freq <- glm(y ~ x1 + x2 + x3, data = df_exp, family = gaussian())
 m_freq_noint <- glm(y ~ x1 + x2 + x3 - 1, data = df_exp, family = gaussian())
-export_scenario(m_freq, "linear_weights/freq", orig_idx, model_no_int = m_freq_noint)
+export_scenario(m_freq, "linear_results/freq", orig_idx, model_no_int = m_freq_noint, pred_data = x_test)
 
 # Scenario: both weights
 m_both <- glm(y ~ x1 + x2 + x3, data = df_exp, family = gaussian(), weights = var_wt)
 m_both_noint <- glm(y ~ x1 + x2 + x3 - 1, data = df_exp, family = gaussian(), weights = var_wt)
-export_scenario(m_both, "linear_weights/both", orig_idx, model_no_int = m_both_noint)
+export_scenario(m_both, "linear_results/both", orig_idx, model_no_int = m_both_noint, pred_data = x_test)
 
 # --- Offset + no-intercept scenarios ---
 # These exercise the null model code path where offset is present and use_intercept is false.
@@ -123,21 +150,25 @@ off <- 0.3 * x1
 
 # Scenario: offset + no intercept, no weights
 m_off_none <- glm(y ~ x2 + x3 - 1, offset = off, family = gaussian())
-export_scenario(m_off_none, "linear_weights/off_none")
+export_scenario(m_off_none, "linear_results/off_none",
+                pred_data = x_test_sub, pred_off = off_test)
 
 # Scenario: offset + no intercept, variance weights
 m_off_var <- glm(y ~ x2 + x3 - 1, offset = off, family = gaussian(), weights = var_wt)
-export_scenario(m_off_var, "linear_weights/off_var")
+export_scenario(m_off_var, "linear_results/off_var",
+                pred_data = x_test_sub, pred_off = off_test)
 
 # Scenario: offset + no intercept, frequency weights (expanded)
 # The offset must be expanded to match the expanded data frame
 off_exp <- 0.3 * df_exp$x1
 m_off_freq <- glm(y ~ x2 + x3 - 1, offset = off_exp, data = df_exp, family = gaussian())
-export_scenario(m_off_freq, "linear_weights/off_freq", orig_idx)
+export_scenario(m_off_freq, "linear_results/off_freq", orig_idx,
+                pred_data = x_test_sub, pred_off = off_test)
 
 # Scenario: offset + no intercept, both weights
 m_off_both <- glm(y ~ x2 + x3 - 1, offset = off_exp, data = df_exp, family = gaussian(), weights = var_wt)
-export_scenario(m_off_both, "linear_weights/off_both", orig_idx)
+export_scenario(m_off_both, "linear_results/off_both", orig_idx,
+                pred_data = x_test_sub, pred_off = off_test)
 
 # --- Ridge scenarios via glmnet ---
 library(glmnet)
@@ -157,17 +188,17 @@ x_mat <- as.matrix(data.frame(x1, x2, x3))
 l2_param <- 0.1
 lambda_glmnet <- 2 * l2_param / n
 
-dir.create("linear_weights/ridge_none", showWarnings = FALSE, recursive = TRUE)
+dir.create("linear_results/ridge_none", showWarnings = FALSE, recursive = TRUE)
 m_ridge <- glmnet(x_mat, y, alpha = 0, lambda = lambda_glmnet, standardize = TRUE,
                    family = "gaussian", thresh = 1e-14)
-write(as.vector(coef(m_ridge)), "linear_weights/ridge_none/coefficients.csv", ncolumns = 1)
-cat("Exported scenario: linear_weights/ridge_none\n")
+write(as.vector(coef(m_ridge)), "linear_results/ridge_none/coefficients.csv", ncolumns = 1)
+cat("Exported scenario: linear_results/ridge_none\n")
 
-dir.create("linear_weights/ridge_var", showWarnings = FALSE, recursive = TRUE)
+dir.create("linear_results/ridge_var", showWarnings = FALSE, recursive = TRUE)
 m_ridge_var <- glmnet(x_mat, y, alpha = 0, lambda = lambda_glmnet, standardize = TRUE,
                        weights = var_wt / sum(var_wt) * n,
                        family = "gaussian", thresh = 1e-14)
-write(as.vector(coef(m_ridge_var)), "linear_weights/ridge_var/coefficients.csv", ncolumns = 1)
-cat("Exported scenario: linear_weights/ridge_var\n")
+write(as.vector(coef(m_ridge_var)), "linear_results/ridge_var/coefficients.csv", ncolumns = 1)
+cat("Exported scenario: linear_results/ridge_var\n")
 
 cat("Done. All scenarios exported.\n")

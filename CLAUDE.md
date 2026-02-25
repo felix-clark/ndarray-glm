@@ -95,7 +95,7 @@ This renders as an inline code element with class `language-inline-math`, which 
 - Transpose: `\mathsf{T}` (e.g. `\mathbf{X}^\mathsf{T}`)
 - Text labels in formulas: `\text{AIC}`, `\text{Var}`
 - Estimates: `\hat\phi`, `\hat\mu`
-- Greek letters for model quantities: `\eta` (linear predictor), `\mu` (mean), `\omega` (linear offsets)
+- Greek letters for model quantities: `\eta` (natural parameter), `\mu` (mean), `\omega` (linear predictor), `\rho` (linear offset/control)
 
 ### Files with math documentation
 

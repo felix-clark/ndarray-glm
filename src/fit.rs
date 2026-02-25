@@ -404,17 +404,7 @@ where
             let data_i: Dataset<F> = {
                 // Get the proper X data matrix as it existed before standardization and
                 // intercept-padding.
-                let x_i = {
-                    let x_i = if self.data.has_intercept {
-                        self.data.x.slice(s![.., 1..]).to_owned()
-                    } else {
-                        self.data.x.clone()
-                    };
-                    match &self.data.standardizer {
-                        Some(std) => std.inverse_transform(x_i),
-                        None => x_i,
-                    }
-                };
+                let x_i = self.data.x_orig();
                 // Leave the observation out by setting the frequency weight to zero.
                 let mut freqs_i: Array1<F> =
                     self.data.freqs.clone().unwrap_or(Array1::<F>::ones(n_obs));
@@ -711,11 +701,48 @@ where
         Ok(dev / denom)
     }
 
-    /// Return the partial residuals.
-    pub fn resid_part(&self) -> Array1<F> {
-        let x_mean = self.data.x.mean_axis(Axis(0)).expect("empty dataset");
-        let x_centered = &self.data.x - x_mean.insert_axis(Axis(0));
-        self.resid_work() + x_centered.dot(&self.result_std)
+    /// Return the partial residuals as an n_obs × n_predictors matrix. Each column $`j`$
+    /// contains working residuals plus the centered contribution of predictor $`j`$:
+    ///
+    /// ```math
+    /// r^{(j)}_i = r^w_i + (x_{ij} - \bar x_j) \beta_j
+    /// ```
+    ///
+    /// The bar denotes the **fully weighted** column mean (combining both variance and frequency
+    /// weights), which is the WLS-consistent choice: it ensures that $`\sum_i w_i r^{(j)}_i = 0`$
+    /// for each predictor. R's `residuals(model, type = "partial")` uses only frequency weights in
+    /// its centering (excluding variance weights), so results will differ when variance weights are
+    /// present. For models without an intercept, no centering is applied. The intercept term is
+    /// always excluded from the output.
+    pub fn resid_part(&self) -> Array2<F> {
+        let resid_work_i = self.resid_work().insert_axis(Axis(1));
+        let n = resid_work_i.len();
+
+        // Use external (unstandardized) feature columns and coefficients.
+        let x_orig = self.data.x_orig();
+        // The intercept term is not part of the partial residuals.
+        let beta_j = if self.data.has_intercept {
+            self.result.slice(s![1..]).to_owned()
+        } else {
+            self.result.clone()
+        }
+        .insert_axis(Axis(0));
+
+        // Center by fully-weighted (variance × frequency) column means. This is the WLS-consistent
+        // choice: sum_i w_i r^(j)_i = 0 for each predictor. R excludes variance weights from
+        // centering; results will differ from R when variance weights are present with an intercept.
+        // No centering for no-intercept models.
+        let x_centered: Array2<F> = if self.data.has_intercept {
+            let wt_factors = self
+                .data
+                .apply_total_weights(Array1::ones(n))
+                .insert_axis(Axis(1));
+            let x_mean: Array1<F> = (&x_orig * &wt_factors).sum_axis(Axis(0)) / wt_factors.sum();
+            x_orig - x_mean.insert_axis(Axis(0))
+        } else {
+            x_orig
+        };
+        resid_work_i + x_centered * beta_j
     }
 
     /// Return the Pearson residuals for each point in the training data:
@@ -791,11 +818,15 @@ where
     /// Returns the working residuals:
     ///
     /// ```math
-    /// e_i^\text{work} = \frac{\eta'(\omega_i)(y_i - \hat\mu_i)}{V(\hat\mu_i)}
+    /// e_i^\text{work} = g'(\hat\mu_i)\,(y_i - \hat\mu_i) = \frac{y_i - \hat\mu_i}{\eta'(\omega_i)\,V(\hat\mu_i)}
     /// ```
     ///
-    /// Equal to the response residuals divided by the variance function (as
-    /// opposed to the square root of the variance as in the Pearson residuals).
+    /// where $`g'(\mu)`$ is the derivative of the link function and $`\eta'(\omega)`$ is the
+    /// derivative of the natural parameter with respect to the linear predictor. For canonical
+    /// links $`\eta'(\omega) = 1`$, reducing this to $`(y_i - \hat\mu_i)/V(\hat\mu_i)`$.
+    ///
+    /// These can be interpreted as the residual differences mapped into the linear predictor space
+    /// of $`\omega = \mathbf{x}\cdot\boldsymbol{\beta}`$.
     pub fn resid_work(&self) -> Array1<F> {
         let lin_pred: Array1<F> = self.data.linear_predictor_std(&self.result_std);
         let mu: Array1<F> = self.y_hat.clone();
@@ -915,20 +946,28 @@ where
     /// Returns the coefficient of determination $`R^2`$:
     ///
     /// ```math
-    /// R^2 = 1 - \frac{\text{RSS}}{\text{TSS}}
+    /// R^2 = 1 - \frac{D}{D_0}
     /// ```
     ///
-    /// where RSS is the residual sum of squares and TSS is the total sum of squares.
+    /// where $`D`$ is the deviance of the fitted model and $`D_0`$ is the null deviance
+    /// (deviance of the intercept-only model). For Gaussian with no weights this reduces to
+    /// $`1 - \text{RSS}/\text{TSS}`$. Using the deviance ratio correctly handles variance and
+    /// frequency weights.
+    // NOTE: that this implementation would be valid as a pseudo-$`R^2`$ for all GLMs, but it's
+    // mostly expected in the OLS context and probably wouldn't add much.
     pub fn r_sq(&self) -> F {
-        let y_avg: F = self.data.y.mean().expect("Data should be non-empty");
-        let total_sum_sq: F = self.data.y.mapv(|y| y - y_avg).mapv(|dy| dy * dy).sum();
-        (total_sum_sq - self.resid_sum_sq()) / total_sum_sq
+        let lr = self.lr_test();
+        lr / (lr + self.deviance())
     }
 
-    /// Returns the residual sum of squares:
-    /// $`\text{RSS} = \sum_i (y_i - \hat\mu_i)^2`$.
-    pub fn resid_sum_sq(&self) -> F {
-        self.resid_resp().mapv_into(|r| r * r).sum()
+    /// Returns the weighted residual sum of squares (RSS):
+    /// $`\text{RSS} = \sum_i w_i (y_i - \hat\mu_i)^2`$
+    /// where $`w_i`$ combines variance and frequency weights.
+    // NOTE: this implementation would be well-defined for any GLM, but there are typically better
+    // tools for the job so it's not exposed for non-linear families.
+    pub fn rss(&self) -> F {
+        let resid_sq = self.resid_resp().mapv(|r| r * r);
+        self.data.apply_total_weights(resid_sq).sum()
     }
 }
 
