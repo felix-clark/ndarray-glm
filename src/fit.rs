@@ -404,17 +404,7 @@ where
             let data_i: Dataset<F> = {
                 // Get the proper X data matrix as it existed before standardization and
                 // intercept-padding.
-                let x_i = {
-                    let x_i = if self.data.has_intercept {
-                        self.data.x.slice(s![.., 1..]).to_owned()
-                    } else {
-                        self.data.x.clone()
-                    };
-                    match &self.data.standardizer {
-                        Some(std) => std.inverse_transform(x_i),
-                        None => x_i,
-                    }
-                };
+                let x_i = self.data.x_orig();
                 // Leave the observation out by setting the frequency weight to zero.
                 let mut freqs_i: Array1<F> =
                     self.data.freqs.clone().unwrap_or(Array1::<F>::ones(n_obs));

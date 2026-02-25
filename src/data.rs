@@ -157,19 +157,31 @@ where
 
     /// Returns the external data matrix, scaled back to the original level. The intercept term is
     /// included so that this can be used in some fit statistic matrix multiplications.
+    pub(crate) fn x_ext(&self) -> Array2<F> {
+        let x_orig = self.x_orig();
+        if self.has_intercept {
+            // The 0th column should just be ones. We could also just use an array of 1s, but we'll
+            // pass the values themselves just in case some other value was ever used.
+            concatenate![Axis(1), self.x.slice(s![.., ..1]), x_orig]
+        } else {
+            x_orig
+        }
+    }
+
+    /// Returns the data matrix in the original state it was input, without an intercept column.
+    /// There may be floating-point differences due to the back-transformation.
     /// NOTE: This does some unnecessary clones if there is no standardization. Perhaps we want to
     /// maintain a reference to the original matrix and use copy-on-write to optionally a
     /// standardized version.
-    pub(crate) fn x_ext(&self) -> Array2<F> {
-        let std = match &self.standardizer {
-            Some(std) => std,
-            None => return self.x.clone(),
-        };
-        if self.has_intercept {
-            let x_tr = std.inverse_transform(self.x.slice(s![.., 1..]).to_owned());
-            concatenate![Axis(1), self.x.slice(s![.., ..1]), x_tr]
+    pub(crate) fn x_orig(&self) -> Array2<F> {
+        let x = if self.has_intercept {
+            self.x.slice(s![.., 1..]).to_owned()
         } else {
-            std.inverse_transform(self.x.clone())
+            self.x.clone()
+        };
+        match &self.standardizer {
+            Some(std) => std.inverse_transform(x),
+            None => x,
         }
     }
 
