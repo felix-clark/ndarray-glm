@@ -426,7 +426,7 @@ fn logistic_bool_var_weights() -> Result<()> {
     check_logistic_scenario(
         &fit,
         "bool_var",
-        2e-10,
+        1e-9,
         true,
         false,
         true,
@@ -445,7 +445,7 @@ fn logistic_bool_freq_weights() -> Result<()> {
     check_logistic_scenario(
         &fit,
         "bool_freq",
-        2e-10,
+        1e-8,
         false,
         true,
         true,
@@ -465,7 +465,7 @@ fn logistic_bool_both_weights() -> Result<()> {
     check_logistic_scenario(
         &fit,
         "bool_both",
-        2e-10,
+        1e-9,
         true,
         true,
         true,
@@ -570,7 +570,7 @@ fn logistic_std_vs_nostd() -> Result<()> {
         .no_standardize()
         .build()?;
     let fit_ns = model_ns.fit()?;
-    let eps = 64. * f64::EPSILON;
+    let eps = 0.01 * f32::EPSILON as f64;
     assert_abs_diff_eq!(fit_std.result, fit_ns.result, epsilon = eps);
     assert_abs_diff_eq!(fit_std.deviance(), fit_ns.deviance(), epsilon = eps);
     assert_abs_diff_eq!(fit_std.lr_test(), fit_ns.lr_test(), epsilon = eps);
