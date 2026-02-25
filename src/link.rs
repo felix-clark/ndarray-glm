@@ -9,21 +9,13 @@ use ndarray::Array1;
 /// ```math
 /// g(\mu) = \omega, \qquad \mu = g^{-1}(\omega)
 /// ```
-// TODO: The link function and its inverse are independent of the response
-// distribution. This could be refactored to separate the function itself from
-// the transformation that works with the distribution.
 pub trait Link<M: Glm>: Transform {
     /// Maps the expectation value of the response variable to the linear
     /// predictor. In general this is determined by a composition of the inverse
     /// natural parameter transformation and the canonical link function.
     fn func<F: Float>(y: F) -> F;
-    // fn func<F: Float>(y: Array1<F>) -> Array1<F>;
     /// Maps the linear predictor to the expectation value of the response.
-    // TODO: There may not be a point in using Array versions of these functions
-    // since clones are necessary anyway. Perhaps we could simply define the
-    // scalar function and use mapv().
     fn func_inv<F: Float>(lin_pred: F) -> F;
-    // fn func_inv<F: Float>(lin_pred: Array1<F>) -> Array1<F>;
 }
 
 pub trait Transform {
@@ -38,20 +30,14 @@ pub trait Transform {
     /// Adjust the error/residual terms of the likelihood function based on the first derivative of
     /// the transformation. The linear predictor must be un-transformed, i.e. it must be X*beta
     /// without the transformation applied.
-    fn adjust_errors<F: Float>(
-        errors: Array1<F>,
-        lin_pred: &Array1<F>,
-    ) -> Array1<F> {
+    fn adjust_errors<F: Float>(errors: Array1<F>, lin_pred: &Array1<F>) -> Array1<F> {
         let eta_d = Self::d_nat_param(lin_pred);
         eta_d * errors
     }
     /// Adjust the variance terms of the likelihood function based on the first and second
     /// derivatives of the transformation. The linear predictor must be un-transformed, i.e. it
     /// must be X*beta without the transformation applied.
-    fn adjust_variance<F: Float>(
-        variance: Array1<F>,
-        lin_pred: &Array1<F>,
-    ) -> Array1<F> {
+    fn adjust_variance<F: Float>(variance: Array1<F>, lin_pred: &Array1<F>) -> Array1<F> {
         let eta_d = Self::d_nat_param(lin_pred);
         // The second-derivative term in the variance matrix can lead it to not
         // be positive-definite. In fact, the second term should vanish when
@@ -100,17 +86,11 @@ where
     }
     /// The canonical link function requires no transformation of the error and variance terms.
     #[inline]
-    fn adjust_errors<F: Float>(
-        errors: Array1<F>,
-        _lin_pred: &Array1<F>,
-    ) -> Array1<F> {
+    fn adjust_errors<F: Float>(errors: Array1<F>, _lin_pred: &Array1<F>) -> Array1<F> {
         errors
     }
     #[inline]
-    fn adjust_variance<F: Float>(
-        variance: Array1<F>,
-        _lin_pred: &Array1<F>,
-    ) -> Array1<F> {
+    fn adjust_variance<F: Float>(variance: Array1<F>, _lin_pred: &Array1<F>) -> Array1<F> {
         variance
     }
     #[inline]
