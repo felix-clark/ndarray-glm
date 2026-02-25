@@ -38,6 +38,10 @@ fn check_linear_scenario(
     let our_null_dev = fit.lr_test() + r_dev;
     assert_abs_diff_eq!(our_null_dev, r_null_dev, epsilon = 10. * eps);
 
+    // --- R² ---
+    let r_r_sq = r("r_sq")?[0];
+    assert_abs_diff_eq!(fit.r_sq(), r_r_sq, epsilon = 10. * eps);
+
     // --- Dispersion ---
     // Our library uses an effective sample size correction for variance weights:
     //   dispersion = deviance / ((1 - p/n_eff) * sum_weights)

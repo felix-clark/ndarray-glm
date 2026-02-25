@@ -37,6 +37,7 @@ export_scenario <- function(model, dir_name, orig_idx = NULL, model_no_int = NUL
   write(ms$dispersion, file.path(dir_name, "dispersion.csv"), ncolumns = 1)
   write(model$deviance, file.path(dir_name, "deviance.csv"), ncolumns = 1)
   write(model$null.deviance, file.path(dir_name, "null_deviance.csv"), ncolumns = 1)
+  write(1 - model$deviance / model$null.deviance, file.path(dir_name, "r_sq.csv"), ncolumns = 1)
   write(model$aic, file.path(dir_name, "aic.csv"), ncolumns = 1)
   write(BIC(model), file.path(dir_name, "bic.csv"), ncolumns = 1)
 

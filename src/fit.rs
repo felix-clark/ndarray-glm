@@ -946,20 +946,28 @@ where
     /// Returns the coefficient of determination $`R^2`$:
     ///
     /// ```math
-    /// R^2 = 1 - \frac{\text{RSS}}{\text{TSS}}
+    /// R^2 = 1 - \frac{D}{D_0}
     /// ```
     ///
-    /// where RSS is the residual sum of squares and TSS is the total sum of squares.
+    /// where $`D`$ is the deviance of the fitted model and $`D_0`$ is the null deviance
+    /// (deviance of the intercept-only model). For Gaussian with no weights this reduces to
+    /// $`1 - \text{RSS}/\text{TSS}`$. Using the deviance ratio correctly handles variance and
+    /// frequency weights.
+    // NOTE: that this implementation would be valid as a pseudo-$`R^2`$ for all GLMs, but it's
+    // mostly expected in the OLS context and probably wouldn't add much.
     pub fn r_sq(&self) -> F {
-        let y_avg: F = self.data.y.mean().expect("Data should be non-empty");
-        let total_sum_sq: F = self.data.y.mapv(|y| y - y_avg).mapv(|dy| dy * dy).sum();
-        (total_sum_sq - self.resid_sum_sq()) / total_sum_sq
+        let lr = self.lr_test();
+        lr / (lr + self.deviance())
     }
 
-    /// Returns the residual sum of squares:
-    /// $`\text{RSS} = \sum_i (y_i - \hat\mu_i)^2`$.
-    pub fn resid_sum_sq(&self) -> F {
-        self.resid_resp().mapv_into(|r| r * r).sum()
+    /// Returns the weighted residual sum of squares (RSS):
+    /// $`\text{RSS} = \sum_i w_i (y_i - \hat\mu_i)^2`$
+    /// where $`w_i`$ combines variance and frequency weights.
+    // NOTE: this implementation would be well-defined for any GLM, but there are typically better
+    // tools for the job so it's not exposed for non-linear families.
+    pub fn rss(&self) -> F {
+        let resid_sq = self.resid_resp().mapv(|r| r * r);
+        self.data.apply_total_weights(resid_sq).sum()
     }
 }
 
