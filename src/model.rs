@@ -79,7 +79,6 @@ impl<M: Glm> ModelBuilder<M> {
             freq_weights: None,
             use_intercept_term: true,
             standardize: true,
-            colin_tol: F::epsilon(),
             error: None,
         }
     }
@@ -112,8 +111,6 @@ where
     standardize: bool,
     /// Whether to use an intercept term. Defaults to `true`.
     use_intercept_term: bool,
-    /// tolerance for determinant check on rank of data matrix X.
-    colin_tol: F,
     /// An error that has come up in the build compilation.
     error: Option<RegressionError<F>>,
 }
@@ -179,13 +176,6 @@ where
     /// interact with them.
     pub fn no_standardize(mut self) -> Self {
         self.standardize = false;
-        self
-    }
-
-    /// Set the tolerance for the co-linearity check.
-    /// The check can be effectively disabled by setting the tolerance to a negative value.
-    pub fn colinear_tol(mut self, tol: F) -> Self {
-        self.colin_tol = tol;
         self
     }
 
