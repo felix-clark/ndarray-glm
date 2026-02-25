@@ -56,7 +56,7 @@ An example for linear regression is shown below. The library is generic over
 floating point type (`f32` of `f64`).
 
 ``` rust
-use ndarray_glm::{array, Linear, ModelBuilder, utility::standardize};
+use ndarray_glm::{array, Linear, ModelBuilder};
 
 // define some test data
 let data_y = array![0.3, 1.3, 0.7];
