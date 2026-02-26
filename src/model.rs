@@ -6,7 +6,7 @@ use crate::{
     fit::{self, Fit},
     glm::Glm,
     num::Float,
-    response::Response,
+    response::Yval,
 };
 use fit::options::{FitConfig, FitOptions};
 use ndarray::{Array1, ArrayBase, ArrayView1, ArrayView2, Data, Ix1, Ix2};
@@ -65,7 +65,7 @@ impl<M: Glm> ModelBuilder<M> {
         data_x: &'a ArrayBase<XD, Ix2>,
     ) -> ModelBuilderData<'a, M, Y, F>
     where
-        Y: Response<M>,
+        Y: Yval<M>,
         F: Float,
         YD: Data<Elem = Y>,
         XD: Data<Elem = F>,
@@ -89,7 +89,7 @@ impl<M: Glm> ModelBuilder<M> {
 pub struct ModelBuilderData<'a, M, Y, F>
 where
     M: Glm,
-    Y: Response<M>,
+    Y: Yval<M>,
     F: 'static + Float,
 {
     model: PhantomData<M>,
@@ -119,7 +119,7 @@ where
 impl<'a, M, Y, F> ModelBuilderData<'a, M, Y, F>
 where
     M: Glm,
-    Y: Response<M> + Copy,
+    Y: Yval<M> + Copy,
     F: Float,
 {
     /// Represents an offset added to the linear predictor for each data point.

@@ -1,11 +1,15 @@
 //! Regression with a binomial response function. The N parameter must be known ahead of time.
+#[cfg(feature = "stats")]
+use crate::response::Response;
 use crate::{
     error::{RegressionError, RegressionResult},
     glm::{DispersionType, Glm},
     math::prod_log,
     num::Float,
-    response::Response,
+    response::Yval,
 };
+#[cfg(feature = "stats")]
+use statrs::distribution::Binomial as BinDist;
 
 /// Use a fixed type of u16 for the domain of the binomial distribution.
 type BinDom = u16;
@@ -15,9 +19,21 @@ type BinDom = u16;
 /// parameter N.
 pub struct Binomial<const N: BinDom>;
 
-impl<const N: BinDom> Response<Binomial<N>> for BinDom {
+impl<const N: BinDom> Yval<Binomial<N>> for BinDom {
     fn into_float<F: Float>(self) -> RegressionResult<F, F> {
         F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))
+    }
+}
+
+#[cfg(feature = "stats")]
+impl<const N: BinDom> Response for Binomial<N> {
+    type DistributionType = BinDist;
+
+    fn get_distribution(mu: f64, _phi: f64) -> Self::DistributionType {
+        use num_traits::ToPrimitive;
+
+        let p = mu / N.to_f64().unwrap();
+        BinDist::new(p, N.into()).unwrap()
     }
 }
 

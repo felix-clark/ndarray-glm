@@ -177,7 +177,7 @@ pub trait Glm: Sized {
         // Collect the best guess along the way so we don't have to loop back through to make sure
         // we've got the optimum. The full history is stored in the IRLS structure.
         let optimum: IrlsStep<F> = process_results(irls.by_ref(), |iter| {
-            iter.max_by(|a, b| a.like.partial_cmp(&b.like).unwrap())
+            iter.max_by(|a, b| a.like.total_cmp(&b.like))
         })?
         .unwrap_or_else(|| irls.make_last_step());
 

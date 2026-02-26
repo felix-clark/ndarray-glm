@@ -1,13 +1,17 @@
 //! Functions for solving linear regression
 
+#[cfg(feature = "stats")]
+use crate::response::Response;
 use crate::{
     error::{RegressionError, RegressionResult},
     glm::{DispersionType, Glm},
     link::Link,
     num::Float,
-    response::Response,
+    response::Yval,
 };
 use num_traits::ToPrimitive;
+#[cfg(feature = "stats")]
+use statrs::distribution::Normal;
 use std::marker::PhantomData;
 
 /// Linear regression with constant variance (Ordinary least squares).
@@ -19,13 +23,28 @@ where
 }
 
 /// Allow all floating point types in the linear model.
-impl<Y, L> Response<Linear<L>> for Y
+impl<Y, L> Yval<Linear<L>> for Y
 where
     Y: Float + ToPrimitive + ToString,
     L: Link<Linear<L>>,
 {
     fn into_float<F: Float>(self) -> RegressionResult<F, F> {
         F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))
+    }
+}
+
+#[cfg(feature = "stats")]
+impl<L> Response for Linear<L>
+where
+    L: Link<Linear<L>>,
+{
+    type DistributionType = Normal;
+
+    fn get_distribution(mu: f64, phi: f64) -> Self::DistributionType {
+        let sigma = phi.sqrt();
+        // We might want to return the error, but we should be able to assume that neither are NaN
+        // and sigma > 0.
+        Normal::new(mu, sigma).unwrap()
     }
 }
 

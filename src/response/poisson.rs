@@ -1,14 +1,18 @@
 //! Model for Poisson regression
 
+#[cfg(feature = "stats")]
+use crate::response::Response;
 use crate::{
     error::{RegressionError, RegressionResult},
     glm::{DispersionType, Glm},
     link::Link,
     math::prod_log,
     num::Float,
-    response::Response,
+    response::Yval,
 };
 use num_traits::{ToPrimitive, Unsigned};
+#[cfg(feature = "stats")]
+use statrs::distribution::Poisson as PoisDist;
 use std::marker::PhantomData;
 
 /// Poisson regression over an unsigned integer type.
@@ -20,7 +24,7 @@ where
 }
 
 /// Poisson variables can be any unsigned integer.
-impl<U, L> Response<Poisson<L>> for U
+impl<U, L> Yval<Poisson<L>> for U
 where
     U: Unsigned + ToPrimitive + ToString + Copy,
     L: Link<Poisson<L>>,
@@ -30,6 +34,18 @@ where
     }
 }
 // TODO: A floating point response for Poisson might also be do-able.
+
+#[cfg(feature = "stats")]
+impl<L> Response for Poisson<L>
+where
+    L: Link<Poisson<L>>,
+{
+    type DistributionType = PoisDist;
+
+    fn get_distribution(mu: f64, _phi: f64) -> Self::DistributionType {
+        PoisDist::new(mu).unwrap()
+    }
+}
 
 impl<L> Glm for Poisson<L>
 where

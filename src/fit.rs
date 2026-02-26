@@ -2,6 +2,8 @@
 //! depend on the MLE estimate. These include statistical tests for goodness-of-fit.
 
 pub mod options;
+#[cfg(feature = "stats")]
+use crate::response::Response;
 use crate::{
     Linear,
     data::{Dataset, one_pad},
@@ -17,6 +19,8 @@ use ndarray::{Array1, Array2, ArrayBase, ArrayView1, Axis, Data, Ix2, array, s};
 use ndarray_linalg::InverseInto;
 use once_cell::unsync::OnceCell; // can be replaced by std::cell::OnceCell upon stabilization
 use options::FitOptions;
+#[cfg(feature = "stats")]
+use statrs::distribution::ContinuousCDF;
 use std::marker::PhantomData;
 
 /// the result of a successful GLM fit
@@ -1074,7 +1078,6 @@ where
     /// give p-values that may imply significantly different conclusions for your analysis (e.g.
     /// p<0.07 vs. p<0.02 in one of our tests).
     pub fn pvalue_wald(&self) -> RegressionResult<Array1<F>, F> {
-        use statrs::distribution::ContinuousCDF;
         let z = self.wald_z()?;
         let pvals = match M::DISPERSED {
             DispersionType::NoDispersion => {
@@ -1110,7 +1113,6 @@ where
     /// For the intercept (if present), the reduced model is fit without an intercept. For all
     /// other parameters, the reduced model is fit with that column removed from the design matrix.
     pub fn pvalue_exact(&self) -> RegressionResult<Array1<F>, F> {
-        use statrs::distribution::ContinuousCDF;
         let n_par = self.n_par;
         let dev_full = self.deviance();
         let phi_full = self.dispersion();
@@ -1137,6 +1139,58 @@ where
         }
 
         Ok(pvals)
+    }
+}
+
+#[cfg(feature = "stats")]
+impl<'a, M, F> Fit<'a, M, F>
+where
+    M: Glm + Response,
+    F: 'static + Float,
+{
+    /// Returns the quantile residuals, which are standard-normal distributed by construction if
+    /// the residuals are distributed according to the GLM family's response function.
+    ///
+    /// ```math
+    /// q_i = \Phi^{-1}(F(y_i | \mathbf{x}_i \cdot \boldsymbol{\beta}))
+    /// ```
+    /// where $`\Phi`$ is the standard normal quantile function and $`F`$ is the CDF of the
+    /// response distribution, conditioned on the predicted mean.
+    ///
+    /// Only implemented for families with continuous response distributions. The variance weights
+    /// are used to scale the spread for families that use free dispersion. For the Linear model,
+    /// this is an expensive way of getting $`\frac{(y_i - \hat \mu_i)}{\sqrt{\hat\phi / w_i}} =
+    /// \frac{(y_i - \hat \mu_i)}{\hat\sigma_i}`$.
+    ///
+    /// These residuals are not standardized/studentized in any way, meaning the impact of each
+    /// observation is present in the corresponding response distribution for that point.
+    pub fn resid_quantile(&self) -> Array1<F>
+    where
+        <M as Response>::DistributionType: ContinuousCDF<f64, f64>,
+    {
+        use ndarray::Zip;
+        use statrs::distribution::Normal;
+
+        let std_norm = Normal::standard();
+        let mu = self.y_hat.mapv(|mu| mu.to_f64().unwrap());
+        let phi: f64 = self.dispersion().to_f64().unwrap();
+        // The effective dispersion for each point should be scaled by the variance weight.
+        // NOTE: The variance weights will not impact the families with no dispersion, as those do
+        // not use the phi parameter in get_distribution().
+        let phi_i = self
+            .data
+            .get_variance_weights()
+            .mapv(|w| phi / w.to_f64().unwrap());
+        Zip::from(&self.data.y)
+            .and(&mu)
+            .and(&phi_i)
+            .map_collect(|y, &mu, &phi| {
+                let dist = M::get_distribution(mu, phi);
+                // This variable should be standard-uniform distributed under data following the model
+                // assumption
+                let f = dist.cdf(y.to_f64().unwrap());
+                F::from_f64(std_norm.inverse_cdf(f)).unwrap()
+            })
     }
 }
 
@@ -1580,6 +1634,32 @@ mod tests {
         );
         // NOTE: Without regularization, the results themselves will not be exactly identical
         // through standardization.
+        Ok(())
+    }
+
+    #[cfg(feature = "stats")]
+    #[test]
+    fn linear_quantile_deviance_equivalence() -> Result<()> {
+        let data_y = array![-0.5, 0.2, -0.2, 1.2, 0.4, 0.6];
+        let data_x = array![
+            [-0.3, 1.0],
+            [0.2, 0.4],
+            [-0.5, -0.1],
+            [-0.2, 0.8],
+            [0.6, 0.1],
+            [0.1, -0.4]
+        ];
+        let var_weights = array![1.0, 0.2, 2.0, 1.5, 0.7, 1.2];
+        let model = ModelBuilder::<Linear>::data(&data_y, &data_x)
+            .var_weights(var_weights.clone())
+            .build()?;
+        let fit = model.fit_options().l2_reg(0.25).fit()?;
+        let phi = fit.dispersion();
+        let std_devs = var_weights.mapv_into(|w| num_traits::Float::sqrt(phi / w));
+        let scaled_resid = fit.resid_resp() / std_devs;
+        let res_qua = fit.resid_quantile();
+        assert_abs_diff_eq!(scaled_resid, res_qua, epsilon = 0.01 * f32::EPSILON as f64);
+
         Ok(())
     }
 

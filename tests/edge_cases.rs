@@ -1,6 +1,6 @@
 //! Handles edge cases that have caused trouble at times.
 use anyhow::Result;
-use ndarray::{array, Array2};
+use ndarray::{Array2, array};
 use ndarray_glm::{Logistic, ModelBuilder};
 use num_traits::float::FloatCore;
 
