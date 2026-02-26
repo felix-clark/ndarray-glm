@@ -1,14 +1,18 @@
 //! functions for solving logistic regression
 
+#[cfg(feature = "stats")]
+use crate::response::Response;
 use crate::{
     error::{RegressionError, RegressionResult},
     glm::{DispersionType, Glm},
     link::Link,
     math::prod_log,
     num::Float,
-    response::Response,
+    response::Yval,
 };
 use ndarray::Array1;
+#[cfg(feature = "stats")]
+use statrs::distribution::Bernoulli;
 use std::marker::PhantomData;
 
 /// Logistic regression
@@ -20,7 +24,7 @@ where
 }
 
 /// The logistic response variable must be boolean (at least for now).
-impl<L> Response<Logistic<L>> for bool
+impl<L> Yval<Logistic<L>> for bool
 where
     L: Link<Logistic<L>>,
 {
@@ -31,7 +35,7 @@ where
 // Allow floats for the domain. We can't use num_traits::Float because of the
 // possibility of conflicting implementations upstream, so manually implement
 // for f32 and f64.
-impl<L> Response<Logistic<L>> for f32
+impl<L> Yval<Logistic<L>> for f32
 where
     L: Link<Logistic<L>>,
 {
@@ -42,7 +46,7 @@ where
         F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))
     }
 }
-impl<L> Response<Logistic<L>> for f64
+impl<L> Yval<Logistic<L>> for f64
 where
     L: Link<Logistic<L>>,
 {
@@ -51,6 +55,18 @@ where
             return Err(RegressionError::InvalidY(self.to_string()));
         }
         F::from(self).ok_or_else(|| RegressionError::InvalidY(self.to_string()))
+    }
+}
+
+#[cfg(feature = "stats")]
+impl<L> Response for Logistic<L>
+where
+    L: Link<Logistic<L>>,
+{
+    type DistributionType = Bernoulli;
+
+    fn get_distribution(mu: f64, _phi: f64) -> Self::DistributionType {
+        Bernoulli::new(mu).unwrap()
     }
 }
 

@@ -6,7 +6,7 @@ use crate::{
     fit::{self, Fit},
     glm::Glm,
     num::Float,
-    response::Response,
+    response::Yval,
 };
 use fit::options::{FitConfig, FitOptions};
 use ndarray::{Array1, ArrayBase, ArrayView1, ArrayView2, Data, Ix1, Ix2};
@@ -65,7 +65,7 @@ impl<M: Glm> ModelBuilder<M> {
         data_x: &'a ArrayBase<XD, Ix2>,
     ) -> ModelBuilderData<'a, M, Y, F>
     where
-        Y: Response<M>,
+        Y: Yval<M>,
         F: Float,
         YD: Data<Elem = Y>,
         XD: Data<Elem = F>,
@@ -79,7 +79,6 @@ impl<M: Glm> ModelBuilder<M> {
             freq_weights: None,
             use_intercept_term: true,
             standardize: true,
-            colin_tol: F::epsilon(),
             error: None,
         }
     }
@@ -90,7 +89,7 @@ impl<M: Glm> ModelBuilder<M> {
 pub struct ModelBuilderData<'a, M, Y, F>
 where
     M: Glm,
-    Y: Response<M>,
+    Y: Yval<M>,
     F: 'static + Float,
 {
     model: PhantomData<M>,
@@ -112,8 +111,6 @@ where
     standardize: bool,
     /// Whether to use an intercept term. Defaults to `true`.
     use_intercept_term: bool,
-    /// tolerance for determinant check on rank of data matrix X.
-    colin_tol: F,
     /// An error that has come up in the build compilation.
     error: Option<RegressionError<F>>,
 }
@@ -122,7 +119,7 @@ where
 impl<'a, M, Y, F> ModelBuilderData<'a, M, Y, F>
 where
     M: Glm,
-    Y: Response<M> + Copy,
+    Y: Yval<M> + Copy,
     F: Float,
 {
     /// Represents an offset added to the linear predictor for each data point.
@@ -179,13 +176,6 @@ where
     /// interact with them.
     pub fn no_standardize(mut self) -> Self {
         self.standardize = false;
-        self
-    }
-
-    /// Set the tolerance for the co-linearity check.
-    /// The check can be effectively disabled by setting the tolerance to a negative value.
-    pub fn colinear_tol(mut self, tol: F) -> Self {
-        self.colin_tol = tol;
         self
     }
 

@@ -1,10 +1,12 @@
 //! numerical trait constraints
 use std::cmp;
 
-use ndarray::ScalarOperand;
+use ndarray::NdFloat;
 use ndarray_linalg::Lapack;
 
-pub trait Float: Sized + num_traits::Float + Lapack + ScalarOperand {
+// NdFloat covers everything we need except Lapack, which is an ndarray_linalg trait enabling
+// linear algebra.
+pub trait Float: NdFloat + Lapack {
     // Return 1/2 = 0.5
     fn half() -> Self;
 
