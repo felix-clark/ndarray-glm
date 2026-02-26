@@ -1184,8 +1184,8 @@ where
         Zip::from(&self.data.y)
             .and(&mu)
             .and(&phi_i)
-            .map_collect(|y, &mu, &phi| {
-                let dist = M::get_distribution(mu, phi);
+            .map_collect(|y, &mu, &phi_i| {
+                let dist = M::get_distribution(mu, phi_i);
                 // This variable should be standard-uniform distributed under data following the model
                 // assumption
                 let f = dist.cdf(y.to_f64().unwrap());
