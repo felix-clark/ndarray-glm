@@ -105,11 +105,10 @@ for examples.
 - [X] Non-canonical link functions
 - [X] Fit statistics (see documentation on `Fit` struct)
   - [X] Redisuals
-    - [X] Response
-    - [X] Pearson
-    - [X] Deviance
-    - [X] Standardized variants
-    - [X] Studentized
+    - [X] Response, Pearson, deviance
+    - [X] Standardized and Studentized variants
+    - [X] Working/partial
+    - [X] Quantile (with `stats` feature)
   - [X] Coefficient covariance matrix
   - [X] Dispersion (for families with free dispersion)
   - [X] Leave-one-out (LOO) computations
