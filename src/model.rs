@@ -9,7 +9,7 @@ use crate::{
     response::Yval,
 };
 use fit::options::{FitConfig, FitOptions};
-use ndarray::{Array1, ArrayBase, ArrayView1, ArrayView2, Data, Ix1, Ix2};
+use ndarray::{Array1, ArrayBase, ArrayView1, ArrayView2, Data, Ix1, Ix2, Order};
 use std::marker::PhantomData;
 
 /// Holds the data and configuration settings for a regression.
@@ -211,6 +211,11 @@ where
             eprintln!("Warning: data is underconstrained");
         }
 
+        // Put the data in column-major order, since broadcasting and summing over the observations
+        // are the more common operations.
+        // The shape should be trivially valid, so just unwrap it.
+        let data_x = self.data_x.to_shape((self.data_x.dim(), Order::F)).unwrap();
+
         // convert y-values to floating-point
         let data_y: Array1<F> = self
             .data_y
@@ -221,7 +226,7 @@ where
         // Build the Dataset object
         let mut data = Dataset {
             y: data_y,
-            x: self.data_x.to_owned(),
+            x: data_x.to_owned(),
             linear_offset: self.linear_offset,
             weights: self.var_weights,
             freqs: self.freq_weights,
