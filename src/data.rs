@@ -2,7 +2,7 @@
 use crate::num::Float;
 use ndarray::{Array1, Array2, ArrayView2, Axis, concatenate, s};
 use num_traits::{FromPrimitive, One};
-use std::ops::{AddAssign, DivAssign, MulAssign};
+use std::ops::{AddAssign, DivAssign, MulAssign, SubAssign};
 
 #[derive(Clone, Debug)]
 pub struct Dataset<F>
@@ -71,7 +71,7 @@ where
             // method, because it checks pretty much everything: weights, intercept, etc.
             // This isn't a nice factorization, but at least this mess is all internal.
             let standardizer = Standardizer::from_dataset(self);
-            self.x = standardizer.transform(self.x.clone());
+            standardizer.transform_inplace(&mut self.x);
             self.standardizer = Some(standardizer);
         }
         // Pad the ones after standardization for simplicity
@@ -343,14 +343,15 @@ where
         Self { shifts, scales }
     }
 
-    /// Apply the fitted standardization to `x`.
+    /// Apply the fitted standardization to `x`, in-place on a mutable array.
     ///
     /// Each column has its training mean subtracted and is divided by the training standard
     /// deviation. Columns whose training std was zero are only adjusted by the mean. The parameter
     /// should be zero in this case anyway (or perhaps undefined with no regularization), so this
     /// prevents predictions being impacted from numerical imprecisions.
-    fn transform(&self, x: Array2<F>) -> Array2<F> {
-        (x - &self.shifts) / &self.scales
+    fn transform_inplace(&self, x: &mut Array2<F>) {
+        x.sub_assign(&self.shifts);
+        x.div_assign(&self.scales);
     }
 
     /// Apply the inverse transformation to get back the original data.
@@ -511,6 +512,15 @@ mod tests {
     use approx::assert_abs_diff_eq;
     use ndarray::array;
 
+    impl<F: Float> Standardizer<F> {
+        /// This method isn't used in the crate since we have transform_inplace() to avoid copying,
+        /// but it's a useful utility in these tests.
+        fn transform(&self, mut x: Array2<F>) -> Array2<F> {
+            self.transform_inplace(&mut x);
+            x
+        }
+    }
+
     fn make_dataset(x: Array2<f64>) -> Dataset<f64> {
         let n = x.nrows();
         let mut ds = Dataset {
@@ -552,7 +562,7 @@ mod tests {
 
     // transform produces zero-mean, unit-variance columns.
     #[test]
-    fn transform_standardizes() {
+    fn transform_standardized() {
         let x = array![[1.0_f64, 4.0], [2.0, 6.0], [3.0, 8.0]];
         let s = get_standardizer(x.clone());
         let x_std = s.transform(x);

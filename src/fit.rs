@@ -37,6 +37,9 @@ where
     pub result: Array1<F>,
     /// The parameter values used internally for the standardized data.
     result_std: Array1<F>,
+    /// The linear predictor of the X training data given the fit result. Note that it is invariant
+    /// under any standardization scaling, since it is an inner product between X and beta.
+    x_lin_pred: Array1<F>,
     /// The predicted y-values for the training data.
     y_hat: Array1<F>,
     /// The options used for this fit.
@@ -55,6 +58,8 @@ where
     /// The estimated dispersion parameter, which is called in many places. For some families this
     /// is just one.
     phi: OnceCell<F>,
+    /// The deviance terms for each observation are called frequently and used in several places.
+    dev_terms: OnceCell<Array1<F>>,
     /// The Pearson residuals, a common statistic that is re-used in several other quantities.
     resid_pear: OnceCell<Array1<F>>,
     /// The covariance matrix, using the sandwich approach.
@@ -158,7 +163,6 @@ where
             // For logistic/poisson regression, this is identically 1.
             // For linear/gamma regression it is estimated from the data.
             let phi: F = self.dispersion();
-            // NOTE: invh()/invh_into() are bugged and give incorrect values!
             let f_reg_inv: Array2<F> = self.fisher_inv()?.to_owned();
             // Use the sandwich form so that regularization doesn't artificially deflate uncertainty.
             // When unregularized, F_reg = F_data and this reduces to F_data^{-1}.
@@ -181,17 +185,19 @@ where
     /// The unregularized likelihood is used.
     pub fn deviance(&self) -> F {
         let terms = self.deviance_terms();
-        self.data.freq_sum(&terms)
+        self.data.freq_sum(terms)
     }
 
     /// Returns the contribution to the deviance from each observation. The total deviance should
     /// be the sum of all of these. Variance weights are already included, but not frequency
     /// weights.
-    fn deviance_terms(&self) -> Array1<F> {
-        let ll_terms: Array1<F> = M::log_like_terms(self.data, &self.result_std);
-        let ll_sat: Array1<F> = self.data.y.mapv(M::log_like_sat);
-        let terms = (ll_sat - ll_terms) * F::two();
-        self.data.apply_var_weights(terms)
+    fn deviance_terms(&self) -> &Array1<F> {
+        self.dev_terms.get_or_init(|| {
+            let ll_terms: Array1<F> = M::log_like_terms(self.data, &self.result_std);
+            let ll_sat: Array1<F> = self.data.y.mapv(M::log_like_sat);
+            let terms = (ll_sat - ll_terms) * F::two();
+            self.data.apply_var_weights(terms)
+        })
     }
 
     /// Returns the self-excluded deviance terms, i.e. the deviance of an observation as if the
@@ -302,7 +308,12 @@ where
     fn fisher_inv(&self) -> RegressionResult<&Array2<F>, F> {
         self.fisher_inv.get_or_try_init(|| {
             let fisher_reg = self.fisher(&self.result);
-            // NOTE: invh/invh_into() are bugged and incorrect!
+            // NOTE: invh/invh_into() are bugged and incorrect, as they are sensitive to the layout.
+            // Even with X in column-major order, the fisher matrix is in the space of the
+            // covariates, and seems to naturally emerge as row-major. The bug could be avoided
+            // with:
+            // let fish_inv = fisher_reg.t().to_owned().invh_into()?;
+            // but this also allocates again so let's not worry about this yet.
             let fish_inv = fisher_reg.inv_into()?;
             Ok(fish_inv)
         })
@@ -346,15 +357,14 @@ where
         self.hat.get_or_try_init(|| {
             // Do the full computation in terms of the internal parameters, since this observable
             // is not sensitive to the choice of basis.
-            let lin_pred = self.data.linear_predictor_std(&self.result_std);
+
             // Apply the eta' terms manually instead of calling adjusted_variance_diag, because the
             // adjusted variance method applies 2 powers to the variance, while we want one power
             // to the variance and one to the weights.
-            // let adj_var = M::adjusted_variance_diag(&lin_pred);
+            // let adj_var = M::adjusted_variance_diag(&self.x_lin_pred);
 
-            let mu = M::mean(&lin_pred);
-            let var = mu.mapv_into(M::variance);
-            let eta_d = M::Link::d_nat_param(&lin_pred);
+            let var = self.y_hat.clone().mapv_into(M::variance);
+            let eta_d = M::Link::d_nat_param(&self.x_lin_pred);
 
             let fisher_inv = self.fisher_std_inv()?;
 
@@ -377,10 +387,9 @@ where
     pub fn infl_coef(&self) -> RegressionResult<Array2<F>, F> {
         // The linear predictor can be acquired in terms of the standardized parameters, but the
         // rest of the computation should use external.
-        let lin_pred = self.data.linear_predictor_std(&self.result_std);
         let resid_resp = self.resid_resp();
         let omh = -self.leverage()? + F::one();
-        let resid_adj = M::Link::adjust_errors(resid_resp, &lin_pred) / omh;
+        let resid_adj = M::Link::adjust_errors(resid_resp, &self.x_lin_pred) / omh;
         let xte = self.data.x_conj_ext() * resid_adj;
         let fisher_inv = self.fisher_inv()?;
         let delta_b = xte.t().dot(fisher_inv);
@@ -502,8 +511,9 @@ where
         // Cache some of these variables that will be used often.
         let n_par = result_std.len();
         // NOTE: This necessarily uses the coefficients directly from the standardized data.
-        // Store these predictions as they are commonly used.
-        let y_hat = M::mean(&data.linear_predictor_std(&result_std));
+        // Store the linear predictor and the corresponding y values as they are commonly used.
+        let x_lin_pred = data.linear_predictor_std(&result_std);
+        let y_hat = M::mean(&x_lin_pred);
         // The public result must be transformed back to the external scale for compatability with
         // the input data.
         let result_ext = data.inverse_transform_beta(result_std.clone());
@@ -521,6 +531,7 @@ where
             data,
             result: result_ext,
             result_std,
+            x_lin_pred,
             y_hat,
             options,
             model_like,
@@ -529,6 +540,7 @@ where
             history,
             n_par,
             phi: OnceCell::new(),
+            dev_terms: OnceCell::new(),
             resid_pear: OnceCell::new(),
             covariance: OnceCell::new(),
             fisher_inv: OnceCell::new(),
@@ -684,7 +696,7 @@ where
     pub fn resid_dev(&self) -> Array1<F> {
         let signs = self.resid_resp().mapv_into(F::signum);
         let ll_diff = self.deviance_terms();
-        let dev: Array1<F> = ll_diff.mapv_into(num_traits::Float::sqrt);
+        let dev: Array1<F> = ll_diff.clone().mapv_into(num_traits::Float::sqrt);
         signs * dev
     }
 
@@ -832,13 +844,11 @@ where
     /// These can be interpreted as the residual differences mapped into the linear predictor space
     /// of $`\omega = \mathbf{x}\cdot\boldsymbol{\beta}`$.
     pub fn resid_work(&self) -> Array1<F> {
-        let lin_pred: Array1<F> = self.data.linear_predictor_std(&self.result_std);
-        let mu: Array1<F> = self.y_hat.clone();
-        let resid_response: Array1<F> = &self.data.y - &mu;
-        let var: Array1<F> = mu.mapv(M::variance);
+        let resid_response: Array1<F> = self.resid_resp();
+        let var: Array1<F> = self.y_hat.clone().mapv(M::variance);
         // adjust for non-canonical link functions; we want a total factor of 1/eta'
         let (adj_response, adj_var) =
-            M::Link::adjust_errors_variance(resid_response, var, &lin_pred);
+            M::Link::adjust_errors_variance(resid_response, var, &self.x_lin_pred);
         adj_response / adj_var
     }
 
@@ -870,6 +880,7 @@ where
     /// [`test_ndf()`](Self::test_ndf) degrees of freedom.
     pub fn score_test(&self) -> RegressionResult<F, F> {
         let (_, null_params) = self.null_model_fit();
+        // NOTE: The null model is not sensitive to standardization.
         self.score_test_against(null_params.clone())
     }
 
