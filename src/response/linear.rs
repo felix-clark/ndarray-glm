@@ -109,6 +109,21 @@ mod tests {
     use ndarray::array;
 
     #[test]
+    // Check closure, which should be trivial for linear as the link and natural parameters are
+    // just identity.
+    fn id_closure() {
+        use crate::link::TestLink;
+        // Define an assorted array of values over several orders of magnitude without any
+        // obvious exploitable patterns
+        let x = crate::array![
+            -1e5, -100., -13., -2.0, -1.0, -0.025, -0.001, 0., 0.001, 0.04, 1.0, 2.5, 17., 128.,
+            1e5
+        ];
+        super::link::Id::check_closure(&x);
+        super::link::Id::check_closure_y(&x);
+    }
+
+    #[test]
     fn lin_reg() -> RegressionResult<(), f64> {
         let beta = array![0.3, 1.2, -0.5];
         let data_x = array![[-0.1, 0.2], [0.7, 0.5], [3.2, 0.1]];
@@ -120,12 +135,9 @@ mod tests {
         ];
         let model = ModelBuilder::<Linear>::data(&data_y, &data_x).build()?;
         let fit = model.fit_options().max_iter(10).fit()?;
-        dbg!(fit.n_iter);
         // This is failing within the default tolerance
         assert_abs_diff_eq!(beta, fit.result, epsilon = 64.0 * f64::EPSILON);
-        let lr: f64 = fit.lr_test();
-        dbg!(&lr);
-        dbg!(&lr.sqrt());
+        let _lr: f64 = fit.lr_test();
         Ok(())
     }
 }

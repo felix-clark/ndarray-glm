@@ -26,6 +26,8 @@ pub trait Transform {
     /// The derivative $`\eta'(\omega)`$ of the transformation to the natural parameter.
     /// If it is zero in a region that the IRLS is in, the algorithm may have difficulty
     /// converging.
+    /// It is given in terms of the link and variance functions as $`\eta'(\omega_i) =
+    /// \frac{1}{g'(\mu_i) V(\mu_i)}`$.
     fn d_nat_param<F: Float>(lin_pred: &Array1<F>) -> Array1<F>;
     /// Adjust the error/residual terms of the likelihood function based on the first derivative of
     /// the transformation. The linear predictor must be un-transformed, i.e. it must be X*beta
@@ -100,5 +102,37 @@ where
         _lin_pred: &Array1<F>,
     ) -> (Array1<F>, Array1<F>) {
         (errors, variance)
+    }
+}
+
+/// Implement some common testing methods that every link function should satisfy.
+#[cfg(test)]
+pub trait TestLink<M: Glm> {
+    /// Assert that $`g(g^{-1}(\omega)) = 1`$ for the entire input array. Since the input domain is
+    /// that of the linear predictor, this should hold for all normal inputs.
+    fn check_closure(xs: &Array1<f64>);
+
+    /// Assert that $`g^{-1}(g(y)) = 1`$ for the entire input array. Since the input domain is
+    /// that of the response variable, the input array must be in the domain of y.
+    fn check_closure_y(ys: &Array1<f64>);
+}
+
+// NOTE: Does TestLink belong on Transform instead? But Transform doesn't have link/link_inv?
+#[cfg(test)]
+impl<L, M> TestLink<M> for L
+where
+    M: Glm,
+    L: Link<M>,
+{
+    fn check_closure(x: &Array1<f64>) {
+        let x_closed = x.clone().mapv_into(|w| L::func(L::func_inv(w)));
+        // We need a relatively generous epsilon since some of these back-and-forths do lose
+        // precision
+        approx::assert_abs_diff_eq!(*x, x_closed, epsilon = 1e-6);
+    }
+
+    fn check_closure_y(y: &Array1<f64>) {
+        let y_closed = y.clone().mapv_into(|y| L::func_inv(L::func(y)));
+        approx::assert_abs_diff_eq!(*y, y_closed, epsilon = f32::EPSILON as f64);
     }
 }

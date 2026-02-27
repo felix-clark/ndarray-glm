@@ -178,20 +178,27 @@ mod tests {
         Ok(())
     }
 
-    // verify that the link and inverse are indeed inverses.
+    #[test]
+    // Confirm logit closure explicitly.
+    fn logit_closure() {
+        use crate::link::TestLink;
+        // Because floats lose precision on difference from 1 relative to 0, higher values get
+        // mapped back to infinity under closure. This is sort of fundamental to the logit
+        // function and I'm not sure there's a good way around it.
+        let x = array![-500., -50., -2.0, -0.2, 0., 0.5, 20.];
+        super::link::Logit::check_closure(&x);
+        let y = array![0., 1e-5, 0.25, 0.5, 0.8, 0.9999, 1.0];
+        super::link::Logit::check_closure_y(&y);
+    }
+
+    // verify that the link and inverse are indeed inverses for the cloglog link.
     #[test]
     fn cloglog_closure() {
+        use crate::link::TestLink;
         use link::Cloglog;
         let mu_test_vals = array![1e-8, 0.01, 0.1, 0.3, 0.5, 0.7, 0.9, 0.99, 0.9999999];
-        assert_abs_diff_eq!(
-            mu_test_vals,
-            mu_test_vals.mapv(|mu| Cloglog::func_inv(Cloglog::func(mu)))
-        );
+        Cloglog::check_closure_y(&mu_test_vals);
         let lin_test_vals = array![-10., -2., -0.1, 0.0, 0.1, 1., 2.];
-        assert_abs_diff_eq!(
-            lin_test_vals,
-            lin_test_vals.mapv(|lin| Cloglog::func(Cloglog::func_inv(lin))),
-            epsilon = 1e-3 * f32::EPSILON as f64
-        );
+        Cloglog::check_closure(&lin_test_vals);
     }
 }
