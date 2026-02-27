@@ -1,4 +1,5 @@
-//! functions for solving logistic regression
+//! Logistic response function where y is drawn from the Bernoulli distribution with some
+//! probability p. The canonical link function is $`g(p) = \textrm{logit}(p)`$.
 
 #[cfg(feature = "stats")]
 use crate::response::Response;
