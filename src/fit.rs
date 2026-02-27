@@ -163,7 +163,6 @@ where
             // For logistic/poisson regression, this is identically 1.
             // For linear/gamma regression it is estimated from the data.
             let phi: F = self.dispersion();
-            // NOTE: invh()/invh_into() are bugged and give incorrect values!
             let f_reg_inv: Array2<F> = self.fisher_inv()?.to_owned();
             // Use the sandwich form so that regularization doesn't artificially deflate uncertainty.
             // When unregularized, F_reg = F_data and this reduces to F_data^{-1}.
@@ -309,7 +308,12 @@ where
     fn fisher_inv(&self) -> RegressionResult<&Array2<F>, F> {
         self.fisher_inv.get_or_try_init(|| {
             let fisher_reg = self.fisher(&self.result);
-            // NOTE: invh/invh_into() are bugged and incorrect!
+            // NOTE: invh/invh_into() are bugged and incorrect, as they are sensitive to the layout.
+            // Even with X in column-major order, the fisher matrix is in the space of the
+            // covariates, and seems to naturally emerge as row-major. The bug could be avoided
+            // with:
+            // let fish_inv = fisher_reg.t().to_owned().invh_into()?;
+            // but this also allocates again so let's not worry about this yet.
             let fish_inv = fisher_reg.inv_into()?;
             Ok(fish_inv)
         })
@@ -876,6 +880,7 @@ where
     /// [`test_ndf()`](Self::test_ndf) degrees of freedom.
     pub fn score_test(&self) -> RegressionResult<F, F> {
         let (_, null_params) = self.null_model_fit();
+        // NOTE: The null model is not sensitive to standardization.
         self.score_test_against(null_params.clone())
     }
 
