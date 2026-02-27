@@ -55,6 +55,8 @@ where
     /// The estimated dispersion parameter, which is called in many places. For some families this
     /// is just one.
     phi: OnceCell<F>,
+    /// The deviance terms for each observation are called frequently and used in several places.
+    dev_terms: OnceCell<Array1<F>>,
     /// The Pearson residuals, a common statistic that is re-used in several other quantities.
     resid_pear: OnceCell<Array1<F>>,
     /// The covariance matrix, using the sandwich approach.
@@ -187,11 +189,13 @@ where
     /// Returns the contribution to the deviance from each observation. The total deviance should
     /// be the sum of all of these. Variance weights are already included, but not frequency
     /// weights.
-    fn deviance_terms(&self) -> Array1<F> {
-        let ll_terms: Array1<F> = M::log_like_terms(self.data, &self.result_std);
-        let ll_sat: Array1<F> = self.data.y.mapv(M::log_like_sat);
-        let terms = (ll_sat - ll_terms) * F::two();
-        self.data.apply_var_weights(terms)
+    fn deviance_terms(&self) -> &Array1<F> {
+        self.dev_terms.get_or_init(|| {
+            let ll_terms: Array1<F> = M::log_like_terms(self.data, &self.result_std);
+            let ll_sat: Array1<F> = self.data.y.mapv(M::log_like_sat);
+            let terms = (ll_sat - ll_terms) * F::two();
+            self.data.apply_var_weights(terms)
+        })
     }
 
     /// Returns the self-excluded deviance terms, i.e. the deviance of an observation as if the
@@ -529,6 +533,7 @@ where
             history,
             n_par,
             phi: OnceCell::new(),
+            dev_terms: OnceCell::new(),
             resid_pear: OnceCell::new(),
             covariance: OnceCell::new(),
             fisher_inv: OnceCell::new(),
@@ -684,7 +689,7 @@ where
     pub fn resid_dev(&self) -> Array1<F> {
         let signs = self.resid_resp().mapv_into(F::signum);
         let ll_diff = self.deviance_terms();
-        let dev: Array1<F> = ll_diff.mapv_into(num_traits::Float::sqrt);
+        let dev: Array1<F> = ll_diff.clone().mapv_into(num_traits::Float::sqrt);
         signs * dev
     }
 
