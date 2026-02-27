@@ -37,6 +37,9 @@ where
     pub result: Array1<F>,
     /// The parameter values used internally for the standardized data.
     result_std: Array1<F>,
+    /// The linear predictor of the X training data given the fit result. Note that it is invariant
+    /// under any standardization scaling, since it is an inner product between X and beta.
+    x_lin_pred: Array1<F>,
     /// The predicted y-values for the training data.
     y_hat: Array1<F>,
     /// The options used for this fit.
@@ -183,7 +186,7 @@ where
     /// The unregularized likelihood is used.
     pub fn deviance(&self) -> F {
         let terms = self.deviance_terms();
-        self.data.freq_sum(&terms)
+        self.data.freq_sum(terms)
     }
 
     /// Returns the contribution to the deviance from each observation. The total deviance should
@@ -350,15 +353,14 @@ where
         self.hat.get_or_try_init(|| {
             // Do the full computation in terms of the internal parameters, since this observable
             // is not sensitive to the choice of basis.
-            let lin_pred = self.data.linear_predictor_std(&self.result_std);
+
             // Apply the eta' terms manually instead of calling adjusted_variance_diag, because the
             // adjusted variance method applies 2 powers to the variance, while we want one power
             // to the variance and one to the weights.
-            // let adj_var = M::adjusted_variance_diag(&lin_pred);
+            // let adj_var = M::adjusted_variance_diag(&self.x_lin_pred);
 
-            let mu = M::mean(&lin_pred);
-            let var = mu.mapv_into(M::variance);
-            let eta_d = M::Link::d_nat_param(&lin_pred);
+            let var = self.y_hat.clone().mapv_into(M::variance);
+            let eta_d = M::Link::d_nat_param(&self.x_lin_pred);
 
             let fisher_inv = self.fisher_std_inv()?;
 
@@ -381,10 +383,9 @@ where
     pub fn infl_coef(&self) -> RegressionResult<Array2<F>, F> {
         // The linear predictor can be acquired in terms of the standardized parameters, but the
         // rest of the computation should use external.
-        let lin_pred = self.data.linear_predictor_std(&self.result_std);
         let resid_resp = self.resid_resp();
         let omh = -self.leverage()? + F::one();
-        let resid_adj = M::Link::adjust_errors(resid_resp, &lin_pred) / omh;
+        let resid_adj = M::Link::adjust_errors(resid_resp, &self.x_lin_pred) / omh;
         let xte = self.data.x_conj_ext() * resid_adj;
         let fisher_inv = self.fisher_inv()?;
         let delta_b = xte.t().dot(fisher_inv);
@@ -506,8 +507,9 @@ where
         // Cache some of these variables that will be used often.
         let n_par = result_std.len();
         // NOTE: This necessarily uses the coefficients directly from the standardized data.
-        // Store these predictions as they are commonly used.
-        let y_hat = M::mean(&data.linear_predictor_std(&result_std));
+        // Store the linear predictor and the corresponding y values as they are commonly used.
+        let x_lin_pred = data.linear_predictor_std(&result_std);
+        let y_hat = M::mean(&x_lin_pred);
         // The public result must be transformed back to the external scale for compatability with
         // the input data.
         let result_ext = data.inverse_transform_beta(result_std.clone());
@@ -525,6 +527,7 @@ where
             data,
             result: result_ext,
             result_std,
+            x_lin_pred,
             y_hat,
             options,
             model_like,
@@ -837,13 +840,11 @@ where
     /// These can be interpreted as the residual differences mapped into the linear predictor space
     /// of $`\omega = \mathbf{x}\cdot\boldsymbol{\beta}`$.
     pub fn resid_work(&self) -> Array1<F> {
-        let lin_pred: Array1<F> = self.data.linear_predictor_std(&self.result_std);
-        let mu: Array1<F> = self.y_hat.clone();
-        let resid_response: Array1<F> = &self.data.y - &mu;
-        let var: Array1<F> = mu.mapv(M::variance);
+        let resid_response: Array1<F> = self.resid_resp();
+        let var: Array1<F> = self.y_hat.clone().mapv(M::variance);
         // adjust for non-canonical link functions; we want a total factor of 1/eta'
         let (adj_response, adj_var) =
-            M::Link::adjust_errors_variance(resid_response, var, &lin_pred);
+            M::Link::adjust_errors_variance(resid_response, var, &self.x_lin_pred);
         adj_response / adj_var
     }
 
