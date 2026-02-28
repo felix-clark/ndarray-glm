@@ -53,7 +53,7 @@ ndarray-glm = { version = "0.0.15", features = ["openblas-system"] }
 ```
 
 An example for linear regression is shown below. The library is generic over
-floating point type (`f32` of `f64`).
+floating point type (`f32` or `f64`).
 
 ``` rust
 use ndarray_glm::{array, Linear, ModelBuilder};
