@@ -207,4 +207,14 @@ mod tests {
         let lin_test_vals = array![1e-8, 0.002, 0.5, 2.4, 15., 120.];
         Log::check_closure(&lin_test_vals);
     }
+
+    #[test]
+    fn log_nat_par() {
+        use crate::link::TestLink;
+        use link::Log;
+        // nat_param(ω) = -exp(-ω) = g_0(g^{-1}(ω)) = NegRec(exp(ω)) = -1/exp(ω)
+        let lin_test_vals = array![-10., -2., -0.5, 0.0, 0.5, 2., 10.];
+        Log::check_nat_par::<Exponential<link::NegRec>>(&lin_test_vals);
+        Log::check_nat_par_d(&lin_test_vals);
+    }
 }

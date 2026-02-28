@@ -202,4 +202,14 @@ mod tests {
         let lin_test_vals = array![-10., -2., -0.1, 0.0, 0.1, 1., 2.];
         Cloglog::check_closure(&lin_test_vals);
     }
+
+    #[test]
+    fn cloglog_nat_par() {
+        use crate::link::TestLink;
+        use link::Cloglog;
+        // nat_param(ω) = logit(cloglog^{-1}(ω)) = g_0(g^{-1}(ω))
+        let lin_test_vals = array![-10., -2., -0.1, 0.0, 0.1, 1., 2.];
+        Cloglog::check_nat_par::<Logistic<link::Logit>>(&lin_test_vals);
+        Cloglog::check_nat_par_d(&lin_test_vals);
+    }
 }
