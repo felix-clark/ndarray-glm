@@ -117,7 +117,6 @@ pub trait TestLink<M: Glm> {
     fn check_closure_y(ys: &Array1<f64>);
 }
 
-// NOTE: Does TestLink belong on Transform instead? But Transform doesn't have link/link_inv?
 #[cfg(test)]
 impl<L, M> TestLink<M> for L
 where

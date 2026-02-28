@@ -5,6 +5,7 @@ use crate::{error::RegressionResult, glm::Glm, num::Float};
 use statrs::statistics::Distribution;
 
 pub mod binomial;
+pub mod exponential;
 pub mod linear;
 pub mod logistic;
 pub mod poisson;
