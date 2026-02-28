@@ -95,7 +95,7 @@ implementation.
   - [X] Poisson
   - [X] Binomial
   - [X] Exponential
-  - [ ] Gamma
+  - [X] Gamma
   - [ ] Inverse Gaussian
 - [X] Linear offsets
 - [X] Generic over floating point type

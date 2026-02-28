@@ -6,6 +6,7 @@ use statrs::statistics::Distribution;
 
 pub mod binomial;
 pub mod exponential;
+pub mod gamma;
 pub mod linear;
 pub mod logistic;
 pub mod poisson;

@@ -217,10 +217,11 @@ pub use {
     fit::Fit,
     model::ModelBuilder,
     response::exponential::link as exp_link,
+    response::gamma::link as gamma_link,
     response::logistic::link as logistic_link,
     response::{
-        binomial::Binomial, exponential::Exponential, linear::Linear, logistic::Logistic,
-        poisson::Poisson,
+        binomial::Binomial, exponential::Exponential, gamma::Gamma, linear::Linear,
+        logistic::Logistic, poisson::Poisson,
     },
 };
 
