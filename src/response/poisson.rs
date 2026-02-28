@@ -43,7 +43,9 @@ where
     type DistributionType = PoisDist;
 
     fn get_distribution(mu: f64, _phi: f64) -> Self::DistributionType {
-        PoisDist::new(mu).unwrap()
+        // NOTE: This will panic if mu <= 0. For canonical poisson that shouldn't be an issue, but
+        // clamp at the lowest positive value just to be safe and to not lose any precision.
+        PoisDist::new(mu.max(f64::MIN_POSITIVE)).unwrap()
     }
 }
 
@@ -66,7 +68,7 @@ where
     }
 
     /// The saturation likelihood of the Poisson distribution is non-trivial.
-    /// It is equal to y * (log(y) - 1).
+    /// It is equal to y * (log(y) - 1). We aren't including the normalization term B = -log(y!).
     fn log_like_sat<F: Float>(y: F) -> F {
         prod_log(y) - y
     }

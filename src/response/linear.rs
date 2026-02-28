@@ -41,13 +41,12 @@ where
     type DistributionType = Normal;
 
     fn get_distribution(mu: f64, phi: f64) -> Self::DistributionType {
-        let sigma = phi.sqrt();
-        // We might want to return the error, but we should be able to assume that neither are NaN
-        // and sigma > 0.
         // TODO: We should probably return an error instead of unwrap()-ing each of these
         // distributions, because a sigma of zero is possible (e.g. in an underspecified model).
         // The statrs errors aren't unified so we can't implement a simple #[from] for our error
         // enum and will need to map_err in each implementation.
+        // Clipping works around these issues. Note that sigma ~ 1e-154.
+        let sigma = phi.max(f64::MIN_POSITIVE).sqrt();
         Normal::new(mu, sigma).unwrap()
     }
 }
