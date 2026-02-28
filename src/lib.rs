@@ -216,8 +216,12 @@ mod response;
 pub use {
     fit::Fit,
     model::ModelBuilder,
+    response::exponential::link as exp_link,
     response::logistic::link as logistic_link,
-    response::{binomial::Binomial, linear::Linear, logistic::Logistic, poisson::Poisson},
+    response::{
+        binomial::Binomial, exponential::Exponential, linear::Linear, logistic::Logistic,
+        poisson::Poisson,
+    },
 };
 
 // re-export common structs from ndarray
