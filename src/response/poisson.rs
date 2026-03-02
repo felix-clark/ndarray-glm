@@ -74,7 +74,7 @@ where
     }
 }
 
-pub mod link {
+pub(crate) mod link {
     //! Link functions for Poisson regression
     use super::Poisson;
     use crate::{

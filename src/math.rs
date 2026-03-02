@@ -2,7 +2,7 @@
 use crate::num::Float;
 
 /// The product-logarithm function (not the W function) x * log(x). If x == 0, 0 is returned.
-pub fn prod_log<F>(x: F) -> F
+pub(crate) fn prod_log<F>(x: F) -> F
 where
     F: Float,
 {

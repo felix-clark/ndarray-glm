@@ -3,16 +3,17 @@
 //! The [`ndarray-linalg`](https://docs.rs/ndarray-linalg/) crate is used to allow
 //! optimization of linear algebra operations with BLAS.
 //!
-//! This crate is in beta and the interface may change significantly. The tests include several
-//! comparisons with R's `glm` and `glmnet` packages, but some cases may not be covered directly or
-//! involve inherent ambiguities or imprecisions.
+//! Numerical accuracy cannot be 100% guaranteed but the tests do include several comparisons with
+//! R's `glm` and `glmnet` packages, but some cases may not be covered directly or involve inherent
+//! ambiguities or imprecisions.
 //!
 //! # Feature summary:
 //!
-//! * Linear, logistic, Poisson, and binomial regression (more to come)
+//! * Many common exponential families (see table below for full list)
 //! * Generic over floating-point type
 //! * L1 (lasso), L2 (ridge), and elastic net regularization
 //! * Statistical tests of fit result
+//! * Weighted observations (both frequency and variance)
 //! * Alternative and custom link functions
 //!
 //!
@@ -34,7 +35,7 @@
 //! following into your crate's `Cargo.toml`:
 //! ```text
 //! ndarray = { version = "0.17", features = ["blas"]}
-//! ndarray-glm = { version = "0.0.15", features = ["openblas-system"] }
+//! ndarray-glm = { version = "0.1", features = ["openblas-system"] }
 //! ```
 //!
 //! ## Compile OpenBLAS from source
@@ -44,7 +45,7 @@
 //! `Cargo.toml`.
 //! ```text
 //! ndarray = { version = "0.17", features = ["blas"]}
-//! ndarray-glm = { version = "0.0.15", features = ["openblas-static"] }
+//! ndarray-glm = { version = "0.1", features = ["openblas-static"] }
 //! ```
 //!
 //! # Examples:
@@ -202,7 +203,6 @@
 //! For a more complete mathematical reference, see the
 //! [derivation notes](https://felix-clark.github.io/src/tex/glm-math/main.pdf).
 
-#![doc(html_root_url = "https://docs.rs/crate/ndarray-glm")]
 mod data;
 pub mod error;
 mod fit;
@@ -217,15 +217,17 @@ mod response;
 
 // Import some common names into the top-level namespace
 pub use {
-    fit::Fit,
+    data::Dataset,
+    fit::{Fit, options::FitOptions},
+    irls::IrlsStep,
     model::ModelBuilder,
     response::exponential::link as exp_link,
     response::gamma::link as gamma_link,
     response::inverse_gaussian::link as inv_gauss_link,
     response::logistic::link as logistic_link,
     response::{
-        binomial::Binomial, exponential::Exponential, gamma::Gamma,
-        inverse_gaussian::InvGaussian, linear::Linear, logistic::Logistic, poisson::Poisson,
+        binomial::Binomial, exponential::Exponential, gamma::Gamma, inverse_gaussian::InvGaussian,
+        linear::Linear, logistic::Logistic, poisson::Poisson,
     },
 };
 

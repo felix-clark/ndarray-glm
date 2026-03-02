@@ -1,6 +1,6 @@
 [package]
 name = "ndarray-glm"
-version = "0.0.15"
+version = "0.1.0"
 authors = ["Felix Clark <mfclark3690@gmail.com>"]
 description = "Performs regression for generalized linear models using IRLS on data stored in arrays."
 edition = "2024"
@@ -9,10 +9,6 @@ readme = "README.md"
 license = "MIT"
 keywords = ["ndarray", "statistics", "regression", "glm", "irls"]
 categories = ["mathematics", "science"]
-
-[badges]
-maintenance = { status = "experimental" }
-travis-ci = { repository = "felix-clark/ndarray-glm" }
 
 [features]
 # Feature flags to forward to ndarray-linalg

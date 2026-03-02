@@ -1,6 +1,6 @@
 //! Trait defining a generalized linear model for common functionality.
-//! Models are fit such that $`<\mathbf{y}> = g^-1(\mathbf{X}*\mathfb{\beta})`$ where g is the link
-//! function.
+//! Models are fit such that $`<\mathbf{y}> = g^{-1}(\mathbf{X}*\mathbf{\beta})`$ where g is the
+//! link function.
 
 use crate::irls::IrlsStep;
 use crate::link::{Link, Transform};
