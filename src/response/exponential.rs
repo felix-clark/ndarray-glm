@@ -10,7 +10,6 @@ use crate::{
     response::Yval,
 };
 use ndarray::Array1;
-use num_traits::ToPrimitive;
 #[cfg(feature = "stats")]
 use statrs::distribution::Exp;
 use std::marker::PhantomData;
@@ -60,13 +59,13 @@ where
         // NOTE: Negative mu is a realistic concern for exponential regression, since the canonical
         // link function does not prevent them. Without complicating the return type, either with
         // dynamic dispatch or an enum between Exp and Dirac that would have to forward every
-        // Distribution<f64> and ContinuousCDF<f64> calls, the simplest way to avoid non-zero mu is
-        // to clamp at the lowest possible value (~2e-308).
+        // Distribution<f64> and ContinuousCDF<f64> calls, the simplest way to ensure μ > 0 is
+        // to clamp at the lowest positive value (~2e-308).
         Exp::new(mu.max(f64::MIN_POSITIVE)).unwrap()
     }
 }
 
-/// Implementation of GLM functionality for logistic regression.
+/// Implementation of GLM functionality for exponential regression.
 impl<L> Glm for Exponential<L>
 where
     L: Link<Exponential<L>>,
@@ -74,13 +73,18 @@ where
     type Link = L;
     const DISPERSED: DispersionType = DispersionType::NoDispersion;
 
-    /// The log of the partition function for logistic regression. The natural
-    /// parameter is the logit of p.
+    /// The log-partition function $`A(\eta)`$ for the exponential family, expressed in terms
+    /// of the canonical natural parameter $`\eta = -1/\mu`$:
+    ///
+    /// ```math
+    /// A(\eta) = -\ln(-\eta)
+    /// ```
     fn log_partition<F: Float>(nat_par: F) -> F {
         -num_traits::Float::ln(-nat_par)
     }
 
-    /// var = mu*(1-mu)
+    /// The variance function $`V(\mu) = \mu^2`$, equal to $`A''(\eta)`$ evaluated at
+    /// $`\eta = -1/\mu`$.
     fn variance<F: Float>(mean: F) -> F {
         mean * mean
     }
@@ -93,7 +97,7 @@ where
 }
 
 pub mod link {
-    //! Link functions for logistic regression
+    //! Link functions for exponential regression
     use super::*;
     use crate::link::{Canonical, Link, Transform};
     use crate::num::Float;

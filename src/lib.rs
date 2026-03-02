@@ -134,7 +134,7 @@
 //!
 //! The *canonical link* is the one for which $`\eta = \omega`$, i.e. the natural
 //! parameter equals the linear predictor. In general, in terms of an arbitrary link function $`g`$
-//! and canonical link function $`g_0`$, we have $`\eta(\omega) = g_0(g(\omega))`$. Non-canonical
+//! and canonical link function $`g_0`$, we have $`\eta(\omega) = g_0(g^{-1}(\omega))`$. Non-canonical
 //! links are supported in principle (see [`link`]).
 //!
 //! The *variance function* $`V(\mu)`$ characterizes how the variance of $`y`$

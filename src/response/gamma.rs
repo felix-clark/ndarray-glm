@@ -66,7 +66,7 @@ where
     }
 }
 
-/// Implementation of GLM functionality for logistic regression.
+/// Implementation of GLM functionality for gamma regression.
 impl<L> Glm for Gamma<L>
 where
     L: Link<Gamma<L>>,
@@ -74,13 +74,18 @@ where
     type Link = L;
     const DISPERSED: DispersionType = DispersionType::FreeDispersion;
 
-    /// The log of the partition function for logistic regression. The natural
-    /// parameter is the logit of p.
+    /// The log-partition function $`A(\eta)`$ for the gamma family, expressed in terms of the
+    /// canonical natural parameter $`\eta = -1/\mu`$:
+    ///
+    /// ```math
+    /// A(\eta) = -\ln(-\eta)
+    /// ```
     fn log_partition<F: Float>(nat_par: F) -> F {
         -num_traits::Float::ln(-nat_par)
     }
 
-    /// var = mu*(1-mu)
+    /// The variance function $`V(\mu) = \mu^2`$, equal to $`A''(\eta)`$ evaluated at
+    /// $`\eta = -1/\mu`$.
     fn variance<F: Float>(mean: F) -> F {
         mean * mean
     }
@@ -93,13 +98,13 @@ where
 }
 
 pub mod link {
-    //! Link functions for logistic regression
+    //! Link functions for gamma regression
     use super::*;
     use crate::link::{Canonical, Link, Transform};
     use crate::num::Float;
 
-    /// The canonical link function for exponential regression is the negative reciprocal
-    /// $`\eta = -1/mu`$. This fails to prevent negative predicted y-values.
+    /// The canonical link function for gamma regression is the negative reciprocal
+    /// $`\eta = -1/\mu`$. This fails to prevent negative predicted y-values.
     pub struct NegRec {}
     impl Canonical for NegRec {}
     impl Link<Gamma<NegRec>> for NegRec {
@@ -145,7 +150,7 @@ mod tests {
     /// where ȳ₀ and ȳ₁ are the within-group sample means. Choosing group means 2 and 4
     /// gives β = [-0.5, 0.25], both exactly representable in f64.
     #[test]
-    fn exp_ex() -> RegressionResult<(), f64> {
+    fn gamma_ex() -> RegressionResult<(), f64> {
         // Group 0 (x=0): y ∈ {1, 3}, ȳ₀ = 2  → β₀       = -1/2 = -0.5
         // Group 1 (x=1): y ∈ {2, 4, 6}, ȳ₁ = 4 → β₀ + β₁ = -1/4, β₁ = 0.25
         let beta = array![-0.5, 0.25];
@@ -159,10 +164,10 @@ mod tests {
     }
 
     /// Analogous test using the Log link. With g(μ) = log(μ), the MLE satisfies
-    /// β₀ = log(ȳ₀) and β₁ = log(ȳ₁/ȳ₀). Same group data as exp_ex gives
+    /// β₀ = log(ȳ₀) and β₁ = log(ȳ₁/ȳ₀). Same group data as gamma_ex gives
     /// ȳ₀=2, ȳ₁=4, so β = [ln 2, ln 2].
     #[test]
-    fn exp_log_link_ex() -> RegressionResult<(), f64> {
+    fn gamma_log_link_ex() -> RegressionResult<(), f64> {
         // Group 0 (x=0): y ∈ {1, 3}, ȳ₀ = 2 → β₀      = ln(2)
         // Group 1 (x=1): y ∈ {2, 4, 6}, ȳ₁ = 4 → β₀+β₁ = ln(4), β₁ = ln(2)
         let ln2 = f64::ln(2.);
