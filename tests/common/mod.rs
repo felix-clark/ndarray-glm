@@ -181,6 +181,53 @@ pub fn load_linear_data() -> Result<(Array1<f64>, Array2<f64>, Array1<f64>, Arra
     Ok((y, x, var_wt, freq_wt))
 }
 
+/// Load the responses dataset: y_exp, y_gamma, y_ig, x1, x2, var_wt, freq_wt (with header row).
+#[cfg(test)]
+#[allow(dead_code)]
+#[allow(clippy::type_complexity)]
+pub fn load_responses_data() -> Result<(
+    Array1<f64>, // y_exp
+    Array1<f64>, // y_gamma
+    Array1<f64>, // y_ig
+    Array2<f64>, // x (2 columns: x1, x2)
+    Array1<f64>, // var_wt
+    Array1<usize>, // freq_wt
+)> {
+    let file = File::open("tests/data/responses.csv")?;
+    let reader = BufReader::new(file);
+    let mut y_exp_vec = Vec::new();
+    let mut y_gamma_vec = Vec::new();
+    let mut y_ig_vec = Vec::new();
+    let mut x_vec = Vec::new();
+    let mut var_wt_vec = Vec::new();
+    let mut freq_wt_vec = Vec::new();
+    for (i, line_result) in reader.lines().enumerate() {
+        let line = line_result?;
+        if i == 0 {
+            continue; // skip header
+        }
+        let cols: Vec<&str> = line.split(',').collect();
+        if cols.len() != 7 {
+            return Err(anyhow!("Expected 7 columns in responses.csv"));
+        }
+        y_exp_vec.push(cols[0].trim().parse::<f64>()?);
+        y_gamma_vec.push(cols[1].trim().parse::<f64>()?);
+        y_ig_vec.push(cols[2].trim().parse::<f64>()?);
+        x_vec.push(cols[3].trim().parse::<f64>()?);
+        x_vec.push(cols[4].trim().parse::<f64>()?);
+        var_wt_vec.push(cols[5].trim().parse::<f64>()?);
+        freq_wt_vec.push(cols[6].trim().parse::<f64>()? as usize);
+    }
+    let n = y_exp_vec.len();
+    let y_exp = Array1::from(y_exp_vec);
+    let y_gamma = Array1::from(y_gamma_vec);
+    let y_ig = Array1::from(y_ig_vec);
+    let x = Array2::from_shape_vec((n, 2), x_vec)?;
+    let var_wt = Array1::from(var_wt_vec);
+    let freq_wt = Array1::from(freq_wt_vec);
+    Ok((y_exp, y_gamma, y_ig, x, var_wt, freq_wt))
+}
+
 /// Load data from the popular iris test dataset.
 /// The class will be encoded as an integer in the y data.
 #[allow(dead_code)]

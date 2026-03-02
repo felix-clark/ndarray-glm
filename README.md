@@ -53,7 +53,7 @@ ndarray-glm = { version = "0.0.15", features = ["openblas-system"] }
 ```
 
 An example for linear regression is shown below. The library is generic over
-floating point type (`f32` of `f64`).
+floating point type (`f32` or `f64`).
 
 ``` rust
 use ndarray_glm::{array, Linear, ModelBuilder};
@@ -80,9 +80,12 @@ regularization. This can be disabled with `no_standardize()` in the
 `ModelBuilder` but is designed to be hands-off for the user, so it's
 recommended to keep it in most cases.
 
-Custom non-canonical link functions can be defined by the user, although the
-interface is currently not particularly ergonomic. See `tests/custom_link.rs`
-for examples.
+Some common non-canonical link functions are available (see e.g. `exp_link` and
+`logistic_link`), and additional custom ones can be defined by the user.
+The `link` module documentation covers how to select a provided link, how to
+implement a custom link (canonical or non-canonical), and how to use the
+`TestLink` trait to run built-in consistency tests against a custom
+implementation.
 
 ## Features
 
@@ -91,9 +94,9 @@ for examples.
   - [X] Logistic
   - [X] Poisson
   - [X] Binomial
-  - [ ] Exponential
-  - [ ] Gamma
-  - [ ] Inverse Gaussian
+  - [X] Exponential
+  - [X] Gamma
+  - [X] Inverse Gaussian
 - [X] Linear offsets
 - [X] Generic over floating point type
 - [X] Regularization

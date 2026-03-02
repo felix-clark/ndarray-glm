@@ -101,4 +101,17 @@ mod tests {
         assert_abs_diff_eq!(beta, fit.result, epsilon = 0.05 * f32::EPSILON as f64);
         Ok(())
     }
+
+    #[test]
+    // Confirm logit closure explicitly.
+    fn logit_closure() {
+        use super::link::Logit;
+        use crate::link::TestLink;
+        // as for logistic, floats lose precision on difference from 1 relative to 0, so we can't
+        // use x values that are very large at all.
+        let x = array![-400., -50., -2.0, -0.2, 0., 0.5, 20.];
+        <Logit as TestLink<Binomial<10>>>::check_closure(&x);
+        let y = array![0., 1e-5, 0.2, 0.5, 0.75, 0.9999, 1.0];
+        <Logit as TestLink<Binomial<12>>>::check_closure_y(&y);
+    }
 }

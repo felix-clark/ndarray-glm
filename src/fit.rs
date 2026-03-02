@@ -1739,4 +1739,64 @@ mod tests {
 
         Ok(())
     }
+
+    /// Quantile residuals for Exponential regression are Φ⁻¹(F_Exp(rate=1/μ̂)(y)).
+    ///
+    /// Uses the same two-group dataset as the `exp_ex` unit test in `response/exponential.rs`,
+    /// where the exact MLE is known: group means ȳ₀=2, ȳ₁=4, so μ̂ = [2,2,4,4,4].
+    /// The expected quantile residuals are computed independently here using the Exp CDF.
+    #[cfg(feature = "stats")]
+    #[test]
+    fn exponential_quantile_residuals() -> Result<()> {
+        use crate::Exponential;
+        use statrs::distribution::{ContinuousCDF, Exp, Normal};
+
+        let data_y = array![1.0_f64, 3.0, 2.0, 4.0, 6.0];
+        let data_x = array![[0.0_f64], [0.], [1.0], [1.0], [1.0]];
+        let model = ModelBuilder::<Exponential>::data(&data_y, &data_x).build()?;
+        let fit = model.fit()?;
+
+        // Exact MLE: μ̂ = [2, 2, 4, 4, 4]. Compute expected q_i = Φ⁻¹(F_Exp(rate=1/μ)(y)).
+        let mu_hat = array![2.0_f64, 2.0, 4.0, 4.0, 4.0];
+        let std_norm = Normal::standard();
+        let expected = Array1::from_iter(data_y.iter().zip(mu_hat.iter()).map(|(&y, &mu)| {
+            let dist = Exp::new(1.0 / mu).unwrap();
+            std_norm.inverse_cdf(dist.cdf(y))
+        }));
+
+        assert_abs_diff_eq!(fit.resid_quantile(), expected, epsilon = 1e-10);
+        Ok(())
+    }
+
+    /// Quantile residuals for Gamma regression are Φ⁻¹(F_Gamma(α=1/φ̂, β=α/μ̂)(y)).
+    ///
+    /// Uses the same two-group dataset as the `gamma_ex` unit test in `response/gamma.rs`,
+    /// where the exact MLE is known: group means ȳ₀=2, ȳ₁=4, so μ̂ = [2,2,4,4,4].
+    /// Expected quantile residuals are independently computed here using the Gamma CDF with
+    /// the dispersion estimate from the fit.
+    #[cfg(feature = "stats")]
+    #[test]
+    fn gamma_quantile_residuals() -> Result<()> {
+        use crate::Gamma;
+        use statrs::distribution::{ContinuousCDF, Gamma as GammaDist, Normal};
+
+        let data_y = array![1.0_f64, 3.0, 2.0, 4.0, 6.0];
+        let data_x = array![[0.0_f64], [0.], [1.0], [1.0], [1.0]];
+        let model = ModelBuilder::<Gamma>::data(&data_y, &data_x).build()?;
+        let fit = model.fit()?;
+
+        // Exact MLE: μ̂ = [2, 2, 4, 4, 4]. Compute expected q_i = Φ⁻¹(F_Gamma(α, β)(y))
+        // where α = 1/φ̂ and β = α/μ̂ (rate parameterization: mean = α/β = μ).
+        let phi: f64 = fit.dispersion();
+        let alpha = 1.0 / phi;
+        let mu_hat = array![2.0_f64, 2.0, 4.0, 4.0, 4.0];
+        let std_norm = Normal::standard();
+        let expected = Array1::from_iter(data_y.iter().zip(mu_hat.iter()).map(|(&y, &mu)| {
+            let dist = GammaDist::new(alpha, alpha / mu).unwrap();
+            std_norm.inverse_cdf(dist.cdf(y))
+        }));
+
+        assert_abs_diff_eq!(fit.resid_quantile(), expected, epsilon = 1e-10);
+        Ok(())
+    }
 }

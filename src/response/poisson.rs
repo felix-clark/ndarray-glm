@@ -43,7 +43,9 @@ where
     type DistributionType = PoisDist;
 
     fn get_distribution(mu: f64, _phi: f64) -> Self::DistributionType {
-        PoisDist::new(mu).unwrap()
+        // NOTE: This will panic if mu <= 0. For canonical poisson that shouldn't be an issue, but
+        // clamp at the lowest positive value just to be safe and to not lose any precision.
+        PoisDist::new(mu.max(f64::MIN_POSITIVE)).unwrap()
     }
 }
 
@@ -66,7 +68,7 @@ where
     }
 
     /// The saturation likelihood of the Poisson distribution is non-trivial.
-    /// It is equal to y * (log(y) - 1).
+    /// It is equal to y * (log(y) - 1). We aren't including the normalization term B = -log(y!).
     fn log_like_sat<F: Float>(y: F) -> F {
         prod_log(y) - y
     }
@@ -111,5 +113,19 @@ mod tests {
         dbg!(fit.n_iter);
         assert_abs_diff_eq!(beta, fit.result, epsilon = f32::EPSILON as f64);
         Ok(())
+    }
+
+    #[test]
+    // Confirm log closure explicitly.
+    fn logit_closure() {
+        use super::link::Log;
+        use crate::link::TestLink;
+        // Because floats lose precision on difference from 1 relative to 0, higher values get
+        // mapped back to infinity under closure. This is sort of fundamental to the logit
+        // function and I'm not sure there's a good way around it.
+        let x = array![-500., -50., -2.0, -0.2, 0., 0.5, 20.];
+        Log::check_closure(&x);
+        let y = array![0., 1e-5, 0.25, 0.5, 0.8, 0.9999, 1.0];
+        Log::check_closure_y(&y);
     }
 }
