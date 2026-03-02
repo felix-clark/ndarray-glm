@@ -61,7 +61,7 @@ where
 }
 
 /// Represents a lack of regularization.
-pub struct Null {}
+pub(crate) struct Null {}
 
 impl<F: Float> IrlsReg<F> for Null {
     #[inline]
@@ -83,7 +83,7 @@ impl<F: Float> IrlsReg<F> for Null {
 }
 
 /// Penalizes the regression by lambda/2 * |beta|^2.
-pub struct Ridge<F: Float> {
+pub(crate) struct Ridge<F: Float> {
     l2_vec: Array1<F>,
 }
 
@@ -120,7 +120,7 @@ impl<F: Float> IrlsReg<F> for Ridge<F> {
 }
 
 /// Penalizes the likelihood by the L1-norm of the parameters.
-pub struct Lasso<F: Float> {
+pub(crate) struct Lasso<F: Float> {
     /// The L1 parameters for each element
     l1_vec: Array1<F>,
     /// The dual solution
@@ -229,7 +229,7 @@ impl<F: Float> IrlsReg<F> for Lasso<F> {
 }
 
 /// Penalizes the likelihood with both an L1-norm and L2-norm.
-pub struct ElasticNet<F: Float> {
+pub(crate) struct ElasticNet<F: Float> {
     /// The L1 parameters for each element
     l1_vec: Array1<F>,
     /// The L2 parameters for each element

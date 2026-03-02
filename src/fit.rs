@@ -1263,16 +1263,19 @@ mod tests {
             epsilon = 0.01 * f32::EPSILON as f64
         );
         // try p-values
+        #[cfg(feature = "stats")]
         assert_abs_diff_eq!(
             fit.pvalue_lr_test(),
             fit_std.pvalue_lr_test(),
             epsilon = 0.01 * f32::EPSILON as f64
         );
+        #[cfg(feature = "stats")]
         assert_abs_diff_eq!(
             fit.pvalue_wald()?,
             fit_std.pvalue_wald()?,
             epsilon = 0.01 * f32::EPSILON as f64
         );
+        #[cfg(feature = "stats")]
         assert_abs_diff_eq!(
             fit.pvalue_exact()?,
             fit_std.pvalue_exact()?,

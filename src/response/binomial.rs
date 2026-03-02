@@ -60,7 +60,7 @@ impl<const N: BinDom> Glm for Binomial<N> {
     }
 }
 
-pub mod link {
+pub(crate) mod link {
     use super::*;
     use crate::link::{Canonical, Link};
     use num_traits::Float;

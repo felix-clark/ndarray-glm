@@ -6,15 +6,13 @@ module.
 
 [![Crate](https://img.shields.io/crates/v/ndarray-glm.svg)](https://crates.io/crates/ndarray-glm)
 [![Documentation](https://docs.rs/ndarray-glm/badge.svg)](https://docs.rs/ndarray-glm)
-[![Build Status](https://travis-ci.org/felix-clark/ndarray-glm.png?branch=master)](https://travis-ci.org/felix-clark/ndarray-glm)
 ![Downloads](https://img.shields.io/crates/d/ndarray-glm)
 
 ## Status
 
-This package is in beta and the interface could undergo changes, as could the
-numerical value of some functions. The tests include several checks against R's
-`glm` and `glmnet` packages, but some edge cases may be excluded and others may
-involve inherent ambiguities or imprecisions.
+Numerical accuracy cannot be fully guaranteed, but the tests do include several
+checks against R's `glm` and `glmnet` packages. Some edge cases may be
+excluded and others may involve inherent ambiguities or imprecisions.
 
 The regression algorithm uses iteratively re-weighted least squares (IRLS) with
 a line-search procedure applied when the next iteration of guesses does not
@@ -49,7 +47,7 @@ To use in your crate, add the following to the `Cargo.toml`:
 
 ```
 ndarray = { version = "0.17", features = ["blas"]}
-ndarray-glm = { version = "0.0.15", features = ["openblas-system"] }
+ndarray-glm = { version = "0.1", features = ["openblas-system"] }
 ```
 
 An example for linear regression is shown below. The library is generic over
@@ -107,7 +105,7 @@ implementation.
 - [X] Weighted regressions (frequency and/or variance weights)
 - [X] Non-canonical link functions
 - [X] Fit statistics (see documentation on `Fit` struct)
-  - [X] Redisuals
+  - [X] Residuals
     - [X] Response, Pearson, deviance
     - [X] Standardized and Studentized variants
     - [X] Working/partial

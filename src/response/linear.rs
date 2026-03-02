@@ -79,7 +79,7 @@ where
     }
 }
 
-pub mod link {
+pub(crate) mod link {
     //! Link functions for linear regression.
     use super::*;
     use crate::link::{Canonical, Link};

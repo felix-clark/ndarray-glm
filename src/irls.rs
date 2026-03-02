@@ -54,7 +54,7 @@ where
     F: Float,
     ArrayRef2<F>: SolveH<F>,
 {
-    pub fn new(model: &'a Model<M, F>, initial: Array1<F>, options: FitOptions<F>) -> Self {
+    pub(crate) fn new(model: &'a Model<M, F>, initial: Array1<F>, options: FitOptions<F>) -> Self {
         let data = &model.data;
         let reg = get_reg(&options, data.x.ncols(), data.has_intercept);
         let initial_like_data: F = M::log_like(data, &initial);

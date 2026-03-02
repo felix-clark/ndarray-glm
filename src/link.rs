@@ -113,6 +113,8 @@ pub trait Link<M: Glm>: Transform {
     fn func_inv<F: Float>(lin_pred: F) -> F;
 }
 
+/// Establishes the relationship between the linear predictor $`\omega =
+/// \mathbf{x}\cdot\boldsymbol\beta`$ and the natural parameter $`\eta`$.
 pub trait Transform {
     /// The natural parameter of the response distribution as a function
     /// of the linear predictor: $`\eta(\omega) = g_0(g^{-1}(\omega))`$ where $`g_0`$ is the
