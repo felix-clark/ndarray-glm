@@ -96,7 +96,7 @@ implementation.
   - [X] Binomial
   - [X] Exponential
   - [X] Gamma
-  - [ ] Inverse Gaussian
+  - [X] Inverse Gaussian
 - [X] Linear offsets
 - [X] Generic over floating point type
 - [X] Regularization

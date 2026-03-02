@@ -10,6 +10,7 @@ use crate::{
     response::Yval,
 };
 use ndarray::Array1;
+use num_traits::ToPrimitive;
 #[cfg(feature = "stats")]
 use statrs::distribution::Exp;
 use std::marker::PhantomData;
@@ -22,15 +23,6 @@ where
     _link: PhantomData<L>,
 }
 
-/// The logistic response variable must be boolean (at least for now).
-impl<L> Yval<Exponential<L>> for bool
-where
-    L: Link<Exponential<L>>,
-{
-    fn into_float<F: Float>(self) -> RegressionResult<F, F> {
-        Ok(if self { F::one() } else { F::zero() })
-    }
-}
 // Allow floats for the domain. We can't use num_traits::Float because of the
 // possibility of conflicting implementations upstream, so manually implement
 // for f32 and f64. Note that for exponential regression, y=0 is invalid.

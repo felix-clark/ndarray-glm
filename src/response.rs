@@ -7,6 +7,7 @@ use statrs::statistics::Distribution;
 pub mod binomial;
 pub mod exponential;
 pub mod gamma;
+pub mod inverse_gaussian;
 pub mod linear;
 pub mod logistic;
 pub mod poisson;
@@ -20,7 +21,7 @@ pub trait Yval<M: Glm> {
     fn into_float<F: Float>(self) -> RegressionResult<F, F>;
 }
 
-// If this works this should be gated behind stats
+// These distributions are gated behind the `stats` feature.
 #[cfg(feature = "stats")]
 pub trait Response {
     type DistributionType: Distribution<f64>;
