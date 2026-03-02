@@ -152,6 +152,9 @@
 //! | [`Logistic`] (Bernoulli) | Logit | $`\mu(1-\mu)`$ | $`1`$ |
 //! | [`Poisson`] | Log | $`\mu`$ | $`1`$ |
 //! | [`Binomial`] (fixed $`n`$) | Logit | $`\mu(1-\mu/n)`$ | $`1`$ |
+//! | [`Exponential`] | $`-1/\mu`$ | $`\mu^2`$ | $`1`$ |
+//! | [`Gamma`] | $`-1/\mu`$ | $`\mu^2`$ | estimated |
+//! | [`InvGaussian`] (inverse Gaussian) | $`-1/\mu^2`$ | $`\mu^3/2`$ | estimated |
 //!
 //! ## Fitting via IRLS
 //!
@@ -221,8 +224,8 @@ pub use {
     response::inverse_gaussian::link as inv_gauss_link,
     response::logistic::link as logistic_link,
     response::{
-        binomial::Binomial, exponential::Exponential, gamma::Gamma, linear::Linear,
-        logistic::Logistic, poisson::Poisson,
+        binomial::Binomial, exponential::Exponential, gamma::Gamma,
+        inverse_gaussian::InvGaussian, linear::Linear, logistic::Logistic, poisson::Poisson,
     },
 };
 
