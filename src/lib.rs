@@ -154,7 +154,7 @@
 //! | [`Binomial`] (fixed $`n`$) | Logit | $`\mu(1-\mu/n)`$ | $`1`$ |
 //! | [`Exponential`] | $`-1/\mu`$ | $`\mu^2`$ | $`1`$ |
 //! | [`Gamma`] | $`-1/\mu`$ | $`\mu^2`$ | estimated |
-//! | [`InvGaussian`] (inverse Gaussian) | $`-1/\mu^2`$ | $`\mu^3/2`$ | estimated |
+//! | [`InvGaussian`] (inverse Gaussian) | $`-1/(2\mu^2)`$ | $`\mu^3`$ | estimated |
 //!
 //! ## Fitting via IRLS
 //!

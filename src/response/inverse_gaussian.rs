@@ -10,7 +10,7 @@ use crate::{
 use ndarray::Array1;
 use std::marker::PhantomData;
 
-/// Inverse Gaussian regression with the canonical link function $`g_0(\mu) = -1/\mu^2`$.
+/// Inverse Gaussian regression with the canonical link function $`g_0(\mu) = -1/(2\mu^2)`$.
 pub struct InvGaussian<L = link::NegRecSq>
 where
     L: Link<InvGaussian<L>>,
@@ -54,25 +54,25 @@ where
     const DISPERSED: DispersionType = DispersionType::FreeDispersion;
 
     /// The log-partition function $`A(\eta)`$ for the inverse Gaussian family, expressed in
-    /// terms of the canonical natural parameter $`\eta = -1/\mu^2`$:
+    /// terms of the canonical natural parameter $`\eta = -1/(2\mu^2)`$:
     ///
     /// ```math
-    /// A(\eta) = -2\sqrt{-\eta}
+    /// A(\eta) = -\sqrt{-2\eta}
     /// ```
     fn log_partition<F: Float>(nat_par: F) -> F {
-        -F::two() * num_traits::Float::sqrt(-nat_par)
+        -num_traits::Float::sqrt(-F::two() * nat_par)
     }
 
-    /// The variance function $`V(\mu) = \mu^3/2`$, equal to $`A''(\eta)`$ evaluated at
-    /// $`\eta = -1/\mu^2`$.
+    /// The variance function $`V(\mu) = \mu^3`$, equal to $`A''(\eta)`$ evaluated at
+    /// $`\eta = -1/(2\mu^2)`$.
     fn variance<F: Float>(mean: F) -> F {
-        mean * mean * mean * F::half()
+        mean * mean * mean
     }
 
     /// The saturated log-likelihood $`y \eta_{\text{sat}} - A(\eta_{\text{sat}})`$ at
-    /// $`\eta_{\text{sat}} = -1/y^2`$, which evaluates to $`1/y`$.
+    /// $`\eta_{\text{sat}} = -1/(2y^2)`$, which evaluates to $`1/(2y)`$.
     fn log_like_sat<F: Float>(y: F) -> F {
-        num_traits::Float::recip(y)
+        F::half() * num_traits::Float::recip(y)
     }
 }
 
@@ -82,16 +82,16 @@ pub mod link {
     use crate::link::{Canonical, Link, Transform};
     use crate::num::Float;
 
-    /// The canonical link function for inverse Gaussian regression is the negative reciprocal
-    /// square $`\eta = -1/\mu^2`$. This fails to prevent negative predicted y-values.
+    /// The canonical link function for inverse Gaussian regression is $`g_0(\mu) = -1/(2\mu^2)`$.
+    /// This fails to prevent negative predicted y-values.
     pub struct NegRecSq {}
     impl Canonical for NegRecSq {}
     impl Link<InvGaussian<NegRecSq>> for NegRecSq {
         fn func<F: Float>(y: F) -> F {
-            -num_traits::Float::recip(y * y)
+            -num_traits::Float::recip(F::two() * y * y)
         }
         fn func_inv<F: Float>(lin_pred: F) -> F {
-            num_traits::Float::recip(num_traits::Float::sqrt(-lin_pred))
+            num_traits::Float::recip(num_traits::Float::sqrt(-F::two() * lin_pred))
         }
     }
 
@@ -108,12 +108,12 @@ pub mod link {
     }
     impl Transform for Log {
         fn nat_param<F: Float>(lin_pred: Array1<F>) -> Array1<F> {
-            // η(ω) = g₀(g⁻¹(ω)) = -1/exp(ω)² = -exp(-2ω)
-            lin_pred.mapv(|x| -num_traits::Float::exp(-F::two() * x))
+            // η(ω) = g₀(g⁻¹(ω)) = -1/(2·exp(ω)²) = -(1/2)·exp(-2ω)
+            lin_pred.mapv(|x| -F::half() * num_traits::Float::exp(-F::two() * x))
         }
         fn d_nat_param<F: Float>(lin_pred: &Array1<F>) -> Array1<F> {
-            // η'(ω) = 2·exp(-2ω) = 1/(g'(μ)·V(μ)) = 1/((1/μ)·(μ³/2)) = 2/μ²
-            lin_pred.mapv(|x| F::two() * num_traits::Float::exp(-F::two() * x))
+            // η'(ω) = exp(-2ω) = 1/(g'(μ)·V(μ)) = 1/((1/μ)·μ³) = 1/μ²
+            lin_pred.mapv(|x| num_traits::Float::exp(-F::two() * x))
         }
     }
 }
@@ -127,14 +127,14 @@ mod tests {
 
     /// A simple test where the correct value for the data is known exactly.
     ///
-    /// With the canonical NegRecSq link g(μ) = -1/μ², the MLE satisfies β₀ = -1/ȳ₀² and
-    /// β₀+β₁ = -1/ȳ₁², where ȳ₀ and ȳ₁ are the within-group sample means. Choosing group
-    /// means 2 and 4 gives β = [-0.25, 0.1875], both exactly representable in f64.
+    /// With the canonical NegRecSq link g(μ) = -1/(2μ²), the MLE satisfies β₀ = -1/(2ȳ₀²) and
+    /// β₀+β₁ = -1/(2ȳ₁²), where ȳ₀ and ȳ₁ are the within-group sample means. Choosing group
+    /// means 2 and 4 gives β = [-0.125, 0.09375], both exactly representable in f64.
     #[test]
     fn ig_ex() -> RegressionResult<(), f64> {
-        // Group 0 (x=0): y ∈ {1, 3}, ȳ₀ = 2  → β₀       = -1/4  = -0.25
-        // Group 1 (x=1): y ∈ {2, 4, 6}, ȳ₁ = 4 → β₀ + β₁ = -1/16, β₁ = 3/16 = 0.1875
-        let beta = array![-0.25, 0.1875];
+        // Group 0 (x=0): y ∈ {1, 3}, ȳ₀ = 2  → β₀       = -1/8    = -0.125
+        // Group 1 (x=1): y ∈ {2, 4, 6}, ȳ₁ = 4 → β₀ + β₁ = -1/32, β₁ = 3/32 = 0.09375
+        let beta = array![-0.125, 0.09375];
         let data_x = array![[0.], [0.], [1.0], [1.0], [1.0]];
         let data_y = array![1.0, 3.0, 2.0, 4.0, 6.0];
         let model = ModelBuilder::<InvGaussian>::data(&data_y, &data_x).build()?;
@@ -167,8 +167,8 @@ mod tests {
     fn neg_rec_sq_closure() {
         use super::link::NegRecSq;
         use crate::link::TestLink;
-        // Positive values can't be used with the canonical link.
-        let x = array![-360., -12., -5., -1.0, -1e-4, 0.];
+        // Positive values and zero can't be used with the canonical link (requires η < 0).
+        let x = array![-360., -12., -5., -1.0, -1e-4];
         NegRecSq::check_closure(&x);
         let y = array![1e-5, 0.25, 0.8, 2.5, 10., 256.];
         NegRecSq::check_closure_y(&y);
@@ -189,7 +189,7 @@ mod tests {
     fn log_nat_par() {
         use crate::link::TestLink;
         use link::Log;
-        // nat_param(ω) = -exp(-2ω) = g_0(g^{-1}(ω)) = NegRecSq(exp(ω)) = -1/exp(2ω)
+        // nat_param(ω) = -(1/2)·exp(-2ω) = g_0(g^{-1}(ω)) = NegRecSq(exp(ω)) = -1/(2·exp(2ω))
         let lin_test_vals = array![-10., -2., -0.5, 0.0, 0.5, 2., 10.];
         Log::check_nat_par::<InvGaussian<link::NegRecSq>>(&lin_test_vals);
         Log::check_nat_par_d(&lin_test_vals);
