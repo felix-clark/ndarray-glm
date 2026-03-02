@@ -61,7 +61,8 @@ where
         // dynamic dispatch or an enum between Exp and Dirac that would have to forward every
         // Distribution<f64> and ContinuousCDF<f64> calls, the simplest way to ensure μ > 0 is
         // to clamp at the lowest positive value (~2e-308).
-        Exp::new(mu.max(f64::MIN_POSITIVE)).unwrap()
+        // Exp::new(rate) where rate = 1/mu, since statrs parameterizes by rate (mean = 1/rate).
+        Exp::new(mu.max(f64::MIN_POSITIVE).recip()).unwrap()
     }
 }
 
